@@ -1,0 +1,17 @@
+{
+  "name": "dle-extension",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "lint": "oxlint && tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.6",
+    "@types/node": "^26.6.5",
+    "oxlint": "^1.89.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}

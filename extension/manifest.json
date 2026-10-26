@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "Design Language Engine",
+  "version": "0.1.0",
+  "description": "Save design references to your Design Language Engine board.",
+  "background": { "service_worker": "background.js", "type": "module" },
+  "permissions": ["contextMenus", "storage"]
+}

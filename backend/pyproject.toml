@@ -1,0 +1,64 @@
+[project]
+name = "dle-backend"
+version = "0.1.0"
+description = "Design Language Engine backend"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "alembic>=1.20.1",
+    "av>=19.0.2",
+    "fastapi>=0.162.0",
+    "httpx>=0.28.1",
+    "meta-sam-parser>=0.1.0",
+    "numpy>=2.5.4",
+    "openai>=3.37.0",
+    "opencv-python-headless>=5.0.0.93",
+    "pillow>=13.0.0",
+    "pydantic>=2",
+    "pydantic-settings>=2.16.1",
+    "python-multipart>=0.0.32",
+    "python-ulid>=4.0.1",
+    "scikit-image>=0.26.0",
+    "scikit-learn>=1.9.1",
+    "selectolax>=1.0.2",
+    "sqlalchemy>=2",
+    "sse-starlette>=3.6.0",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+
+[dependency-groups]
+dev = [
+    "mypy>=2.4.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.1",
+    "respx>=0.23.1",
+    "ruff>=0.17.2",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*" = ["BLE001"]
+
+# The smoke script talks to a non-OpenAI endpoint with provider-specific parts
+# (input_video, metadata) that the openai SDK's strict typing does not model.
+[[tool.mypy.overrides]]
+module = ["smoke_meta"]
+ignore_errors = true
