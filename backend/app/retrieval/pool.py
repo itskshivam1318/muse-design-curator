@@ -18,6 +18,7 @@ class PoolItem:
     item: CorpusItem
     relevance: float
     attrs: dict[str, AttrValue] = field(default_factory=dict)
+    embedding: Any = None  # unit-length candidate vector, for pairwise similarity
 
 
 @dataclass
@@ -85,7 +86,7 @@ def build_pool(
             rel = cos_src
         else:
             rel = mix.source_item * cos_src + mix.board_centroid * float(vec @ cen)
-        scored.append(PoolItem(item, rel))
+        scored.append(PoolItem(item, rel, embedding=vec))
     scored.sort(key=lambda p: (-p.relevance, p.item.id))
     top = scored[: cfg.pool_size]
     if top:

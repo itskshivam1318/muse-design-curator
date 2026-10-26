@@ -10,7 +10,7 @@ from app.measure.palette import named_lab
 from app.retrieval.config import RankingConfig
 from app.retrieval.pool import PoolItem
 from app.storage import files
-from app.validation.comparators import AttrValue, compare
+from app.validation.comparators import AttrValue, Verdict, compare
 
 MIN_EDGE = 256
 
@@ -105,7 +105,7 @@ def apply_exclusions(
             continue
         cand_t = p.attrs.get(tspec.key)
         if mode == "avoid" and cand_t:
-            hit = next((v for v in spec.values if _same_as_value(tspec, cand_t, v, cfg)), None)
+            hit = next((v for v in spec.values if same_as_value(tspec, cand_t, v, cfg)), None)
             if hit is not None:
                 excluded.append(
                     _exclude(p, "avoided_value", attribute=tspec.key, candidate=cand_t.value,
@@ -122,10 +122,15 @@ def apply_exclusions(
     return kept, excluded
 
 
-def _same_as_value(tspec: Any, cand: AttrValue, value: Any, cfg: RankingConfig) -> bool:
+def value_verdict(tspec: Any, cand: AttrValue, value: Any, cfg: RankingConfig) -> Verdict:
+    """Compare a candidate attribute with a literal value (colour names resolve to Lab)."""
     measured = None
     if tspec.kind == "color":
         lab = named_lab(str(value))
         measured = {"lab": list(lab)} if lab else None
     ref = AttrValue(value, 1.0, "confirmed", measured)
-    return compare(tspec, cand, ref, cfg) == "same"
+    return compare(tspec, cand, ref, cfg)
+
+
+def same_as_value(tspec: Any, cand: AttrValue, value: Any, cfg: RankingConfig) -> bool:
+    return value_verdict(tspec, cand, value, cfg) == "same"
