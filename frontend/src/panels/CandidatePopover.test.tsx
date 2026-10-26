@@ -14,11 +14,12 @@ afterEach(cleanup)
 
 const source = makeItem({ id: 'i1', board_id: 'b1', x: 100, y: 50, w: 200, h: 150 })
 
-function setup(onKept = vi.fn()) {
+function setup(onKept = vi.fn(), provenance?: Partial<ReturnType<typeof cand>['provenance']>, onClose = vi.fn()) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   qc.setQueryData(keys.items('b1'), [source])
   qc.setQueryData(keys.attributes('i1'), makeAttrs())
   const c = cand('c1', 'validated', {
+    ...(provenance ? { provenance: { ...cand('x', 'validated').provenance, ...provenance } } : {}),
     checks: [
       { check: 'target', attribute_key: 'dial_color', verdict: 'pass', reason: 'Dial colour changed: #1B1D22 → #2F55C4 (ΔE 38)', evidence: { values: { source: 'black', candidate: 'navy', delta_e: 38 } } },
       { check: 'protected', attribute_key: 'legibility', verdict: 'uncertain', reason: 'Legibility is too uncertain to call', evidence: { values: { source: 'medium', candidate: 'high' } } },
@@ -27,10 +28,10 @@ function setup(onKept = vi.fn()) {
   })
   render(
     <QueryClientProvider client={qc}>
-      <CandidatePopover boardId="b1" runId="r1" candidate={c} sourceItemId="i1" targetKey="dial_color" onClose={() => {}} onKept={onKept} />
+      <CandidatePopover boardId="b1" runId="r1" candidate={c} sourceItemId="i1" targetKey="dial_color" onClose={onClose} onKept={onKept} />
     </QueryClientProvider>,
   )
-  return { qc, onKept }
+  return { qc, onKept, onClose }
 }
 
 describe('CandidatePopover', () => {
@@ -76,5 +77,33 @@ describe('CandidatePopover', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm reject' }))
     await waitFor(() => expect(postDecision).toHaveBeenCalled())
     expect(vi.mocked(postDecision).mock.calls[0][2]).toEqual({ decision: 'reject', reason_code: 'not_my_style', note: 'too shiny', mark_not_this: true })
+  })
+})
+
+describe('CandidatePopover safety and keyboard', () => {
+  it('does not render a Source link for a non-http(s) landing URL', () => {
+    for (const bad of ['javascript:alert(1)', 'data:text/html,x', '/relative', 'not a url']) {
+      setup(vi.fn(), { landing_url: bad })
+      expect(screen.queryByRole('link', { name: /Source/ })).toBeNull()
+      expect(screen.getByText(/Photo by A/)).toBeTruthy() // the credit still shows
+      cleanup()
+    }
+  })
+
+  it('is a modal dialog: focus on Keep, Tab trapped, Escape from the note closes it', () => {
+    const { onClose } = setup()
+    const dlg = screen.getByRole('dialog', { name: 'Candidate' })
+    expect(dlg.getAttribute('aria-modal')).toBe('true')
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Keep' }))
+    fireEvent.keyDown(document.activeElement!, { key: 'Tab' })
+    expect(dlg.contains(document.activeElement)).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
+    expect(document.activeElement).toBe(screen.getByRole('radio', { name: 'Wrong change' }))
+    const note = screen.getByLabelText(/Note/)
+    note.focus()
+    fireEvent.change(note, { target: { value: 'x' } })
+    expect(document.activeElement).toBe(note) // re-render does not steal focus
+    fireEvent.keyDown(note, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 })

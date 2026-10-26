@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { keys, type RunResponse } from '../api'
 import { runResponse } from '../test/runs'
@@ -80,5 +80,32 @@ describe('MaybeStrip', () => {
     })
     expect(await screen.findByText(/This run failed: it was interrupted before it finished\./)).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Run again' })).toBeTruthy()
+  })
+})
+
+describe('MaybeStrip dialogs', () => {
+  it('candidate popover returns focus to its thumbnail on Escape', async () => {
+    setup(runResponse())
+    const thumb = screen.getAllByRole('button', { name: /^Candidate/ })[0]
+    thumb.focus()
+    fireEvent.click(thumb)
+    const dlg = await screen.findByRole('dialog', { name: 'Candidate' })
+    expect(dlg.contains(document.activeElement)).toBe(true)
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Candidate' })).toBeNull())
+    expect(document.activeElement).toBe(thumb)
+  })
+
+  it('"Why only N?" is a modal dialog that closes on Escape and restores focus', () => {
+    setup(runResponse())
+    const why = screen.getByRole('button', { name: 'Why only 2?' })
+    why.focus()
+    fireEvent.click(why)
+    const dlg = screen.getByRole('dialog', { name: 'Why fewer results' })
+    expect(dlg.getAttribute('aria-modal')).toBe('true')
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Close' }))
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'Why fewer results' })).toBeNull()
+    expect(document.activeElement).toBe(why)
   })
 })

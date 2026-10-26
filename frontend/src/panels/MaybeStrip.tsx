@@ -4,6 +4,7 @@ import { useRun } from '../queries'
 import { barState, progressText, runFailureText, shortfallText } from '../vary/logic'
 import { runStore, useRunState } from '../vary/runStore'
 import { startRun } from '../vary/startRun'
+import { useDialog } from '../ui/useDialog'
 import { CandidatePopover } from './CandidatePopover'
 
 interface Props {
@@ -103,21 +104,7 @@ export function MaybeStrip({ boardId, streamOpen, onKept }: Props) {
         </div>
       )}
 
-      {why && (
-        <div className="shortfall" role="dialog" aria-label="Why fewer results">
-          <p>
-            <b>{short.headline}</b>
-          </p>
-          <ul>
-            {short.lines.map((l) => (
-              <li key={l}>{l}</li>
-            ))}
-          </ul>
-          <button type="button" className="btn-quiet small" onClick={() => setWhy(false)}>
-            Close
-          </button>
-        </div>
-      )}
+      {why && <ShortfallDialog headline={short.headline} lines={short.lines} onClose={() => setWhy(false)} />}
 
       {open && data && (
         <CandidatePopover
@@ -132,5 +119,24 @@ export function MaybeStrip({ boardId, streamOpen, onKept }: Props) {
         />
       )}
     </section>
+  )
+}
+
+function ShortfallDialog({ headline, lines, onClose }: { headline: string; lines: string[]; onClose: () => void }) {
+  const dialog = useDialog<HTMLDivElement>(onClose)
+  return (
+    <div className="shortfall" aria-label="Why fewer results" {...dialog}>
+      <p>
+        <b>{headline}</b>
+      </p>
+      <ul>
+        {lines.map((l) => (
+          <li key={l}>{l}</li>
+        ))}
+      </ul>
+      <button type="button" className="btn-quiet small" data-autofocus onClick={onClose}>
+        Close
+      </button>
+    </div>
   )
 }

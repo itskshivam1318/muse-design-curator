@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   type AttributeSpec,
   type CandidateCheck,
@@ -11,9 +11,11 @@ import {
   postDecision,
 } from '../api'
 import { upsertItems } from '../events'
+import { safeExternalUrl } from '../format'
 import { useAttributes } from '../queries'
 import { colorHex, formatValue, NOTE_MAX, numberBounds, REJECT_REASON_LABELS, scaleOf, verdictMark } from '../vary/logic'
 import { idempotencyKey } from '../vary/startRun'
+import { useDialog } from '../ui/useDialog'
 import { ScaleView, Swatch, ValueText } from './AttrBits'
 
 interface Props {
@@ -37,11 +39,21 @@ export function CandidatePopover({ boardId, runId, candidate: c, sourceItemId, t
   const srcRec = source?.attributes.find((a) => a.key === targetKey)
   const tspec = specs.get(targetKey)
   const img = useRef<HTMLImageElement>(null)
+  const dialog = useDialog<HTMLDivElement>(onClose)
   const [rejecting, setRejecting] = useState(false)
   const [reason, setReason] = useState<string | null>(null)
   const [note, setNote] = useState('')
   const [notThis, setNotThis] = useState(false)
   const [busy, setBusy] = useState(false)
+  const firstReason = useRef<HTMLButtonElement>(null)
+  const rejectBtn = useRef<HTMLButtonElement>(null)
+  const wasRejecting = useRef(false)
+  // entering the reject form focuses its first reason; Cancel returns focus to Reject
+  useEffect(() => {
+    if (rejecting) firstReason.current?.focus()
+    else if (wasRejecting.current) rejectBtn.current?.focus()
+    wasRejecting.current = rejecting
+  }, [rejecting])
   const [error, setError] = useState<string | null>(null)
 
   const decide = async (body: DecisionBody) => {
@@ -69,21 +81,22 @@ export function CandidatePopover({ boardId, runId, candidate: c, sourceItemId, t
     })
 
   const p = c.provenance
+  const sourceUrl = safeExternalUrl(p.landing_url)
   const unit = numberBounds(tspec)?.unit
   const last = c.decision
 
   return (
-    <div className="cand-pop" role="dialog" aria-label="Candidate" onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+    <div className="cand-pop" aria-label="Candidate" {...dialog}>
       <button type="button" className="icon-btn cand-close" aria-label="Close candidate" onClick={onClose}>
         ×
       </button>
       <img ref={img} className="cand-image" src={corpusImageUrl(c.corpus_item_id)} alt="Candidate image" />
       <p className="credit small muted">
         {[p.credit || p.creator_name, p.license_code].filter(Boolean).join(' · ')}
-        {p.landing_url && (
+        {sourceUrl && (
           <>
             {' · '}
-            <a href={p.landing_url} target="_blank" rel="noopener noreferrer">
+            <a href={sourceUrl} target="_blank" rel="noopener noreferrer">
               Source ↗
             </a>
           </>
@@ -124,19 +137,20 @@ export function CandidatePopover({ boardId, runId, candidate: c, sourceItemId, t
 
       {!rejecting ? (
         <div className="row-end">
-          <button type="button" className="btn-quiet" onClick={() => setRejecting(true)} disabled={busy}>
+          <button type="button" ref={rejectBtn} className="btn-quiet" onClick={() => setRejecting(true)} disabled={busy}>
             Reject
           </button>
-          <button type="button" className="btn" onClick={() => void decide({ decision: 'keep' })} disabled={busy}>
+          <button type="button" className="btn" data-autofocus onClick={() => void decide({ decision: 'keep' })} disabled={busy}>
             Keep
           </button>
         </div>
       ) : (
         <div className="reject-form">
           <div role="radiogroup" aria-label="Reason" className="value-chips">
-            {Object.entries(REJECT_REASON_LABELS).map(([code, label]) => (
+            {Object.entries(REJECT_REASON_LABELS).map(([code, label], i) => (
               <button
                 key={code}
+                ref={i === 0 ? firstReason : undefined}
                 type="button"
                 role="radio"
                 aria-checked={reason === code}

@@ -25,3 +25,18 @@ export function hostOf(url: string | null | undefined): string | null {
 export function itemTitle(item: Item): string {
   return item.page_title || item.original_filename || item.creator_handle || `${item.kind} item`
 }
+
+/**
+ * An absolute http(s) URL that is safe to put in an href, else null. Anything else (javascript:,
+ * data:, relative or malformed) is dropped, so the link is not rendered at all.
+ */
+export function safeExternalUrl(u: string | null | undefined): string | null {
+  if (!u) return null
+  const s = u.trim()
+  try {
+    const { protocol } = new URL(s)
+    return protocol === 'http:' || protocol === 'https:' ? s : null
+  } catch {
+    return null
+  }
+}

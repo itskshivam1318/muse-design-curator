@@ -1,4 +1,5 @@
 import type { Item } from '../api'
+import { safeExternalUrl } from '../format'
 import { hasDrawerPanel } from '../panels/drawerRegistry'
 import type { Bounds } from './geometry'
 
@@ -20,7 +21,7 @@ export const COMPARE_MAX = 4
  */
 export function ItemToolbar({ items, screen, onVary, onInspect, onCompare, onNotThis, onRemove }: Props) {
   const single = items.length === 1 ? items[0] : null
-  const source = single ? (single.page_url ?? single.source_url) : null
+  const source = single ? (safeExternalUrl(single.page_url) ?? safeExternalUrl(single.source_url)) : null
   const allNot = items.every((i) => i.role === 'counter_example')
   const canPanel = single !== null && single.kind !== 'link'
   const canCompare = items.length >= 2 && items.length <= COMPARE_MAX && items.every((i) => i.kind !== 'link')

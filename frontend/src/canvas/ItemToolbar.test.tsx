@@ -26,3 +26,14 @@ describe('ItemToolbar', () => {
     expect(names()).toEqual(['Not this', 'Remove'])
   })
 })
+
+describe('ItemToolbar source link', () => {
+  it('renders Open source only for http(s) URLs', () => {
+    const props = { screen: screenBox, onVary: noop, onInspect: noop, onCompare: noop, onNotThis: noop, onRemove: noop }
+    render(<ItemToolbar items={[makeItem({ page_url: 'javascript:alert(1)', source_url: 'data:text/html,x' })]} {...props} />)
+    expect(screen.queryByRole('link')).toBeNull()
+    cleanup()
+    render(<ItemToolbar items={[makeItem({ page_url: 'javascript:alert(1)', source_url: 'https://cdn.example.org/a.jpg' })]} {...props} />)
+    expect(screen.getByRole('link', { name: /Open source/ }).getAttribute('href')).toBe('https://cdn.example.org/a.jpg')
+  })
+})
