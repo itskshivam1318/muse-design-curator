@@ -45,9 +45,10 @@ export function BoardPage({ boardId }: { boardId: string }) {
   }, [boardId, qc])
 
   const center = useCallback((): Point => canvas.current?.center() ?? { x: 0, y: 0 }, [])
+  const { addFiles, addLink } = add
   const uploadAt = useCallback(
-    (files: File[], at: Point, origin: UploadOrigin) => add.addFiles(files, at, origin),
-    [add],
+    (files: File[], at: Point, origin: UploadOrigin) => addFiles(files, at, origin),
+    [addFiles],
   )
 
   const openPanel = useCallback((kind: 'vary' | 'inspect', itemId: string) => {
@@ -61,11 +62,11 @@ export function BoardPage({ boardId }: { boardId: string }) {
       const data = readClipboard(e.clipboardData)
       if (data.files.length === 0 && !data.text) return
       e.preventDefault()
-      void handlePaste(data, { center: center(), uploadFiles: uploadAt, addLink: add.addLink }).catch(() => {})
+      void handlePaste(data, { center: center(), uploadFiles: uploadAt, addLink }).catch(() => {})
     }
     window.addEventListener('paste', onPaste)
     return () => window.removeEventListener('paste', onPaste)
-  }, [add.addLink, center, uploadAt])
+  }, [addLink, center, uploadAt])
 
   // keyboard shortcuts
   const itemsData = items.data
@@ -73,6 +74,8 @@ export function BoardPage({ boardId }: { boardId: string }) {
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e.target)) return
       if (e.code === 'Space') {
+        const tag = (e.target as HTMLElement | null)?.tagName
+        if (tag === 'BUTTON' || tag === 'A') return // Space activates the focused control
         e.preventDefault()
         if (!e.repeat) setSpaceDown(true)
         return
@@ -208,7 +211,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
           open={addOpen}
           onOpenChange={setAddOpen}
           onFiles={(files) => uploadAt(files, center(), 'upload')}
-          onLink={(url) => add.addLink(url, center())}
+          onLink={(url) => addLink(url, center())}
         />
       </div>
 

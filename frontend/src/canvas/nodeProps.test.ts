@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { makeItem } from '../test/fixtures'
-import { handleRects, hoverOutlineRect, imageNodeProps, statusDot } from './nodeProps'
+import { handleRects, hoverOutlineRect, imageNodeProps, lineagePoints, statusDot } from './nodeProps'
 
 describe('imageNodeProps', () => {
   it('image node has strokeWidth 0 and cornerRadius 0', () => {
@@ -61,5 +61,16 @@ describe('status dot and handles', () => {
         h.x < b.x + b.width && h.x + h.width > b.x && h.y < b.y + b.height && h.y + h.height > b.y
       expect(inside).toBe(false)
     }
+  })
+})
+
+describe('lineagePoints', () => {
+  it('runs from the parent edge to the kept item edge as one cubic curve', () => {
+    const parent = { x: 0, y: 0, width: 100, height: 100 }
+    const child = { x: 300, y: 200, width: 50, height: 50 }
+    const pts = lineagePoints(parent, child)
+    expect(pts).toHaveLength(8)
+    expect(pts.slice(0, 2)).toEqual([100, 50]) // parent's right edge, mid-height
+    expect(pts.slice(6)).toEqual([300, 225]) // child's left edge, mid-height
   })
 })

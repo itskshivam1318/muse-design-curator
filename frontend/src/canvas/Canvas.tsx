@@ -199,6 +199,18 @@ export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref }:
     else selection.select(hits)
     setMarquee(null)
   }
+  // end the marquee on any mouseup, including one released over a floating panel
+  const endMarquee = useRef(onStageUp)
+  useLayoutEffect(() => {
+    endMarquee.current = onStageUp
+  })
+  const marqueeActive = marquee !== null
+  useEffect(() => {
+    if (!marqueeActive) return
+    const up = () => endMarquee.current()
+    window.addEventListener('mouseup', up)
+    return () => window.removeEventListener('mouseup', up)
+  }, [marqueeActive])
 
   // ---- item interaction ----
   const handlers: ItemHandlers = {
@@ -262,6 +274,18 @@ export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref }:
   }
 
   // ---- files dropped from the desktop ----
+  // a file dropped on a floating panel must not make the browser navigate away to it
+  useEffect(() => {
+    const guard = (e: DragEvent) => {
+      if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) e.preventDefault()
+    }
+    window.addEventListener('dragover', guard)
+    window.addEventListener('drop', guard)
+    return () => {
+      window.removeEventListener('dragover', guard)
+      window.removeEventListener('drop', guard)
+    }
+  }, [])
   const onDragOver = (e: ReactDragEvent) => {
     if (!Array.from(e.dataTransfer.types).includes('Files')) return
     e.preventDefault()
@@ -334,7 +358,6 @@ export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref }:
           onDragEnd={onStageDrag}
           onMouseDown={onStageDown}
           onMouseMove={onStageMove}
-          onMouseUp={onStageUp}
           onTouchMove={onTouchMove}
           onTouchEnd={() => (pinch.current = null)}
         >
