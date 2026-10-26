@@ -152,6 +152,23 @@ def test_changed_license_in_manifest_updates_provenance(
     assert row.indexing_status == "indexed" and row.embedding_row == erow  # row kept, just excluded
 
 
+def test_failed_item_that_becomes_invalid_is_pending(
+    session: Session, data_dir: Path, tmp_path: Path
+) -> None:
+    shutil.copytree(FIXTURES, tmp_path / "c")
+    man = tmp_path / "c" / "manifest.jsonl"
+    index_corpus(session, "watch", man)
+    assert by_source_id(session)["watch_missing"].indexing_status == "failed"
+    rows = [json.loads(ln) for ln in man.read_text().splitlines()]
+    for r in rows:
+        if r["source_id"] == "watch_missing":
+            r["license_code"] = "All rights reserved"
+    man.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    index_corpus(session, "watch", man)
+    row = by_source_id(session)["watch_missing"]
+    assert (row.indexing_status, row.provenance_status) == ("pending", "invalid")
+
+
 def _seed_module() -> Any:
     spec = importlib.util.spec_from_file_location("seed_script", SEED_SCRIPT)
     assert spec and spec.loader

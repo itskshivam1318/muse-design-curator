@@ -187,6 +187,8 @@ def index_corpus(
         if status == "invalid":
             # no rights, no processing: never fetched or embedded. An item that was already
             # indexed keeps its row; retrieval excludes it through provenance_status.
+            if row.indexing_status != "indexed":
+                corpus_repo.update(session, item.id, indexing_status="pending")
             report.invalid += 1
             report.reasons[item.id] = issue or "INVALID"
             continue
