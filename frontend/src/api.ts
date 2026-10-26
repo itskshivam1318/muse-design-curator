@@ -1,4 +1,7 @@
-/** Typed client for the FastAPI backend (everything under /api, proxied by Vite in dev). */
+/**
+ * Typed client for the FastAPI backend (everything under /api). In dev Vite proxies /api; a deployed
+ * frontend whose API lives on another origin sets VITE_API_URL (e.g. https://user-dle.hf.space).
+ */
 
 export type ParseStatus = 'pending' | 'pending_lens' | 'processing' | 'completed' | 'failed'
 export type ItemKind = 'image' | 'video' | 'link'
@@ -339,7 +342,14 @@ export const keys = {
   attributeHistory: (itemId: string, key: string) => ['attributeHistory', itemId, key] as const,
 }
 
-const BASE = '/api'
+/** The API origin with no trailing slash; empty means same origin (the dev proxy). */
+export const API_ORIGIN = apiOrigin(import.meta.env.VITE_API_URL)
+
+export function apiOrigin(raw: string | undefined): string {
+  return (raw ?? '').trim().replace(/\/+$/, '')
+}
+
+const BASE = `${API_ORIGIN}/api`
 
 async function toError(res: Response): Promise<ApiError> {
   try {

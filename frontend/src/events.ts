@@ -1,6 +1,6 @@
 /** Board server-sent events: keeps the React Query cache in step with the server. */
 import type { QueryClient } from '@tanstack/react-query'
-import { type Item, keys, type ProfileSnapshot } from './api'
+import { API_ORIGIN, type Item, keys, type ProfileSnapshot } from './api'
 
 export const EVENT_TYPES = [
   'item.added',
@@ -98,7 +98,7 @@ export function connectBoardEvents(
   qc: QueryClient,
   opts: ConnectOptions = {},
 ): () => void {
-  const url = `/api/boards/${encodeURIComponent(boardId)}/events`
+  const url = `${API_ORIGIN}/api/boards/${encodeURIComponent(boardId)}/events`
   const make = opts.makeSource ?? ((u: string) => new EventSource(u))
   let source: EventSource | null = null
   let attempt = 0
