@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
+from app import lens_service
 from app.api.deps import SessionDep
 from app.api.schemas import BoardCreate, BoardPatch, board_to_dict, item_to_dict
 from app.board.events import profile_snapshot, stream
@@ -47,6 +48,9 @@ def patch_board(board_id: str, body: BoardPatch, session: SessionDep) -> dict[st
         fields["domain"] = body.domain
     board = boards_repo.update(session, board_id, **fields)
     assert board is not None
+    if fields.get("domain"):
+        # choosing a curated domain attaches its lens now and releases items waiting for one
+        lens_service.ensure_board_lens(session, board_id)
     return board_to_dict(board)
 
 

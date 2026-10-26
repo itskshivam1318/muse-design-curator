@@ -167,3 +167,17 @@ def test_patch_and_delete_item(client: TestClient, board: str) -> None:
     assert client.delete(f"/api/items/{it['id']}").status_code == 204
     assert client.get(f"/api/boards/{board}/items").json()["items"] == []
     assert client.delete(f"/api/items/{it['id']}").status_code == 404
+
+
+def test_choosing_a_curated_domain_attaches_its_lens_and_parses_waiting_items(
+    client: TestClient, board: str
+) -> None:
+    upload(client, board, [(f"f{i}.png", image_bytes(seed=i)) for i in range(2)])
+    items = client.get(f"/api/boards/{board}/items").json()["items"]
+    assert [i["parse_status"] for i in items] == ["pending_lens", "pending_lens"]
+    b = client.patch(f"/api/boards/{board}", json={"domain": "watch"}).json()
+    assert b["lens_id"] is not None
+    lens = client.get(f"/api/boards/{board}/lens").json()["lens"]
+    assert lens["origin"] == "curated" and lens["status"] == "confirmed"
+    items = client.get(f"/api/boards/{board}/items").json()["items"]
+    assert all(i["parse_status"] == "completed" for i in items)
