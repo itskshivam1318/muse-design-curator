@@ -187,3 +187,29 @@ def test_get_profile_endpoint(client: TestClient, db: Session) -> None:
 
 
 _ = (jobs, Lens)
+
+
+def test_attribute_edit_route_recomputes_and_publishes(client: TestClient, db: Session) -> None:
+    board_id, ids = seed(db)
+    profile_mod.recompute(db, board_id)
+    db.commit()
+    with events.subscribe(board_id) as sub:
+        r = client.patch(f"/api/items/{ids[0]}/attributes/finish", json={"value": "polished"})
+        assert r.status_code == 200
+        seen = []
+        while (ev := sub.get(timeout=1)) is not None:
+            seen.append(ev)
+            if ev["type"] == "profile.updated":
+                break
+    assert [e["type"] for e in seen][-1] == "profile.updated"
+    assert seen[-1]["data"]["version"] == 2
+    db.expire_all()
+    row = profiles_repo.latest(db, board_id)
+    assert row is not None and row.version == 2
+    assert row.profile_json["attributes"]["finish"]["distribution"] == {"brushed": 3, "polished": 1}
+    # confirm / disable also recompute
+    for body in ({"action": "disable"}, {"action": "enable"}):
+        assert client.patch(f"/api/items/{ids[1]}/attributes/finish", json=body).status_code == 200
+    db.expire_all()
+    latest = profiles_repo.latest(db, board_id)
+    assert latest is not None and latest.version >= 3
