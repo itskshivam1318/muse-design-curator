@@ -147,3 +147,8 @@ def mask_ratio(mask_a: np.ndarray, mask_b: np.ndarray) -> float:
 def color_names() -> set[str]:
     """The named colours a colour attribute can take."""
     return set(_NAMED_LAB)
+
+
+def named_lab(name: str) -> Lab | None:
+    """Lab of a named colour, or None when the name is unknown."""
+    return _NAMED_LAB.get(name)

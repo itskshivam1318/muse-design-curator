@@ -221,5 +221,7 @@ def propose_protected(
         for a in attrs
         if a.enabled and a.value is not None and a.key != target_key
     ]
-    rows.sort(key=lambda r: (not r["is_board_signal"], -float(r["strength"])))  # stable: keeps lens order
+    rows.sort(
+        key=lambda r: (not r["is_board_signal"], -float(r["strength"]))
+    )  # stable: keeps lens order
     return rows
