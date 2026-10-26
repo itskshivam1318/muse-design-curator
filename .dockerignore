@@ -1,0 +1,18 @@
+# Build context for backend/Dockerfile (built from the repository root). Allow-list: only the
+# backend source, corpus manifests and the precomputed data snapshot go into the image.
+*
+!backend/
+!corpus/
+!data/
+
+# never in the image
+**/.env
+**/.env.*
+backend/.venv
+backend/tests
+backend/.pytest_cache
+backend/.mypy_cache
+backend/.ruff_cache
+**/__pycache__
+**/*.pyc
+data/e2e
