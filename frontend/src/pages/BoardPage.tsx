@@ -198,7 +198,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
       <RightDrawer boardId={boardId} />
 
       <div className="float bottom-left">
-        <UploadStatus jobs={add.jobs} onDismiss={add.dismiss} />
+        <UploadStatus jobs={add.jobs} onDismiss={add.dismiss} onCancel={add.cancel} />
         {actions.error && (
           <p className="toast error" role="alert">
             {actions.error}{' '}

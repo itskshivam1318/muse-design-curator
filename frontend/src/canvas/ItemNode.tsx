@@ -66,10 +66,11 @@ function PictureNode({ item, scale, draggable, handlers }: NodeProps) {
   return <KImage {...imageNodeProps(item)} image={image ?? shown} {...common(item, draggable, handlers)} />
 }
 
-/** The site's own favicon, over a lettered square while it loads (or if it never does). */
-function Favicon({ host, x, y, size, palette }: { host: string; x: number; y: number; size: number; palette: CanvasPalette }) {
-  const img = useImage(`https://${host}/favicon.ico`)
-  if (img) return <KImage image={img} x={x} y={y} width={size} height={size} listening={false} />
+/**
+ * A lettered square standing in for the site's icon. Deliberately not the real favicon: fetching
+ * https://<host>/favicon.ico from the browser would contact a site the user only pasted.
+ */
+function SiteMark({ host, x, y, size, palette }: { host: string; x: number; y: number; size: number; palette: CanvasPalette }) {
   return (
     <Group x={x} y={y} listening={false}>
       <Rect width={size} height={size} cornerRadius={3} fill={palette.rule} />
@@ -88,7 +89,7 @@ function LinkCard({ item, draggable, palette, handlers }: NodeProps) {
   return (
     <Group id={item.id} x={item.x} y={item.y} {...common(item, draggable, handlers)}>
       <Rect width={w} height={h} fill={palette.panel} stroke={palette.rule} strokeWidth={1} dash={[5, 4]} cornerRadius={6} />
-      <Favicon host={host} x={pad} y={pad} size={16} palette={palette} />
+      <SiteMark host={host} x={pad} y={pad} size={16} palette={palette} />
       <Text x={pad + 22} y={pad + 1} width={w - pad * 2 - 22} text={host} fontStyle="600" fontSize={13} fill={palette.ink} ellipsis wrap="none" listening={false} />
       <Text x={pad} y={pad + 28} width={w - pad * 2} height={h - pad * 2 - 50} text={title} fontSize={12} lineHeight={1.35} fill={palette.muted} ellipsis listening={false} />
       <Text x={pad} y={h - pad - 14} width={w - pad * 2} text="Use the extension to capture this" fontSize={12} fill={palette.accent} listening={false} />

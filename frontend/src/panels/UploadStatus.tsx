@@ -1,7 +1,13 @@
 import type { UploadJob } from '../canvas/useAddFlow'
 
 /** Upload progress and per-file errors, above the + button. */
-export function UploadStatus({ jobs, onDismiss }: { jobs: UploadJob[]; onDismiss: (id: number) => void }) {
+interface Props {
+  jobs: UploadJob[]
+  onDismiss: (id: number) => void
+  onCancel: (id: number) => void
+}
+
+export function UploadStatus({ jobs, onDismiss, onCancel }: Props) {
   if (jobs.length === 0) return null
   return (
     <ul className="upload-status" aria-live="polite" aria-label="Uploads">
@@ -11,7 +17,16 @@ export function UploadStatus({ jobs, onDismiss }: { jobs: UploadJob[]; onDismiss
             <span className="upload-label">
               {j.state === 'uploading' ? `Uploading ${j.label}` : j.state === 'done' ? `Added ${j.label}` : j.label}
             </span>
-            {j.state !== 'uploading' && (
+            {j.state === 'uploading' ? (
+              <button
+                type="button"
+                className="btn-quiet small"
+                aria-label={`Cancel uploading ${j.label}`}
+                onClick={() => onCancel(j.id)}
+              >
+                Cancel
+              </button>
+            ) : (
               <button type="button" className="icon-btn" aria-label="Dismiss" onClick={() => onDismiss(j.id)}>
                 ×
               </button>
