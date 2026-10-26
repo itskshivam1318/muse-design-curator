@@ -1,9 +1,12 @@
 from fastapi import FastAPI
 
+from app.api import boards, items
 from app.errors import register_error_handlers
 
 app = FastAPI(title="Design Language Engine")
 register_error_handlers(app)
+app.include_router(boards.router)
+app.include_router(items.router)
 
 
 @app.get("/api/health")

@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     SHAPE_KIND_ENABLED: bool = False
     EXTENSION_ORIGIN: str | None = None
     PUBLIC_APP_URL: str = "http://localhost:5173"
+    JOBS_SYNC: bool = False
 
 
 def get_settings() -> Settings:

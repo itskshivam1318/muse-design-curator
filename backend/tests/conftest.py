@@ -1,6 +1,8 @@
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -22,4 +24,42 @@ def session() -> Iterator[Session]:
     run_migrations(engine)
     with Session(engine) as s:
         yield s
+    engine.dispose()
+
+
+@pytest.fixture
+def data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    d = tmp_path / "data"
+    monkeypatch.setenv("DATA_DIR", str(d))
+    monkeypatch.setenv("JOBS_SYNC", "1")
+    return d
+
+
+@pytest.fixture
+def client(data_dir: Path) -> Iterator[TestClient]:
+    from app.api.deps import get_session
+    from app.db.session import make_engine, make_session_factory, run_migrations
+    from app.main import app
+
+    engine = make_engine(
+        "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
+    )
+    run_migrations(engine)
+    factory = make_session_factory(engine)
+
+    def override() -> Iterator[Session]:
+        s = factory()
+        try:
+            yield s
+            s.commit()
+        except Exception:
+            s.rollback()
+            raise
+        finally:
+            s.close()
+
+    app.dependency_overrides[get_session] = override
+    with TestClient(app) as c:
+        yield c
+    app.dependency_overrides.clear()
     engine.dispose()
