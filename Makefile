@@ -1,6 +1,13 @@
 export PATH := $(HOME)/.local/bin:$(PATH)
 
-.PHONY: dev test lint e2e seed import index ext smoke
+.PHONY: install dev test lint e2e seed import index ext smoke
+
+install:
+	uv python install 3.12
+	cd backend && uv sync --extra embed
+	cd frontend && npm install
+	cd extension && npm install
+	@test -f .env || (cp .env.example .env && echo "Created .env from .env.example — add MODEL_API_KEY")
 
 dev:
 	cd backend && uv run uvicorn app.main:app --reload --port 8000 & \

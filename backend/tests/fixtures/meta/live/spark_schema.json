@@ -1,0 +1,103 @@
+{
+  "id": "resp_6adfa244a2de199a16fe4a7b",
+  "access_programs": null,
+  "created_at": 1793040964.0,
+  "error": null,
+  "incomplete_details": null,
+  "instructions": null,
+  "metadata": null,
+  "model": "muse-spark-1.3",
+  "object": "response",
+  "output": [
+    {
+      "id": "rs_6adfa244a2de199a16fe4a7b:rs_2eda49eb-cbb4-48ec-9ecc-00e742d12c73",
+      "summary": [],
+      "type": "reasoning",
+      "content": null,
+      "encrypted_content": null,
+      "status": "completed"
+    },
+    {
+      "id": "msg_05bbbf24-b51a-4ddf-9a65-9b5a301f0cb9",
+      "content": [
+        {
+          "annotations": [],
+          "text": "{\"colors\": [\"beige\", \"gray\", \"mint\", \"mint\", \"mint\", \"mint\", \"teal\", \"teal\", \"turquoise\", \"turquoise\"]}",
+          "type": "output_text",
+          "logprobs": []
+        }
+      ],
+      "role": "assistant",
+      "status": "completed",
+      "type": "message",
+      "phase": null
+    }
+  ],
+  "parallel_tool_calls": true,
+  "temperature": 1.0,
+  "tool_choice": "auto",
+  "tools": [],
+  "top_p": 1.0,
+  "background": false,
+  "completed_at": 1793040964.0,
+  "conversation": null,
+  "max_output_tokens": null,
+  "max_tool_calls": null,
+  "moderation": null,
+  "previous_response_id": null,
+  "prompt": null,
+  "prompt_cache_diagnostics": null,
+  "prompt_cache_key": null,
+  "prompt_cache_options": null,
+  "prompt_cache_retention": null,
+  "reasoning": {
+    "context": null,
+    "effort": "high",
+    "generate_summary": null,
+    "mode": null,
+    "summary": null
+  },
+  "safety_identifier": null,
+  "service_tier": "auto",
+  "status": "completed",
+  "text": {
+    "format": {
+      "name": "probe",
+      "schema_": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "colors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "colors"
+        ]
+      },
+      "type": "json_schema",
+      "description": null,
+      "strict": true
+    },
+    "verbosity": null
+  },
+  "top_logprobs": 0,
+  "truncation": "disabled",
+  "usage": {
+    "input_tokens": 3648,
+    "input_tokens_details": {
+      "cache_write_tokens": null,
+      "cached_tokens": 0
+    },
+    "output_tokens": 1271,
+    "output_tokens_details": {
+      "reasoning_tokens": 1224
+    },
+    "total_tokens": 4919
+  },
+  "user": null,
+  "store": true
+}
