@@ -36,7 +36,7 @@ def _contour(mask: np.ndarray) -> np.ndarray:
     t = np.linspace(0, s[-1], N_POINTS, endpoint=False)
     pts = np.stack([np.interp(t, s, closed[:, 0]), np.interp(t, s, closed[:, 1])], axis=1)
     # light circular smoothing removes pixel-staircase noise on small masks
-    pts = sum(np.roll(pts, i, axis=0) for i in (-1, 0, 1)) / 3.0
+    pts = (np.roll(pts, -1, axis=0) + pts + np.roll(pts, 1, axis=0)) / 3.0
     pts -= pts.mean(axis=0)
     rms = np.sqrt((pts**2).sum(axis=1).mean())
     return pts / rms if rms > 0 else pts
