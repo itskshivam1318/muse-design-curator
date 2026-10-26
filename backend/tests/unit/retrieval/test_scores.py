@@ -109,3 +109,10 @@ def test_pair_similarity():
     assert pair_similarity(a, b, s, CFG) == pytest.approx(0.5)
     b2 = PoolItem(SimpleNamespace(id="c"), 0.5, {"t": av("c")}, [0.0, 1.0])
     assert pair_similarity(a, b2, s, CFG) == pytest.approx(0.0)
+
+
+def test_pair_similarity_clamped_for_opposite_vectors():
+    s = spec("explore", target_value="a")
+    a = PoolItem(SimpleNamespace(id="a"), 0.5, {"t": av("b")}, [1.0, 0.0])
+    b = PoolItem(SimpleNamespace(id="b"), 0.5, {"t": av("c")}, [-1.0, 0.0])
+    assert pair_similarity(a, b, s, CFG) == 0.0

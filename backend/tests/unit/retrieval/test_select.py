@@ -65,3 +65,11 @@ def test_at_most_k_and_shortlist():
     assert all(c.scores.diversity == 1 for c in sl)
     assert len(select_diverse(sl, SPEC, CFG, 6)) == 6
     assert len(select_diverse(cands(items[:2]), SPEC, CFG, 6)) == 2
+
+
+def test_diversity_stays_in_unit_range_for_opposite_vectors():
+    out = select_diverse(
+        cands([pi("a", 0.9, "blue", vec(0)), pi("b", 0.8, "green", vec(180))]), SPEC, CFG, 2
+    )
+    assert all(0 <= c.scores.diversity <= 1 and 0 <= c.scores.total <= 1 for c in out)
+    assert out[1].scores.diversity == 1

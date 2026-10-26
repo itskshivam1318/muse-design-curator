@@ -33,7 +33,10 @@ def source_from_board_item(
         if p.is_file():
             try:
                 dh = compute_dhash(p.read_bytes())
-            except (OSError, ValueError):  # unreadable image: duplicates are then judged by sha256 only
+            except (
+                OSError,
+                ValueError,
+            ):  # unreadable image: duplicates are then judged by sha256 only
                 dh = None
     return SourceItem(board_item.sha256, dh, board_item.corpus_item_id, attrs or {})
 

@@ -168,4 +168,5 @@ def pair_similarity(
     key = spec.target_spec.key
     ta, tb = a.attrs.get(key), b.attrs.get(key)
     same = ta is not None and tb is not None and compare(spec.target_spec, ta, tb, cfg) == "same"
-    return 0.5 * _cos(a.embedding, b.embedding) + 0.5 * (1.0 if same else 0.0)
+    sim = 0.5 * _cos(a.embedding, b.embedding) + 0.5 * (1.0 if same else 0.0)
+    return min(1.0, max(0.0, sim))  # opposite embeddings must not push diversity above 1
