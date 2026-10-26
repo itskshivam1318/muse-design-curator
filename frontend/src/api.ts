@@ -1,0 +1,309 @@
+/** Typed client for the FastAPI backend (everything under /api, proxied by Vite in dev). */
+
+export type ParseStatus = 'pending' | 'pending_lens' | 'processing' | 'completed' | 'failed'
+export type ItemKind = 'image' | 'video' | 'link'
+export type ItemRole = 'reference' | 'counter_example'
+
+export interface Item {
+  id: string
+  board_id: string
+  kind: ItemKind
+  origin: string
+  sha256: string | null
+  mime: string | null
+  width: number | null
+  height: number | null
+  original_filename: string | null
+  source_url: string | null
+  page_url: string | null
+  page_title: string | null
+  creator_handle: string | null
+  captured_at: string
+  rights_status: 'user_supplied' | 'licensed'
+  parse_status: ParseStatus
+  parse_error_code: string | null
+  role: ItemRole
+  x: number
+  y: number
+  w: number
+  h: number
+  z: number
+  storage_path: string | null
+  thumb_path: string | null
+  parent_item_id: string | null
+  created_at: string
+}
+
+export interface Board {
+  id: string
+  title: string
+  context: string
+  domain: string | null
+  lens_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface BoardSummary {
+  id: string
+  title: string
+  updated_at: string
+}
+
+export interface ColorCluster {
+  hex: string
+  name: string
+  count: number
+  share: number
+}
+
+export interface AttributeProfile {
+  key: string
+  label: string
+  kind: string
+  n_known: number
+  distribution: Record<string, number>
+  modal_value: string | null
+  consistency: number | null
+  median: number | null
+  iqr: number | null
+  clusters: ColorCluster[]
+  medoid_item_id: string | null
+  values: string[]
+}
+
+export interface Signal {
+  key: string
+  label: string
+  kind: string
+  modal_value: string | null
+  consistency: number
+  n_known: number
+}
+
+export interface Tension {
+  key: string
+  label: string
+  values: string[]
+  shares: number[]
+}
+
+export interface CounterSignal {
+  key: string
+  label: string
+  value: string
+  counter_count: number
+  reference_count: number
+}
+
+export interface BoardProfile {
+  n_reference: number
+  n_counter: number
+  attributes: Record<string, AttributeProfile>
+  signals: Signal[]
+  tensions: Tension[]
+  counter_signals: CounterSignal[]
+  centroid: number[] | null
+  domain_votes: { votes: Record<string, number>; mixed: boolean; candidates: string[] | null }
+}
+
+export interface ProfileSnapshot {
+  version: number
+  profile: BoardProfile
+  computed_at?: string
+}
+
+export interface PartSpec {
+  id: string
+  sam_prompt: string
+  grounding: 'sam' | 'whole_image'
+}
+
+export interface AttributeSpec {
+  key: string
+  label: string
+  category: string
+  kind: string
+  part?: string | null
+  [extra: string]: unknown
+}
+
+export interface LensSpec {
+  id: string
+  domain: string
+  label: string
+  origin: 'curated' | 'proposed' | 'edited'
+  parts: PartSpec[]
+  attributes: AttributeSpec[]
+  notes: string[]
+}
+
+export interface LensRow {
+  id: string
+  board_id: string | null
+  domain: string
+  version: number
+  origin: string
+  status: 'proposed' | 'confirmed'
+  spec: LensSpec
+  created_at: string
+}
+
+export interface Frame {
+  id: string
+  t_ms: number
+  chosen: boolean
+}
+
+export interface UploadResult {
+  filename: string
+  ok: boolean
+  deduped?: boolean
+  item?: Item
+  error?: { code: string; message: string }
+}
+
+export interface Point {
+  x: number
+  y: number
+}
+
+export type UploadOrigin = 'upload' | 'drop' | 'paste'
+
+export class ApiError extends Error {
+  status: number
+  code: string
+  details?: unknown
+
+  constructor(status: number, code: string, message: string, details?: unknown) {
+    super(message)
+    this.status = status
+    this.code = code
+    this.details = details
+  }
+}
+
+export const keys = {
+  boards: ['boards'] as const,
+  board: (id: string) => ['board', id] as const,
+  items: (id: string) => ['items', id] as const,
+  profile: (id: string) => ['profile', id] as const,
+  lens: (id: string) => ['lens', id] as const,
+  frames: (itemId: string) => ['frames', itemId] as const,
+  run: (runId: string) => ['run', runId] as const,
+}
+
+const BASE = '/api'
+
+async function toError(res: Response): Promise<ApiError> {
+  try {
+    const body = await res.json()
+    if (body?.error) return new ApiError(res.status, body.error.code, body.error.message, body.error.details)
+  } catch {
+    /* not JSON */
+  }
+  return new ApiError(res.status, 'HTTP_ERROR', `Request failed (${res.status})`)
+}
+
+async function request<T>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> {
+  const { json, ...rest } = init ?? {}
+  const headers = new Headers(rest.headers)
+  if (json !== undefined) headers.set('Content-Type', 'application/json')
+  const res = await fetch(BASE + path, {
+    ...rest,
+    headers,
+    body: json !== undefined ? JSON.stringify(json) : rest.body,
+  })
+  if (!res.ok) throw await toError(res)
+  if (res.status === 204) return undefined as T
+  return (await res.json()) as T
+}
+
+const enc = encodeURIComponent
+
+export const listBoards = () =>
+  request<{ boards: BoardSummary[] }>('/boards').then((r) => r.boards)
+export const createBoard = (body: { title: string; context?: string; domain?: string | null }) =>
+  request<Board>('/boards', { method: 'POST', json: body })
+export const getBoard = (id: string) => request<Board>(`/boards/${enc(id)}`)
+export const patchBoard = (
+  id: string,
+  body: Partial<Pick<Board, 'title' | 'context' | 'domain'>>,
+) => request<Board>(`/boards/${enc(id)}`, { method: 'PATCH', json: body })
+export const listItems = (boardId: string) =>
+  request<{ items: Item[] }>(`/boards/${enc(boardId)}/items`).then((r) => r.items)
+export const getProfile = (boardId: string) =>
+  request<ProfileSnapshot>(`/boards/${enc(boardId)}/profile`)
+
+export const addLink = (boardId: string, url: string, at?: Point) =>
+  request<{ item: Item; deduped: boolean }>(`/boards/${enc(boardId)}/items`, {
+    method: 'POST',
+    json: { url, ...(at ? { x: at.x, y: at.y } : {}) },
+  })
+
+export const patchItem = (
+  id: string,
+  body: Partial<Pick<Item, 'x' | 'y' | 'w' | 'h' | 'z' | 'role'>> & { chosen_frame_id?: string },
+) => request<Item>(`/items/${enc(id)}`, { method: 'PATCH', json: body })
+export const deleteItem = (id: string) => request<void>(`/items/${enc(id)}`, { method: 'DELETE' })
+export const listFrames = (itemId: string) =>
+  request<{ frames: Frame[] }>(`/items/${enc(itemId)}/frames`).then((r) => r.frames)
+
+/** The board's current lens, or its newest proposal; null when it has none yet. */
+export const getBoardLens = (boardId: string) =>
+  request<{ lens: LensRow | null }>(`/boards/${enc(boardId)}/lens`).then((r) => r.lens)
+export const getLens = (lensId: string) => request<LensRow>(`/lenses/${enc(lensId)}`)
+/** Confirm the proposal as-is (no body) or save an edited spec. */
+export const confirmLens = (boardId: string, spec?: LensSpec) =>
+  request<LensRow>(`/boards/${enc(boardId)}/lens`, {
+    method: 'PUT',
+    ...(spec ? { json: spec } : {}),
+  })
+export const pairCode = () =>
+  request<{ code: string; expires_at: string }>('/extension/pair-code', { method: 'POST' })
+
+/** Short cache-busting token: the thumbnail path changes when a video's chosen frame changes. */
+function version(item: Item): string {
+  return (item.thumb_path ?? item.storage_path ?? '').replace(/[^a-z0-9]/gi, '').slice(-12)
+}
+
+export const itemImageUrl = (item: Item, size: 'thumb' | 'full') =>
+  `${BASE}/items/${enc(item.id)}/image?size=${size}&v=${version(item)}`
+export const frameImageUrl = (itemId: string, frameId: string) =>
+  `${BASE}/items/${enc(itemId)}/frames/${enc(frameId)}/image`
+
+/**
+ * Multipart upload through XMLHttpRequest so the UI can show upload progress (fetch cannot).
+ * Resolves with per-file results; a batch where every file failed (HTTP 400) still resolves.
+ */
+export function uploadFiles(
+  boardId: string,
+  files: File[],
+  opts: { at?: Point; origin?: UploadOrigin; onProgress?: (fraction: number) => void } = {},
+): { promise: Promise<UploadResult[]>; abort: () => void } {
+  const xhr = new XMLHttpRequest()
+  const promise = new Promise<UploadResult[]>((resolve, reject) => {
+    const form = new FormData()
+    for (const f of files) form.append('files', f, f.name)
+    if (opts.at) {
+      form.append('x', String(opts.at.x))
+      form.append('y', String(opts.at.y))
+    }
+    const q = opts.origin === 'drop' ? '?origin=drop' : ''
+    xhr.open('POST', `${BASE}/boards/${enc(boardId)}/items${q}`)
+    xhr.responseType = 'json'
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) opts.onProgress?.(e.loaded / e.total)
+    }
+    xhr.onload = () => {
+      const body = xhr.response as { results?: UploadResult[]; error?: { code: string; message: string } } | null
+      if (body?.results) resolve(body.results)
+      else if (body?.error) reject(new ApiError(xhr.status, body.error.code, body.error.message))
+      else reject(new ApiError(xhr.status, 'HTTP_ERROR', `Upload failed (${xhr.status})`))
+    }
+    xhr.onerror = () => reject(new ApiError(0, 'NETWORK_ERROR', 'Upload failed: network error'))
+    xhr.onabort = () => reject(new ApiError(0, 'ABORTED', 'Upload cancelled'))
+    xhr.send(form)
+  })
+  return { promise, abort: () => xhr.abort() }
+}
