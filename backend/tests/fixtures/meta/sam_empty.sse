@@ -1,0 +1,12 @@
+event: response.output_text.delta
+data: {"type": "response.output_text.delta", "delta": "", "item_id": "msg_1", "output_index": 0, "content_index": 0}
+
+event: response.output_text.delta
+data: {"type": "response.output_text.delta", "delta": "", "item_id": "msg_1", "output_index": 0, "content_index": 0}
+
+event: response.output_text.done
+data: {"type": "response.output_text.done", "text": "", "item_id": "msg_1", "output_index": 0, "content_index": 0}
+
+event: response.completed
+data: {"type": "response.completed", "response": {"id": "resp_1"}}
+

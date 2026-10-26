@@ -25,6 +25,13 @@ dependencies = [
     "uvicorn[standard]>=0.54.0",
 ]
 
+[project.optional-dependencies]
+embed = [
+    "sentencepiece>=0.2.2",
+    "torch>=2.14.1",
+    "transformers>=5.20.2",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
