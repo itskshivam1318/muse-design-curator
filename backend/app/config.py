@@ -2,7 +2,8 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+ENV_FILE = REPO_ROOT / ".env"
 
 
 class Settings(BaseSettings):
@@ -37,3 +38,13 @@ class Settings(BaseSettings):
 
 def get_settings() -> Settings:
     return Settings()
+
+
+def resolve_repo_path(value: str) -> Path:
+    """Relative paths resolve against the repo root, never the current directory."""
+    p = Path(value).expanduser()
+    return p if p.is_absolute() else (REPO_ROOT / p).resolve()
+
+
+def data_dir(settings: Settings) -> Path:
+    return resolve_repo_path(settings.DATA_DIR)
