@@ -4,7 +4,7 @@ import numpy as np
 from PIL import Image
 
 from app.db.repos import masks as masks_repo
-from app.domain.kinds import ColorSpec, EnumSpec, OrdinalSpec, ShapeSpec, TextSpec
+from app.domain.kinds import ColorSpec, EnumSpec, NumberSpec, OrdinalSpec, ShapeSpec, TextSpec
 from app.domain.lens import LensSpec, PartSpec
 from app.domain.variation import Nudge, ProtectedSpec, VariationRequest, VariationSpec
 from app.providers.reliability import ModelError
@@ -303,3 +303,16 @@ def test_prefer_and_avoid(session, data_dir):
     assert run(session, prefer, src, [cand("c", {"t": av("a")})])["c"].overall == "rejected"
     assert run(session, avoid, src, [cand("c", {"t": av("c")})])["c"].overall == "validated"
     assert run(session, avoid, src, [cand("c", {"t": av("b")})])["c"].overall == "rejected"
+
+
+def test_low_confidence_number_nudge_goes_to_verify(session, data_dir):
+    num = NumberSpec(key="n", label="Width", category="c", unit="mm", min=0, max=100, tolerance=1)
+    sp = spec(num, "nudge", 10, nudge=Nudge(direction="more", steps=1))
+    src = source({"n": av(10, 1.0)})
+    c = cand("c1", {"n": av(12, 0.3)})  # at the requested position, but unreliable
+    rs = FakeReasoning([ans("c1", "n", "cannot_tell")])
+    out = run(session, sp, src, [c], rs)
+    assert out["c1"].overall == "uncertain"
+    assert len(rs.calls) == 1
+    ok = run(session, sp, src, [c], FakeReasoning([ans("c1", "n", "more", 0.9, 1)]))
+    assert ok["c1"].overall == "validated"

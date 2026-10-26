@@ -116,3 +116,12 @@ def test_pair_similarity_clamped_for_opposite_vectors():
     a = PoolItem(SimpleNamespace(id="a"), 0.5, {"t": av("b")}, [1.0, 0.0])
     b = PoolItem(SimpleNamespace(id="b"), 0.5, {"t": av("c")}, [-1.0, 0.0])
     assert pair_similarity(a, b, s, CFG) == 0.0
+
+
+def test_unreliable_number_nudge_scores_zero():
+    from app.domain.kinds import NumberSpec
+
+    num = NumberSpec(key="n", label="N", category="c", unit="mm", min=0, max=100, tolerance=1)
+    s = spec("nudge", num, target_value=10, nudge=Nudge(direction="more", steps=1))
+    assert target_score(s, av(10, 1.0), av(12, 0.9), CFG) == 1
+    assert target_score(s, av(10, 1.0), av(12, 0.3), CFG) == 0

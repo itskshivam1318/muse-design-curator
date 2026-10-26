@@ -92,6 +92,8 @@ def nudge_position(
         want = base + sign * nudge.steps
         return "exact" if idx == want else "beyond" if idx == want + sign else "off"
     if tspec.kind == "number":
+        if not cand.reliable(cfg):
+            return None
         if isinstance(cand.value, bool | str) or isinstance(spec.target_value, bool | str):
             return None
         tol, step = tspec.tolerance, number_step(tspec)  # type: ignore[union-attr]
