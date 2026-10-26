@@ -157,3 +157,17 @@ def test_proxy_env_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(AppError):
         links.fetch("http://example.com/")
     assert seen == ["93.184.216.34:80"]
+
+
+def test_private_host_exemption_is_off_by_default() -> None:
+    with pytest.raises(AppError) as e:
+        links.check_url("http://127.0.0.1:8766/article.html")
+    assert e.value.code == "SSRF_BLOCKED"
+
+
+def test_private_host_exemption_only_for_listed_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LINK_ALLOW_PRIVATE_HOSTS", "127.0.0.1")
+    assert links.check_url("http://127.0.0.1:8766/article.html") == "127.0.0.1"
+    with pytest.raises(AppError) as e:
+        links.check_url("http://10.1.2.3/")
+    assert e.value.code == "SSRF_BLOCKED"

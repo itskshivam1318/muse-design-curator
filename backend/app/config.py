@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     MAX_VIDEO_BYTES: int = 104857600
     MAX_VIDEO_SECONDS: int = 90
     LINK_FETCH_TIMEOUT_S: float = 5
+    # Test-only: comma-separated hostnames exempt from the link SSRF guard (e2e fixture server).
+    LINK_ALLOW_PRIVATE_HOSTS: str = ""
     SHAPE_KIND_ENABLED: bool = False
     EXTENSION_ORIGIN: str | None = None
     PUBLIC_APP_URL: str = "http://localhost:5173"

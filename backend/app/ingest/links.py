@@ -36,12 +36,21 @@ def _blocked(ip: str) -> bool:
     )  # fmt: skip
 
 
+def _exempt_hosts() -> set[str]:
+    raw = get_settings().LINK_ALLOW_PRIVATE_HOSTS
+    return {h.strip().lower() for h in raw.split(",") if h.strip()}
+
+
 def check_url(url: str) -> str:
-    """Validate scheme and that every resolved address is public. Returns a vetted IP."""
+    """Validate scheme and that every resolved address is public. Returns a vetted IP.
+
+    Hosts listed in LINK_ALLOW_PRIVATE_HOSTS (test-only, empty by default) skip the address check.
+    """
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.hostname:
         raise AppError(400, "INVALID_URL", "Only http(s) URLs are accepted")
     host = parts.hostname
+    exempt = host.lower() in _exempt_hosts()
     try:
         ips = [str(ipaddress.ip_address(host))]
     except ValueError:
@@ -49,7 +58,7 @@ def check_url(url: str) -> str:
             ips = resolver(host)
         except OSError as e:
             raise AppError(400, "LINK_UNREACHABLE", "Host could not be resolved") from e
-    if not ips or any(_blocked(ip) for ip in ips):
+    if not ips or (not exempt and any(_blocked(ip) for ip in ips)):
         raise AppError(400, "SSRF_BLOCKED", "URL points to a disallowed address")
     return ips[0]
 
