@@ -68,8 +68,17 @@ app.include_router(demo_api.router)
 
 
 @app.get("/api/health")
-def health() -> dict[str, bool]:
-    return {"ok": True}
+def health() -> dict[str, bool | str]:
+    """`live` is false when model providers are mocked or the key they need is missing."""
+    st = get_settings()
+    uses_key = st.REASONING_PROVIDER.replace("_", "-") == "muse-spark" or (
+        st.SEGMENTATION_PROVIDER.replace("_", "-") == "sam-3.1"
+    )
+    if uses_key and not st.MODEL_API_KEY:
+        return {"ok": True, "live": False, "reason": "MODEL_API_KEY not set"}
+    if st.REASONING_PROVIDER == "mock" and st.SEGMENTATION_PROVIDER == "mock":
+        return {"ok": True, "live": False, "reason": "mock providers"}
+    return {"ok": True, "live": True}
 
 
 # Single-container deploy: the built frontend at /, registered last so /api routes win.

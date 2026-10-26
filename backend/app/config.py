@@ -11,10 +11,10 @@ class Settings(BaseSettings):
 
     MODEL_API_KEY: str | None = None
     META_BASE_URL: str = "https://api.meta.ai/v1"
-    REASONING_PROVIDER: str = "mock"
+    REASONING_PROVIDER: str = "muse-spark"
     MUSE_SPARK_MODEL: str = "muse-spark-1.3"
-    SEGMENTATION_PROVIDER: str = "mock"
-    EMBEDDER: str = "mock"
+    SEGMENTATION_PROVIDER: str = "sam-3.1"
+    EMBEDDER: str = "siglip2"
     BASETEN_API_KEY: str | None = None
     BASETEN_MODEL: str = "meta-models/muse-spark-open"
     PEXELS_API_KEY: str | None = None

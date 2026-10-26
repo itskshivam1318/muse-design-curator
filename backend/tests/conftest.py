@@ -15,6 +15,14 @@ def _ignore_repo_env_file(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(Settings.model_config, "env_file", None)
 
 
+@pytest.fixture(autouse=True)
+def _mock_providers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The code defaults are live; the test environment is always mock (and offline)."""
+    monkeypatch.setenv("REASONING_PROVIDER", "mock")
+    monkeypatch.setenv("SEGMENTATION_PROVIDER", "mock")
+    monkeypatch.setenv("EMBEDDER", "mock")
+
+
 @pytest.fixture
 def session() -> Iterator[Session]:
     """In-memory SQLite with the schema built by running Alembic migrations."""

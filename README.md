@@ -31,11 +31,16 @@ exercise every feature but not to look good; see [Importing real photos](#import
 
 Every model sits behind a provider switch in `.env`:
 
-| Variable | Mock (default) | Live |
+| Variable | Default (live) | Mock (tests, offline) |
 |---|---|---|
-| `REASONING_PROVIDER` | `mock` | `muse-spark` (Meta, `muse-spark-1.3`) or `muse-spark-open` (Baseten) |
-| `SEGMENTATION_PROVIDER` | `mock` | `sam-3.1` |
-| `EMBEDDER` | `mock` (64-d colour histogram) | `siglip2` (`google/siglip2-base-patch16-256`, local) or `pe-core` |
+| `REASONING_PROVIDER` | `muse-spark` | `mock`; alternatives `muse-spark-open` (Baseten) |
+| `SEGMENTATION_PROVIDER` | `sam-3.1` | `mock` |
+| `EMBEDDER` | `siglip2` (`google/siglip2-base-patch16-256`, local; or `pe-core`) | `mock` (64-d colour histogram) |
+
+Live is the default. Without `MODEL_API_KEY` the app still starts, model actions fail with
+`PROVIDER_MISCONFIGURED`, and `GET /api/health` returns `{"ok": true, "live": false, "reason":
+"MODEL_API_KEY not set"}`. For offline work force mocks:
+`REASONING_PROVIDER=mock SEGMENTATION_PROVIDER=mock EMBEDDER=mock` (unit tests and `make e2e` always do).
 
 Meta has no embeddings endpoint (`/v1/embeddings` returns 404), so the live embedder runs locally
 and needs the `embed` extra (`make install` includes it). Embeddings from different embedders are

@@ -71,7 +71,14 @@ def test_mock_embedder_normalised_dim64() -> None:
     assert np.array_equal(v, e.embed_images([png((255, 0, 0)), png((0, 0, 255))]))
 
 
-def test_defaults_are_mocks() -> None:
+def test_code_defaults_are_live() -> None:
+    f = Settings.model_fields
+    assert f["REASONING_PROVIDER"].default == "muse-spark"
+    assert f["SEGMENTATION_PROVIDER"].default == "sam-3.1"
+    assert f["EMBEDDER"].default == "siglip2"
+
+
+def test_test_environment_is_mock() -> None:
     s = Settings()
     assert get_reasoning(s).is_mock and get_segmentation(s).is_mock
     assert get_embedder(s).id == "mock"
