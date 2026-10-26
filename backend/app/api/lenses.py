@@ -21,12 +21,10 @@ def propose(board_id: str, session: SessionDep) -> dict[str, Any]:
 
 @router.get("/boards/{board_id}/lens")
 def get_board_lens(board_id: str, session: SessionDep) -> dict[str, Any]:
-    """The lens the board uses now, or its newest proposal awaiting confirmation."""
+    """The lens the board uses now, or its newest proposal awaiting confirmation; null if none."""
     board = require_board(session, board_id)
     row = lens_service.board_lens_row(session, board)
-    if row is None:
-        raise AppError(404, "LENS_NOT_FOUND", "This board has no lens yet")
-    return lens_service.lens_to_dict(row)
+    return {"lens": lens_service.lens_to_dict(row) if row is not None else None}
 
 
 @router.put("/boards/{board_id}/lens")

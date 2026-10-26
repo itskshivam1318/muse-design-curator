@@ -98,12 +98,12 @@ def test_item_dict_includes_parent_item_id(client: TestClient, board: str) -> No
     assert "parent_item_id" in item and item["parent_item_id"] is None
 
 
-def test_board_lens_404_then_current(client: TestClient) -> None:
+def test_board_lens_null_then_current(client: TestClient) -> None:
     b = client.post("/api/boards", json={"title": "B"}).json()["id"]
     r = client.get(f"/api/boards/{b}/lens")
-    assert r.status_code == 404 and r.json()["error"]["code"] == "LENS_NOT_FOUND"
+    assert r.status_code == 200 and r.json() == {"lens": None}
+    assert client.get("/api/boards/nope/lens").status_code == 404
     w = client.post("/api/boards", json={"title": "W", "domain": "watch"}).json()["id"]
     client.post(f"/api/boards/{w}/items", files=[("files", ("a.png", image_bytes(), "image/png"))])
-    r = client.get(f"/api/boards/{w}/lens")
-    assert r.status_code == 200
-    assert r.json()["status"] == "confirmed" and r.json()["origin"] == "curated"
+    lens = client.get(f"/api/boards/{w}/lens").json()["lens"]
+    assert lens["status"] == "confirmed" and lens["origin"] == "curated"
