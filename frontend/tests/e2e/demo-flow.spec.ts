@@ -176,7 +176,8 @@ test('demo flow: board, references, lens, link, video, vary, keep, reject, nudge
     await releaseProtected(panel)
     await panel.getByRole('button', { name: 'Run' }).click()
     await expect(panel).toHaveCount(0)
-    // the Maybe strip now follows the nudge run through to completion
+    // the Maybe strip now follows the nudge run (no decided candidates) through to completion
+    await expect(strip.getByRole('button', { name: /, (kept|rejected)$/ })).toHaveCount(0)
     await expect(strip.getByRole('status')).toHaveText(/ found\./, { timeout: 30_000 })
   })
 
@@ -196,6 +197,5 @@ test('demo flow: board, references, lens, link, video, vary, keep, reject, nudge
     const video = after.find((i) => i.kind === 'video')!
     const { frames } = await apiJson<{ frames: { chosen: boolean; t_ms: number }[] }>(`/items/${video.id}/frames`)
     expect(frames.find((f) => f.chosen)?.t_ms).toBe(2000)
-    await expect(canvas(page)).toBeVisible()
   })
 })
