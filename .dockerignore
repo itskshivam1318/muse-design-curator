@@ -1,18 +1,23 @@
-# Build context for backend/Dockerfile (built from the repository root). Allow-list: only the
-# backend source, corpus manifests and the precomputed data snapshot go into the image.
+# Build context for the root Dockerfile. Allow-list: backend source, frontend source, corpus
+# manifests and the pre-built data snapshot.
 *
 !backend/
+!frontend/
 !corpus/
 !data/
 
 # never in the image
 **/.env
 **/.env.*
+**/node_modules
+**/__pycache__
+**/*.pyc
 backend/.venv
 backend/tests
 backend/.pytest_cache
 backend/.mypy_cache
 backend/.ruff_cache
-**/__pycache__
-**/*.pyc
+frontend/dist
+frontend/test-results
+frontend/playwright-report
 data/e2e
