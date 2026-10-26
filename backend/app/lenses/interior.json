@@ -1,0 +1,170 @@
+{
+  "id": "interior@1",
+  "domain": "interior",
+  "label": "Interior",
+  "origin": "curated",
+  "parts": [
+    {
+      "id": "sofa",
+      "sam_prompt": "sofa",
+      "grounding": "sam"
+    },
+    {
+      "id": "chair",
+      "sam_prompt": "chair",
+      "grounding": "sam"
+    },
+    {
+      "id": "table",
+      "sam_prompt": "table",
+      "grounding": "sam"
+    },
+    {
+      "id": "lamp",
+      "sam_prompt": "lamp",
+      "grounding": "sam"
+    },
+    {
+      "id": "rug",
+      "sam_prompt": "rug",
+      "grounding": "sam"
+    },
+    {
+      "id": "wall",
+      "sam_prompt": "wall",
+      "grounding": "sam"
+    }
+  ],
+  "attributes": [
+    {
+      "key": "furniture_form",
+      "label": "Furniture form",
+      "category": "form",
+      "kind": "enum",
+      "part": null,
+      "open_vocabulary": true
+    },
+    {
+      "key": "primary_material",
+      "label": "Primary material",
+      "category": "material",
+      "kind": "enum",
+      "part": null,
+      "open_vocabulary": true
+    },
+    {
+      "key": "wood_tone",
+      "label": "Wood tone",
+      "category": "material",
+      "kind": "ordinal",
+      "part": null,
+      "scale": [
+        "pale",
+        "light",
+        "medium",
+        "dark",
+        "ebony"
+      ]
+    },
+    {
+      "key": "wall_color",
+      "label": "Wall colour",
+      "category": "colour",
+      "kind": "color",
+      "part": "wall"
+    },
+    {
+      "key": "textile",
+      "label": "Textile",
+      "category": "material",
+      "kind": "enum",
+      "part": null,
+      "open_vocabulary": true
+    },
+    {
+      "key": "lighting",
+      "label": "Lighting",
+      "category": "atmosphere",
+      "kind": "enum",
+      "part": null,
+      "vocabulary": [
+        "natural",
+        "warm_ambient",
+        "cool_ambient",
+        "task",
+        "accent",
+        "dim"
+      ]
+    },
+    {
+      "key": "density",
+      "label": "Density",
+      "category": "composition",
+      "kind": "ordinal",
+      "part": null,
+      "scale": [
+        "sparse",
+        "balanced",
+        "layered",
+        "maximal"
+      ]
+    },
+    {
+      "key": "warmth",
+      "label": "Warmth",
+      "category": "atmosphere",
+      "kind": "ordinal",
+      "part": null,
+      "scale": [
+        "cool",
+        "neutral",
+        "warm"
+      ]
+    },
+    {
+      "key": "ceiling_height_feel",
+      "label": "Ceiling height feel",
+      "category": "space",
+      "kind": "ordinal",
+      "part": null,
+      "scale": [
+        "low",
+        "standard",
+        "high",
+        "double_height"
+      ]
+    },
+    {
+      "key": "has_plants",
+      "label": "Has plants",
+      "category": "composition",
+      "kind": "boolean",
+      "part": null
+    },
+    {
+      "key": "sofa_profile",
+      "label": "Sofa profile",
+      "category": "form",
+      "kind": "shape",
+      "part": "sofa",
+      "experimental": true
+    },
+    {
+      "key": "era",
+      "label": "Era",
+      "category": "style",
+      "kind": "text",
+      "part": null,
+      "hint": "Decade or period the room evokes"
+    },
+    {
+      "key": "style",
+      "label": "Style",
+      "category": "style",
+      "kind": "enum",
+      "part": null,
+      "open_vocabulary": true
+    }
+  ],
+  "notes": []
+}

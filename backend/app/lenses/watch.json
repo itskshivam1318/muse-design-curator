@@ -1,0 +1,205 @@
+{
+  "id": "watch@1",
+  "domain": "watch",
+  "label": "Watch",
+  "origin": "curated",
+  "parts": [
+    {
+      "id": "watch_case",
+      "sam_prompt": "watch case",
+      "grounding": "sam"
+    },
+    {
+      "id": "watch_dial",
+      "sam_prompt": "watch dial",
+      "grounding": "sam"
+    },
+    {
+      "id": "bezel",
+      "sam_prompt": "bezel",
+      "grounding": "sam"
+    },
+    {
+      "id": "watch_hands",
+      "sam_prompt": "watch hands",
+      "grounding": "sam"
+    },
+    {
+      "id": "watch_strap",
+      "sam_prompt": "watch strap",
+      "grounding": "sam"
+    }
+  ],
+  "attributes": [
+    {
+      "key": "case_shape",
+      "label": "Case shape",
+      "category": "case",
+      "kind": "enum",
+      "part": "watch_case",
+      "vocabulary": [
+        "round",
+        "cushion",
+        "tonneau",
+        "rectangular",
+        "square",
+        "octagonal",
+        "oval"
+      ]
+    },
+    {
+      "key": "case_material",
+      "label": "Case material",
+      "category": "case",
+      "kind": "enum",
+      "part": "watch_case",
+      "open_vocabulary": true
+    },
+    {
+      "key": "case_finish",
+      "label": "Case finish",
+      "category": "case",
+      "kind": "enum",
+      "part": "watch_case",
+      "vocabulary": [
+        "brushed",
+        "polished",
+        "brushed_and_polished",
+        "bead_blasted",
+        "pvd_coated"
+      ]
+    },
+    {
+      "key": "dial_color",
+      "label": "Dial colour",
+      "category": "dial",
+      "kind": "color",
+      "part": "watch_dial"
+    },
+    {
+      "key": "dial_finish",
+      "label": "Dial finish",
+      "category": "dial",
+      "kind": "enum",
+      "part": "watch_dial",
+      "vocabulary": [
+        "sunburst",
+        "matte",
+        "lacquered",
+        "guilloche",
+        "textured",
+        "skeleton"
+      ]
+    },
+    {
+      "key": "bezel_style",
+      "label": "Bezel style",
+      "category": "case",
+      "kind": "enum",
+      "part": "bezel",
+      "vocabulary": [
+        "smooth",
+        "fluted",
+        "coin_edge",
+        "rotating",
+        "tachymeter",
+        "ceramic_insert",
+        "none"
+      ]
+    },
+    {
+      "key": "strap_material",
+      "label": "Strap material",
+      "category": "strap",
+      "kind": "enum",
+      "part": "watch_strap",
+      "open_vocabulary": true
+    },
+    {
+      "key": "strap_color",
+      "label": "Strap colour",
+      "category": "strap",
+      "kind": "color",
+      "part": "watch_strap"
+    },
+    {
+      "key": "markers",
+      "label": "Markers",
+      "category": "dial",
+      "kind": "enum",
+      "part": "watch_dial",
+      "vocabulary": [
+        "arabic",
+        "roman",
+        "baton",
+        "dot",
+        "dauphine",
+        "none"
+      ]
+    },
+    {
+      "key": "hands",
+      "label": "Hands",
+      "category": "dial",
+      "kind": "enum",
+      "part": "watch_hands",
+      "vocabulary": [
+        "baton",
+        "dauphine",
+        "sword",
+        "leaf",
+        "cathedral",
+        "skeleton",
+        "syringe"
+      ]
+    },
+    {
+      "key": "case_diameter_mm",
+      "label": "Case diameter",
+      "category": "case",
+      "kind": "number",
+      "part": null,
+      "unit": "mm",
+      "min": 20,
+      "max": 55,
+      "tolerance": 1.5,
+      "measure": "model"
+    },
+    {
+      "key": "has_date_window",
+      "label": "Date window",
+      "category": "dial",
+      "kind": "boolean",
+      "part": "watch_dial"
+    },
+    {
+      "key": "legibility",
+      "label": "Legibility",
+      "category": "dial",
+      "kind": "ordinal",
+      "part": null,
+      "scale": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    {
+      "key": "case_silhouette",
+      "label": "Case silhouette",
+      "category": "case",
+      "kind": "shape",
+      "part": "watch_case",
+      "experimental": true
+    },
+    {
+      "key": "overall_style",
+      "label": "Overall style",
+      "category": "style",
+      "kind": "text",
+      "part": null,
+      "hint": "Short phrase describing the overall style"
+    }
+  ],
+  "notes": []
+}

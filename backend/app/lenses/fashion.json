@@ -1,0 +1,167 @@
+{
+  "id": "fashion@1",
+  "domain": "fashion",
+  "label": "Fashion",
+  "origin": "curated",
+  "parts": [
+    {
+      "id": "garment",
+      "sam_prompt": "garment",
+      "grounding": "sam"
+    },
+    {
+      "id": "sleeve",
+      "sam_prompt": "sleeve",
+      "grounding": "sam"
+    },
+    {
+      "id": "collar",
+      "sam_prompt": "collar",
+      "grounding": "sam"
+    },
+    {
+      "id": "footwear",
+      "sam_prompt": "footwear",
+      "grounding": "sam"
+    }
+  ],
+  "attributes": [
+    {
+      "key": "silhouette",
+      "label": "Silhouette",
+      "category": "form",
+      "kind": "enum",
+      "part": "garment",
+      "vocabulary": [
+        "a_line",
+        "straight",
+        "boxy",
+        "tailored",
+        "draped",
+        "flared",
+        "column"
+      ]
+    },
+    {
+      "key": "fabric",
+      "label": "Fabric",
+      "category": "material",
+      "kind": "enum",
+      "part": "garment",
+      "open_vocabulary": true
+    },
+    {
+      "key": "pattern",
+      "label": "Pattern",
+      "category": "surface",
+      "kind": "enum",
+      "part": "garment",
+      "vocabulary": [
+        "solid",
+        "stripe",
+        "check",
+        "floral",
+        "geometric",
+        "animal",
+        "abstract"
+      ]
+    },
+    {
+      "key": "primary_color",
+      "label": "Primary colour",
+      "category": "colour",
+      "kind": "color",
+      "part": "garment"
+    },
+    {
+      "key": "sleeve_length",
+      "label": "Sleeve length",
+      "category": "form",
+      "kind": "ordinal",
+      "part": "sleeve",
+      "scale": [
+        "sleeveless",
+        "short",
+        "three_quarter",
+        "long"
+      ]
+    },
+    {
+      "key": "neckline",
+      "label": "Neckline",
+      "category": "form",
+      "kind": "enum",
+      "part": "collar",
+      "vocabulary": [
+        "crew",
+        "v_neck",
+        "scoop",
+        "square",
+        "boat",
+        "turtleneck",
+        "collared",
+        "off_shoulder"
+      ]
+    },
+    {
+      "key": "formality",
+      "label": "Formality",
+      "category": "style",
+      "kind": "ordinal",
+      "part": null,
+      "scale": [
+        "loungewear",
+        "casual",
+        "smart_casual",
+        "business",
+        "evening",
+        "black_tie"
+      ]
+    },
+    {
+      "key": "fit",
+      "label": "Fit",
+      "category": "form",
+      "kind": "ordinal",
+      "part": "garment",
+      "scale": [
+        "fitted",
+        "regular",
+        "relaxed",
+        "oversized"
+      ]
+    },
+    {
+      "key": "has_pattern",
+      "label": "Has pattern",
+      "category": "surface",
+      "kind": "boolean",
+      "part": "garment"
+    },
+    {
+      "key": "garment_silhouette",
+      "label": "Garment silhouette",
+      "category": "form",
+      "kind": "shape",
+      "part": "garment",
+      "experimental": true
+    },
+    {
+      "key": "era",
+      "label": "Era",
+      "category": "style",
+      "kind": "text",
+      "part": null,
+      "hint": "Decade or period the look evokes"
+    },
+    {
+      "key": "occasion",
+      "label": "Occasion",
+      "category": "style",
+      "kind": "enum",
+      "part": null,
+      "open_vocabulary": true
+    }
+  ],
+  "notes": []
+}

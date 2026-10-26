@@ -1,0 +1,151 @@
+{
+  "id": "ui@1",
+  "domain": "ui",
+  "label": "UI",
+  "origin": "curated",
+  "parts": [
+    {
+      "id": "button",
+      "sam_prompt": "button",
+      "grounding": "whole_image"
+    },
+    {
+      "id": "card",
+      "sam_prompt": "card",
+      "grounding": "whole_image"
+    },
+    {
+      "id": "navigation_bar",
+      "sam_prompt": "navigation bar",
+      "grounding": "whole_image"
+    },
+    {
+      "id": "heading_text",
+      "sam_prompt": "heading text",
+      "grounding": "whole_image"
+    }
+  ],
+  "attributes": [
+    {
+      "key": "primary_color",
+      "label": "Primary colour",
+      "category": "colour",
+      "kind": "color",
+      "part": null
+    },
+    {
+      "key": "background_tone",
+      "label": "Background tone",
+      "category": "colour",
+      "kind": "ordinal",
+      "part": null,
+      "scale": [
+        "dark",
+        "dim",
+        "neutral",
+        "light",
+        "white"
+      ]
+    },
+    {
+      "key": "corner_radius",
+      "label": "Corner radius",
+      "category": "form",
+      "kind": "ordinal",
+      "part": null,
+      "scale": [
+        "sharp",
+        "small",
+        "medium",
+        "large",
+        "pill"
+      ]
+    },
+    {
+      "key": "density",
+      "label": "Density",
+      "category": "layout",
+      "kind": "ordinal",
+      "part": null,
+      "scale": [
+        "compact",
+        "regular",
+        "airy"
+      ]
+    },
+    {
+      "key": "type_style",
+      "label": "Type style",
+      "category": "typography",
+      "kind": "enum",
+      "part": null,
+      "vocabulary": [
+        "sans",
+        "serif",
+        "mono",
+        "display"
+      ]
+    },
+    {
+      "key": "elevation",
+      "label": "Elevation",
+      "category": "depth",
+      "kind": "ordinal",
+      "part": null,
+      "scale": [
+        "flat",
+        "subtle",
+        "strong"
+      ]
+    },
+    {
+      "key": "palette_size",
+      "label": "Palette size",
+      "category": "colour",
+      "kind": "number",
+      "part": null,
+      "unit": "colours",
+      "min": 1,
+      "max": 12,
+      "tolerance": 1,
+      "measure": "palette_count"
+    },
+    {
+      "key": "has_illustration",
+      "label": "Has illustration",
+      "category": "imagery",
+      "kind": "boolean",
+      "part": null
+    },
+    {
+      "key": "iconography",
+      "label": "Iconography",
+      "category": "imagery",
+      "kind": "enum",
+      "part": null,
+      "vocabulary": [
+        "line",
+        "filled",
+        "duotone",
+        "none"
+      ]
+    },
+    {
+      "key": "layout_pattern",
+      "label": "Layout pattern",
+      "category": "layout",
+      "kind": "text",
+      "part": null,
+      "hint": "Name the dominant layout pattern"
+    },
+    {
+      "key": "mood",
+      "label": "Mood",
+      "category": "style",
+      "kind": "text",
+      "part": null,
+      "hint": "Short phrase for the overall mood"
+    }
+  ],
+  "notes": []
+}
