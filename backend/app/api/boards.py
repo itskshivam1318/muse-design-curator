@@ -1,10 +1,12 @@
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from sqlalchemy.orm import Session
+from sse_starlette.sse import EventSourceResponse
 
 from app.api.deps import SessionDep
 from app.api.schemas import BoardCreate, BoardPatch, board_to_dict, item_to_dict
+from app.board.events import profile_snapshot, stream
 from app.db.repos import boards as boards_repo
 from app.db.repos import items as items_repo
 from app.errors import AppError
@@ -46,3 +48,15 @@ def patch_board(board_id: str, body: BoardPatch, session: SessionDep) -> dict[st
 def list_items(board_id: str, session: SessionDep) -> dict[str, Any]:
     require_board(session, board_id)
     return {"items": [item_to_dict(i) for i in items_repo.list_active(session, board_id)]}
+
+
+@router.get("/{board_id}/profile")
+def get_profile(board_id: str, session: SessionDep) -> dict[str, Any]:
+    require_board(session, board_id)
+    return profile_snapshot(session, board_id)
+
+
+@router.get("/{board_id}/events")
+async def board_events(board_id: str, request: Request, session: SessionDep) -> EventSourceResponse:
+    require_board(session, board_id)
+    return EventSourceResponse(stream(board_id, request, session), ping=15)

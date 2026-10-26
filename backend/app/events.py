@@ -7,6 +7,7 @@ from typing import Any, Self
 
 _lock = threading.Lock()
 _subs: dict[str, set["Subscription"]] = defaultdict(set)
+_seq: dict[str, int] = defaultdict(int)
 
 
 class Subscription:
@@ -55,6 +56,14 @@ def subscribe(board_id: str) -> Subscription:
 
 def publish(board_id: str, type: str, data: dict[str, Any]) -> None:
     with _lock:
+        _seq[board_id] += 1
+        seq = _seq[board_id]
         targets = list(_subs.get(board_id, ()))
     for s in targets:
-        s._q.put({"type": type, "board_id": board_id, "data": data})
+        s._q.put({"type": type, "board_id": board_id, "data": data, "seq": seq})
+
+
+def last_seq(board_id: str) -> int:
+    """The sequence number of the board's most recent event (0 if none yet)."""
+    with _lock:
+        return _seq.get(board_id, 0)

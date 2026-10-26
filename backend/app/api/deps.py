@@ -21,6 +21,13 @@ def _factory() -> sessionmaker[Session]:
     return make_session_factory(engine)
 
 
+def new_session() -> Session:
+    """A standalone session for background work; the caller commits and closes it."""
+    with _lock:
+        factory = _factory()
+    return factory()
+
+
 def get_session() -> Iterator[Session]:
     """One session per request; commit on success, roll back on error."""
     with _lock:

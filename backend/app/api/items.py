@@ -10,6 +10,7 @@ from app import events, jobs
 from app.api.boards import require_board
 from app.api.deps import SessionDep
 from app.api.schemas import ItemPatch, JsonIngest, item_to_dict
+from app.board import profile_hook
 from app.db.models import BoardItem
 from app.db.repos import items as items_repo
 from app.db.session import after_commit
@@ -163,7 +164,9 @@ def patch_item(item_id: str, body: ItemPatch, session: SessionDep) -> dict[str, 
         items_repo.update(session, item_id, **fields)
     session.refresh(item)
     data = item_to_dict(item)
-    events.publish(item.board_id, "item.updated", data)
+    board_id = item.board_id
+    after_commit(session, lambda: events.publish(board_id, "item.updated", data))
+    after_commit(session, lambda: profile_hook.request_recompute(board_id))
     return data
 
 
@@ -171,4 +174,6 @@ def patch_item(item_id: str, body: ItemPatch, session: SessionDep) -> dict[str, 
 def delete_item(item_id: str, session: SessionDep) -> None:
     item = _require_item(session, item_id)
     items_repo.soft_delete(session, item_id)
-    events.publish(item.board_id, "item.removed", {"id": item_id})
+    board_id = item.board_id
+    after_commit(session, lambda: events.publish(board_id, "item.removed", {"id": item_id}))
+    after_commit(session, lambda: profile_hook.request_recompute(board_id))
