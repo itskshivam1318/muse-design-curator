@@ -1,10 +1,23 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, type Board, confirmLens, keys, type LensSpec, patchBoard, type Point, type UploadOrigin } from '../api'
+import {
+  ApiError,
+  type Board,
+  confirmLens,
+  type Item,
+  itemImageUrl,
+  keys,
+  type LensSpec,
+  patchBoard,
+  type Point,
+  type UploadOrigin,
+} from '../api'
 import { useItemActions } from '../canvas/actions'
 import { Canvas, type CanvasHandle } from '../canvas/Canvas'
+import type { Bounds } from '../canvas/geometry'
+import { usePrefersReducedMotion } from '../canvas/palette'
 import { handlePaste, readClipboard } from '../canvas/paste'
-import { selection, selectionStore } from '../canvas/selection'
+import { selection, selectionStore, useSelection } from '../canvas/selection'
 import { useAddFlow } from '../canvas/useAddFlow'
 import { connectBoardEvents } from '../events'
 import { AddMenu } from '../panels/AddMenu'
@@ -13,10 +26,14 @@ import { ContextBar, type ContextBarHandle } from '../panels/ContextBar'
 import { LensReview } from '../panels/LensReview'
 import { Onboarding } from '../panels/Onboarding'
 import { hasDrawerPanel } from '../panels/drawerRegistry'
+import { KeepFlight } from '../panels/KeepFlight'
+import { MaybeStrip } from '../panels/MaybeStrip'
+import '../panels/registerPanels'
 import { RightDrawer } from '../panels/RightDrawer'
 import { UploadStatus } from '../panels/UploadStatus'
 import { useBoard, useBoardLens, useItems, useProfile } from '../queries'
 import { Link } from '../Link'
+import { runStore } from '../vary/runStore'
 
 function isTyping(t: EventTarget | null): boolean {
   const el = t as HTMLElement | null
@@ -37,12 +54,32 @@ export function BoardPage({ boardId }: { boardId: string }) {
   const contextBar = useRef<ContextBarHandle>(null)
   const [dismissedLens, setDismissedLens] = useState<string | null>(null)
   const [spaceDown, setSpaceDown] = useState(false)
-  const [live, setLive] = useState<'open' | 'reconnecting'>('open')
+  const [live, setLive] = useState<'connecting' | 'open' | 'reconnecting'>('connecting')
+  const { drawer } = useSelection()
+  const reduced = usePrefersReducedMotion()
+  const [flight, setFlight] = useState<{ id: string; src: string; from: Bounds; to: Bounds } | null>(null)
 
   useEffect(() => {
     selection.reset()
+    runStore.clear()
     return connectBoardEvents(boardId, qc, { onStatus: setLive })
   }, [boardId, qc])
+
+  // Keep: the candidate flies from the popover onto the canvas next to its source, then is selected
+  const onKept = useCallback(
+    (item: Item, from: DOMRect | null) => {
+      selection.select([item.id])
+      const to = canvas.current?.clientRectOf(item)
+      if (reduced || !from || !to) return
+      setFlight({
+        id: item.id,
+        src: itemImageUrl(item, 'thumb'),
+        from: { x: from.left, y: from.top, width: from.width, height: from.height },
+        to,
+      })
+    },
+    [reduced],
+  )
 
   const center = useCallback((): Point => canvas.current?.center() ?? { x: 0, y: 0 }, [])
   const { addFiles, addLink } = add
@@ -51,9 +88,12 @@ export function BoardPage({ boardId }: { boardId: string }) {
     [addFiles],
   )
 
-  const openPanel = useCallback((kind: 'vary' | 'inspect', itemId: string) => {
-    if (hasDrawerPanel(kind)) selection.openDrawer(kind, itemId)
-  }, [])
+  const openPanel = useCallback(
+    (kind: 'vary' | 'inspect' | 'compare', itemId: string, params?: Record<string, unknown>) => {
+      if (hasDrawerPanel(kind)) selection.openDrawer(kind, itemId, params)
+    },
+    [],
+  )
 
   // ⌘V: images upload, URLs become link items, both at the viewport centre
   useEffect(() => {
@@ -109,7 +149,10 @@ export function BoardPage({ boardId }: { boardId: string }) {
           }
           break
         case 'escape':
-          selection.clear()
+          // innermost first: candidate popover, then the drawer, then the selection
+          if (runStore.get().openCandidate) runStore.open(null)
+          else if (selectionStore.get().drawer) selection.closeDrawer()
+          else selection.clear()
           setAddOpen(false)
           break
         default:
@@ -190,12 +233,14 @@ export function BoardPage({ boardId }: { boardId: string }) {
       )}
 
       <div className="float right">
-        <BoardSignals boardId={boardId} />
+        {!drawer && <BoardSignals boardId={boardId} />}
         {proposed && (
           <LensReview key={proposed.id} lens={proposed} onConfirm={onConfirmLens} onDismiss={() => setDismissedLens(proposed.id)} />
         )}
       </div>
       <RightDrawer boardId={boardId} />
+      <MaybeStrip boardId={boardId} streamOpen={live === 'open'} onKept={onKept} />
+      {flight && <KeepFlight key={flight.id} src={flight.src} from={flight.from} to={flight.to} onDone={() => setFlight(null)} />}
 
       <div className="float bottom-left">
         <UploadStatus jobs={add.jobs} onDismiss={add.dismiss} onCancel={add.cancel} />

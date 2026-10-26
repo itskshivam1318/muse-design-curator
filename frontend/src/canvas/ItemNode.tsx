@@ -28,6 +28,8 @@ export interface ItemHandlers {
   onDragEnd: (e: KEvent<DragEvent>, item: Item) => void
   onEnter: (item: Item) => void
   onLeave: (item: Item) => void
+  /** Double-click / double-tap: open the item (Inspect). */
+  onOpen?: (item: Item) => void
 }
 
 interface NodeProps {
@@ -48,6 +50,8 @@ function common(item: Item, draggable: boolean, h: ItemHandlers) {
     onDragEnd: (e: KEvent<DragEvent>) => h.onDragEnd(e, item),
     onMouseEnter: () => h.onEnter(item),
     onMouseLeave: () => h.onLeave(item),
+    onDblClick: () => h.onOpen?.(item),
+    onDblTap: () => h.onOpen?.(item),
   }
 }
 

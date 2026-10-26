@@ -38,13 +38,15 @@ export interface CanvasHandle {
   fit: () => void
   /** The canvas point at the centre of the viewport (where pastes and menu uploads land). */
   center: () => Point
+  /** Where an item's bounds sit on the page (client coordinates), e.g. for the Keep fly-in. */
+  clientRectOf: (item: Item) => Bounds | null
 }
 
 interface Props {
   items: Item[]
   actions: ItemActions
   onFiles: (files: File[], at: Point, origin: UploadOrigin) => void
-  onOpenPanel: (kind: 'vary' | 'inspect', itemId: string) => void
+  onOpenPanel: (kind: 'vary' | 'inspect' | 'compare', itemId: string, params?: Record<string, unknown>) => void
   spaceDown: boolean
   ref?: Ref<CanvasHandle>
 }
@@ -133,8 +135,14 @@ export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref }:
     () => ({
       fit,
       center: () => toCanvasPoint({ x: size.width / 2, y: size.height / 2 }, viewRef.current),
+      clientRectOf: (item: Item) => {
+        if (!container) return null
+        const r = container.getBoundingClientRect()
+        const b = toScreenBounds(itemBounds(item), viewRef.current)
+        return { ...b, x: b.x + r.left, y: b.y + r.top }
+      },
     }),
-    [fit, size],
+    [fit, size, container],
   )
 
   // ---- pan & zoom ----
@@ -257,6 +265,9 @@ export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref }:
       actions.move(moves)
       setOverrides({})
     },
+    onOpen: (item) => {
+      if (item.kind !== 'link') onOpenPanel('inspect', item.id)
+    },
     onEnter: (item) => {
       setHovered(item.id)
       if (item.kind === 'video') {
@@ -341,7 +352,7 @@ export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref }:
     >
       <p id="canvas-help" className="sr-only">
         Space and drag or two-finger scroll to pan; control and scroll or pinch to zoom. F fits the board to the screen. With
-        items selected: V vary, I inspect, X mark not this, Delete remove, Command Z undo a move.
+        items selected: V vary, I inspect (or double-click), X mark not this, Delete remove, Command Z undo a move.
       </p>
       {size.width > 0 && (
         <Stage
@@ -423,6 +434,9 @@ export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref }:
           screen={toScreenBounds(selBounds, view)}
           onVary={() => selectedItems[0] && onOpenPanel('vary', selectedItems[0].id)}
           onInspect={() => selectedItems[0] && onOpenPanel('inspect', selectedItems[0].id)}
+          onCompare={() =>
+            selectedItems[0] && onOpenPanel('compare', selectedItems[0].id, { itemIds: selectedItems.map((i) => i.id) })
+          }
           onNotThis={() => actions.toggleNotThis(selectedItems)}
           onRemove={() => actions.remove(selected)}
         />

@@ -7,16 +7,23 @@ interface Props {
   screen: Bounds
   onVary: () => void
   onInspect: () => void
+  onCompare: () => void
   onNotThis: () => void
   onRemove: () => void
 }
 
-/** Floating toolbar above the selection. Vary / Inspect appear once their panels are registered. */
-export function ItemToolbar({ items, screen, onVary, onInspect, onNotThis, onRemove }: Props) {
+export const COMPARE_MAX = 4
+
+/**
+ * Floating toolbar above the selection. One item: Vary · Inspect · Not this · Open source · Remove.
+ * Several: Compare (2–4) · Not this · Remove. Panel buttons appear once their panels are registered.
+ */
+export function ItemToolbar({ items, screen, onVary, onInspect, onCompare, onNotThis, onRemove }: Props) {
   const single = items.length === 1 ? items[0] : null
   const source = single ? (single.page_url ?? single.source_url) : null
   const allNot = items.every((i) => i.role === 'counter_example')
   const canPanel = single !== null && single.kind !== 'link'
+  const canCompare = items.length >= 2 && items.length <= COMPARE_MAX && items.every((i) => i.kind !== 'link')
   return (
     <div
       className="item-toolbar"
@@ -35,12 +42,17 @@ export function ItemToolbar({ items, screen, onVary, onInspect, onNotThis, onRem
           Inspect
         </button>
       )}
+      {canCompare && hasDrawerPanel('compare') && (
+        <button type="button" className="is-primary" onClick={onCompare}>
+          Compare
+        </button>
+      )}
       <button type="button" onClick={onNotThis} aria-keyshortcuts="X" aria-pressed={allNot}>
         {allNot ? 'Back to reference' : 'Not this'}
       </button>
       {source && (
         <a href={source} target="_blank" rel="noopener noreferrer">
-          Source ↗
+          Open source ↗
         </a>
       )}
       <button type="button" onClick={onRemove} aria-keyshortcuts="Delete">
