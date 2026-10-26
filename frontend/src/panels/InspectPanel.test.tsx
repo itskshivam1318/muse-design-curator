@@ -52,6 +52,7 @@ describe('InspectPanel', () => {
 
   it('per-kind editors PATCH typed values', async () => {
     setup()
+    fireEvent.click(screen.getByRole('radio', { name: 'medium' })) // already the value: no PATCH
     fireEvent.click(screen.getByRole('button', { name: 'Increase Case diameter' }))
     fireEvent.click(screen.getByRole('radio', { name: 'high' }))
     fireEvent.click(screen.getByRole('switch', { name: 'Date window value' }))

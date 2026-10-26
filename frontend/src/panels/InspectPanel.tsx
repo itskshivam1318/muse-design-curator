@@ -159,7 +159,7 @@ function AttributeRow({
           />
         </label>
       </div>
-      <Editor spec={spec} rec={rec} onValue={(value) => onPatch({ value })} />
+      <Editor spec={spec} rec={rec} onValue={(value) => value !== rec.value && onPatch({ value })} />
       <div className="attr-actions">
         {rec.value !== null && rec.status !== 'confirmed' && rec.status !== 'edited' && (
           <button type="button" className="btn-quiet small" aria-label={`Confirm ${spec.label}`} onClick={() => onPatch({ action: 'confirm' })}>
