@@ -79,9 +79,9 @@ def test_defaults_are_mocks() -> None:
 
 def test_live_provider_without_key_is_misconfigured() -> None:
     for call, s in [
-        (get_reasoning, Settings(REASONING_PROVIDER="muse_spark", MODEL_API_KEY=None)),
-        (get_reasoning, Settings(REASONING_PROVIDER="muse_spark_open", BASETEN_API_KEY=None)),
-        (get_segmentation, Settings(SEGMENTATION_PROVIDER="sam31", MODEL_API_KEY=None)),
+        (get_reasoning, Settings(REASONING_PROVIDER="muse-spark", MODEL_API_KEY=None)),
+        (get_reasoning, Settings(REASONING_PROVIDER="muse-spark-open", BASETEN_API_KEY=None)),
+        (get_segmentation, Settings(SEGMENTATION_PROVIDER="sam-3.1", MODEL_API_KEY=None)),
     ]:
         with pytest.raises(ModelError) as ei:
             call(s)
@@ -96,9 +96,9 @@ def test_unknown_provider_name_is_misconfigured() -> None:
 
 def test_contributor_model_id_rejected() -> None:
     for call, s in [
-        (get_reasoning, Settings(REASONING_PROVIDER="muse_spark", MODEL_API_KEY="k",
+        (get_reasoning, Settings(REASONING_PROVIDER="muse-spark", MODEL_API_KEY="k",
                                  MUSE_SPARK_MODEL="muse-spark-1.3-contributor")),
-        (get_reasoning, Settings(REASONING_PROVIDER="muse_spark_open", BASETEN_API_KEY="k",
+        (get_reasoning, Settings(REASONING_PROVIDER="muse-spark-open", BASETEN_API_KEY="k",
                                  BASETEN_MODEL="x-contributor")),
         (get_reasoning, Settings(MUSE_SPARK_MODEL="a-contributor")),
     ]:  # fmt: skip
@@ -113,3 +113,24 @@ def test_siglip2_without_extra_is_misconfigured(monkeypatch: pytest.MonkeyPatch)
         get_embedder(Settings(EMBEDDER="siglip2"))
     assert ei.value.code == "PROVIDER_MISCONFIGURED"
     assert "embed" in str(ei.value)
+
+
+def test_documented_selector_values_build_live_providers() -> None:
+    r = get_reasoning(Settings(REASONING_PROVIDER="muse-spark", MODEL_API_KEY="k"))
+    assert r.id == "muse_spark" and not r.is_mock
+    o = get_reasoning(Settings(REASONING_PROVIDER="muse-spark-open", BASETEN_API_KEY="k"))
+    assert o.id == "muse_spark_open"
+    seg = get_segmentation(Settings(SEGMENTATION_PROVIDER="sam-3.1", MODEL_API_KEY="k"))
+    assert seg.id == "sam31" and not seg.is_mock
+    # underscore aliases are accepted too
+    assert (
+        get_reasoning(Settings(REASONING_PROVIDER="muse_spark", MODEL_API_KEY="k")).id
+        == "muse_spark"
+    )
+
+
+def test_pe_core_selector_is_recognised(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(sys.modules, "torch", None)
+    with pytest.raises(ModelError) as ei:
+        get_embedder(Settings(EMBEDDER="pe-core"))
+    assert ei.value.code == "PROVIDER_MISCONFIGURED" and "embed" in str(ei.value)

@@ -26,18 +26,18 @@ def _need(value: str | None, name: str, who: str) -> str:
 def get_reasoning(settings: Settings) -> ReasoningProvider:
     check_model_id(settings.MUSE_SPARK_MODEL)
     check_model_id(settings.BASETEN_MODEL)
-    name = settings.REASONING_PROVIDER
+    name = settings.REASONING_PROVIDER.replace("_", "-")
     if name == "mock":
         return MockReasoningProvider()
-    if name == "muse_spark":
-        _need(settings.MODEL_API_KEY, "MODEL_API_KEY", "REASONING_PROVIDER=muse_spark")
+    if name == "muse-spark":
+        _need(settings.MODEL_API_KEY, "MODEL_API_KEY", "REASONING_PROVIDER=muse-spark")
         return MuseSparkProvider(
             get_client(settings), settings.MUSE_SPARK_MODEL,
             max_retries=settings.MODEL_MAX_RETRIES, timeout=settings.MODEL_TIMEOUT_S,
         )  # fmt: skip
-    if name == "muse_spark_open":
+    if name == "muse-spark-open":
         key = _need(
-            settings.BASETEN_API_KEY, "BASETEN_API_KEY", "REASONING_PROVIDER=muse_spark_open"
+            settings.BASETEN_API_KEY, "BASETEN_API_KEY", "REASONING_PROVIDER=muse-spark-open"
         )
         return MuseSparkOpenProvider(
             api_key=key, model=settings.BASETEN_MODEL,
@@ -47,11 +47,11 @@ def get_reasoning(settings: Settings) -> ReasoningProvider:
 
 
 def get_segmentation(settings: Settings) -> SegmentationProvider:
-    name = settings.SEGMENTATION_PROVIDER
+    name = settings.SEGMENTATION_PROVIDER.replace("_", "-").replace("sam-3.1", "sam-3.1")
     if name == "mock":
         return MockSegmentationProvider()
-    if name == "sam31":
-        _need(settings.MODEL_API_KEY, "MODEL_API_KEY", "SEGMENTATION_PROVIDER=sam31")
+    if name == "sam-3.1":
+        _need(settings.MODEL_API_KEY, "MODEL_API_KEY", "SEGMENTATION_PROVIDER=sam-3.1")
         return Sam31Provider(
             get_client(settings), max_retries=settings.MODEL_MAX_RETRIES,
             timeout=settings.MODEL_TIMEOUT_S,
@@ -60,11 +60,11 @@ def get_segmentation(settings: Settings) -> SegmentationProvider:
 
 
 def get_embedder(settings: Settings) -> Embedder:
-    name = settings.EMBEDDER
+    name = settings.EMBEDDER.replace("_", "-").replace("pe-core", "pe-core")
     if name == "mock":
         return MockEmbedder()
     if name == "siglip2":
         return SigLIP2Embedder()
-    if name == "pecore":
+    if name == "pe-core":
         return PECoreEmbedder()
     raise ModelError("PROVIDER_MISCONFIGURED", message=f"unknown EMBEDDER {name!r}")
