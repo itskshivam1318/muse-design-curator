@@ -48,7 +48,9 @@ def _check_args(
     if decision not in ("keep", "reject"):
         raise AppError(400, "INVALID_DECISION", "decision must be 'keep' or 'reject'")
     if decision == "keep" and (reason_code or note or mark_not_this):
-        raise AppError(400, "REASON_ONLY_ON_REJECT", "reason, note and mark_not_this apply to reject")
+        raise AppError(
+            400, "REASON_ONLY_ON_REJECT", "reason, note and mark_not_this apply to reject"
+        )
     if reason_code is not None and reason_code not in REJECT_REASONS:
         raise AppError(400, "INVALID_REASON_CODE", "Unknown reason code", REJECT_REASONS)
     if note is not None and len(note) > NOTE_MAX:
@@ -165,8 +167,11 @@ def record_decision(
     cx = corpus_repo.get(session, cand.corpus_item_id)
     assert cx is not None
     wants_role = (
-        "counter_example" if decision == "reject" and mark_not_this
-        else "reference" if decision == "keep" else None
+        "counter_example"
+        if decision == "reject" and mark_not_this
+        else "reference"
+        if decision == "keep"
+        else None
     )
     item = _kept_item(session, candidate_id)
     created = False

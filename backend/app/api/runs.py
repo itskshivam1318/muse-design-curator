@@ -51,17 +51,25 @@ def candidate_view(session: Session, cand: RunCandidate, cx: CorpusItem) -> dict
         "id": cand.id,
         "corpus_item_id": cx.id,
         "image_url": image_url(cx.id),
-        "width": cx.width, "height": cx.height,
+        "width": cx.width,
+        "height": cx.height,
         "provenance": {
-            "credit": cx.attribution_text, "landing_url": cx.landing_url,
-            "license_code": cx.license_code, "creator_name": cx.creator_name,
+            "credit": cx.attribution_text,
+            "landing_url": cx.landing_url,
+            "license_code": cx.license_code,
+            "creator_name": cx.creator_name,
         },
         "state": cand.state,
         "rank": cand.rank,
         "scores": cand.scores_json,
         "checks": [
-            {"check": v.check, "attribute_key": v.attribute_key, "verdict": v.verdict,
-             "reason": v.reason, "evidence": v.evidence_json}
+            {
+                "check": v.check,
+                "attribute_key": v.attribute_key,
+                "verdict": v.verdict,
+                "reason": v.reason,
+                "evidence": v.evidence_json,
+            }
             for v in runs_repo.validations(session, cand.id)
         ],
         "observed_target_value": cand.observed_target_json,

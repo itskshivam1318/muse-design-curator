@@ -99,3 +99,20 @@ def test_cors_allows_extension_origin(client: TestClient, monkeypatch: pytest.Mo
 
     monkeypatch.setenv("EXTENSION_ORIGIN", "chrome-extension://abc")
     assert "chrome-extension://abc" in cors_origins()
+
+
+def test_code_locked_after_five_wrong_guesses(client: TestClient) -> None:
+    code = client.post("/api/extension/pair-code").json()["code"]
+    wrong = "000000" if code != "000000" else "111111"
+    for _ in range(extension.MAX_ATTEMPTS):
+        r = client.post("/api/extension/pair", json={"code": wrong})
+        assert r.json()["error"]["code"] == "PAIR_CODE_INVALID"
+    r = client.post("/api/extension/pair", json={"code": code})
+    assert r.status_code == 400 and r.json()["error"]["code"] == "PAIR_CODE_INVALID"
+
+
+def test_non_six_ascii_digits_rejected(client: TestClient) -> None:
+    client.post("/api/extension/pair-code")
+    for bad in ["é23456", "12345", "1234567", "abcdef", "١٢٣٤٥٦", ""]:
+        r = client.post("/api/extension/pair", json={"code": bad})
+        assert r.status_code == 400 and r.json()["error"]["code"] == "PAIR_CODE_INVALID"

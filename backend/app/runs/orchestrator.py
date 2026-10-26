@@ -312,4 +312,3 @@ def mark_stale(session: Session, run: VariationRun, now: datetime | None = None)
     _progress(session, run, "failed")
     session.commit()
     return True
-

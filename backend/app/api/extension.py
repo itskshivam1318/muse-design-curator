@@ -15,6 +15,7 @@ from app.errors import AppError
 router = APIRouter(prefix="/api/extension")
 
 CODE_TTL_S = 600
+MAX_ATTEMPTS = 5
 _lock = threading.Lock()
 _active: dict[str, Any] = {}  # single-user app: one pending code at a time
 
@@ -38,20 +39,30 @@ def pair_code() -> dict[str, str]:
     expires = _now() + CODE_TTL_S
     with _lock:
         _active.clear()
-        _active.update(code=code, expires=expires)
+        _active.update(code=code, expires=expires, attempts=0)
     return {"code": code, "expires_at": datetime.fromtimestamp(expires, UTC).isoformat()}
 
 
 @router.post("/pair")
 def pair(body: PairBody, session: SessionDep) -> dict[str, str]:
+    submitted = body.code.strip()
+    ok = False
     with _lock:
-        ok = (
-            bool(_active)
-            and _now() <= _active["expires"]
-            and secrets.compare_digest(_active["code"], body.code.strip())
-        )
-        if ok:
+        if _active and _now() > _active["expires"]:
             _active.clear()
+        if _active:
+            if (
+                len(submitted) == 6
+                and submitted.isascii()
+                and submitted.isdigit()
+                and secrets.compare_digest(_active["code"], submitted)
+            ):
+                ok = True
+                _active.clear()
+            else:
+                _active["attempts"] = _active.get("attempts", 0) + 1
+                if _active["attempts"] >= MAX_ATTEMPTS:
+                    _active.clear()
     if not ok:
         raise AppError(400, "PAIR_CODE_INVALID", "That code is wrong or has expired")
     token = secrets.token_urlsafe(32)
