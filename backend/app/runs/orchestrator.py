@@ -31,7 +31,7 @@ from app.errors import AppError
 from app.providers import get_reasoning, get_segmentation
 from app.providers.reliability import ModelError
 from app.retrieval.config import RANKING_CONFIG, RankingConfig
-from app.retrieval.filters import apply_exclusions, source_from_board_item
+from app.retrieval.filters import apply_exclusions, on_board_from_items, source_from_board_item
 from app.retrieval.pool import build_pool
 from app.retrieval.scores import Candidate, score_candidate
 from app.retrieval.select import select_diverse, shortlist
@@ -203,7 +203,8 @@ def _run(session: Session, run: VariationRun) -> None:
     profile = profiles_repo.latest(session, board.id)
     centroid = (profile.profile_json or {}).get("centroid") if profile else None
     pool = build_pool(session, board, item.embedding_json, centroid, cfg)
-    kept, excluded = apply_exclusions(list(pool), spec, source, cfg)
+    on_board = on_board_from_items(items_repo.list_active(session, board.id), item.id)
+    kept, excluded = apply_exclusions(list(pool), spec, source, cfg, on_board)
     cands = [score_candidate(p, spec, source_attrs, cfg) for p in kept]
     rows: dict[str, Any] = {}
     for ex in excluded:

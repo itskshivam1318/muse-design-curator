@@ -10,7 +10,7 @@ from app.db.models import CorpusItem
 from app.domain.kinds import EnumSpec, OrdinalSpec
 from app.domain.variation import ProtectedSpec, VariationRequest, VariationSpec
 from app.retrieval.config import RANKING_CONFIG as CFG
-from app.retrieval.filters import SourceItem, apply_exclusions
+from app.retrieval.filters import OnBoard, SourceItem, apply_exclusions
 from app.retrieval.pool import PoolItem
 from app.validation.comparators import AttrValue
 
@@ -170,3 +170,34 @@ def test_prefer_mode_does_not_apply_no_target_change(make) -> None:
     same = make({"t": AttrValue("a", 0.9, "extracted")})
     kept, _ = apply_exclusions([same], spec("prefer", ["b"]), SourceItem(), CFG)
     assert kept == [same]
+
+
+def test_excludes_corpus_item_already_on_the_board_by_corpus_item_id(make) -> None:
+    p = make()
+    ob = OnBoard(frozenset({p.item.id}), frozenset(), {p.item.id: "item_b1"})
+    kept, ex = apply_exclusions([p], spec(), SourceItem(), CFG, on_board=ob)
+    assert not kept and ex[0]["reason"] == "on_board"
+    assert ex[0]["detail"] == {"board_item_id": "item_b1"}
+
+
+def test_excludes_corpus_item_already_on_the_board_by_sha256(make) -> None:
+    p = make()
+    ob = OnBoard(frozenset(), frozenset({p.item.sha256}), {p.item.sha256: "item_b2"})
+    kept, ex = apply_exclusions([p], spec(), SourceItem(), CFG, on_board=ob)
+    assert not kept and ex[0]["reason"] == "on_board"
+    assert ex[0]["detail"] == {"board_item_id": "item_b2"}
+
+
+def test_removed_board_items_do_not_exclude(make) -> None:
+    p = make()
+    kept, ex = apply_exclusions([p], spec(), SourceItem(), CFG, on_board=OnBoard())
+    assert kept == [p] and not ex
+
+
+def test_source_exclusion_still_wins_over_on_board_for_the_source_item(make) -> None:
+    p = make()
+    ob = OnBoard(frozenset({p.item.id}), frozenset({p.item.sha256}))
+    _kept, ex = apply_exclusions(
+        [p], spec(), SourceItem(corpus_item_id=p.item.id), CFG, on_board=ob
+    )
+    assert ex[0]["reason"] == "source"

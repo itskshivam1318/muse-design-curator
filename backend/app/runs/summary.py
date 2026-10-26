@@ -13,7 +13,7 @@ from app.retrieval.config import RankingConfig
 
 SHORTFALL_ORDER = (
     "protected_changed", "target_not_met", "uncertain", "no_target_change", "avoided_value",
-    "duplicate_source", "duplicate_other", "provenance", "unusable", "no_candidates",
+    "on_board", "duplicate_source", "duplicate_other", "provenance", "unusable", "no_candidates",
 )  # fmt: skip
 
 
@@ -70,6 +70,8 @@ def summarize_run(session: Session, run: VariationRun, lens: LensSpec) -> dict[s
                 count["no_target_change"] += 1
             elif r == "avoided_value":
                 count["avoided_value"] += 1
+            elif r == "on_board":
+                count["on_board"] += 1
             elif r == "duplicate":
                 count["duplicate_source" if d.get("duplicate_of") == "source" else
                       "duplicate_other"] += 1  # fmt: skip
@@ -113,6 +115,7 @@ def summarize_run(session: Session, run: VariationRun, lens: LensSpec) -> dict[s
         ),
         "no_target_change": lambda n: f"{n} had the same {target_label} as your reference",
         "avoided_value": lambda n: f"{n} had a {target_label} you asked to avoid",
+        "on_board": lambda n: f"{n} are already on your board",
         "duplicate_source": lambda n: f"{n} near-duplicates of your reference",
         "duplicate_other": lambda n: f"{n} near-duplicates of other results",
         "provenance": lambda n: f"{n} licensed images were excluded for invalid provenance",

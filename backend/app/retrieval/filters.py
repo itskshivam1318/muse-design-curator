@@ -1,5 +1,6 @@
 """Ordered exclusions applied to the pool, each with a distinct reason and a plain detail."""
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -22,6 +23,34 @@ class SourceItem:
     corpus_item_id: str | None = None
     storage_path: str | None = None
     attrs: dict[str, AttrValue] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class OnBoard:
+    """Corpus ids and hashes of the board's active items (the source item left out).
+
+    `board_item_ids` maps either a corpus id or a sha256 to the matching board item id.
+    """
+
+    corpus_item_ids: frozenset[str] = frozenset()
+    sha256s: frozenset[str] = frozenset()
+    board_item_ids: Mapping[str, str] = field(default_factory=dict)
+
+
+def on_board_from_items(items: Iterable[Any], source_item_id: str | None = None) -> OnBoard:
+    ids: set[str] = set()
+    shas: set[str] = set()
+    owner: dict[str, str] = {}
+    for it in items:
+        if it.removed_at is not None or it.id == source_item_id:
+            continue
+        if it.corpus_item_id:
+            ids.add(it.corpus_item_id)
+            owner.setdefault(it.corpus_item_id, it.id)
+        if it.sha256:
+            shas.add(it.sha256)
+            owner.setdefault(it.sha256, it.id)
+    return OnBoard(frozenset(ids), frozenset(shas), owner)
 
 
 def source_from_board_item(
@@ -60,7 +89,11 @@ def _unusable(item: PoolItem) -> str | None:
 
 
 def apply_exclusions(
-    pool: list[PoolItem], spec: VariationSpec, source_item: SourceItem, cfg: RankingConfig
+    pool: list[PoolItem],
+    spec: VariationSpec,
+    source_item: SourceItem,
+    cfg: RankingConfig,
+    on_board: OnBoard | None = None,
 ) -> tuple[list[PoolItem], list[dict[str, Any]]]:
     kept: list[PoolItem] = []
     excluded: list[dict[str, Any]] = []
@@ -72,6 +105,10 @@ def apply_exclusions(
             source_item.corpus_item_id and c.id == source_item.corpus_item_id
         ):
             excluded.append(_exclude(p, "source", detail="same image as the source"))
+            continue
+        if on_board and (c.id in on_board.corpus_item_ids or c.sha256 in on_board.sha256s):
+            owner = on_board.board_item_ids.get(c.id) or on_board.board_item_ids.get(c.sha256 or "")
+            excluded.append(_exclude(p, "on_board", **({"board_item_id": owner} if owner else {})))
             continue
         if c.provenance_status == "invalid":
             excluded.append(_exclude(p, "provenance", issue=c.provenance_issue))

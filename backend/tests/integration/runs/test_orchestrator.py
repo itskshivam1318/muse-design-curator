@@ -249,3 +249,35 @@ def test_stale_run_marked_interrupted(world) -> None:  # type: ignore[no-untyped
     later = datetime.now(UTC) + timedelta(minutes=6)
     assert orchestrator.mark_stale(s, fresh, later)
     assert (fresh.status, fresh.error_code) == ("failed", "RUN_INTERRUPTED")
+
+
+def _active_board(world: dict[str, Any], board: str) -> list[BoardItem]:
+    from app.db.repos import items as items_repo
+
+    return items_repo.list_active(world["session"], board)
+
+
+def test_run_never_returns_an_image_that_is_already_an_active_item_on_the_board(world) -> None:  # type: ignore[no-untyped-def]
+    run = make_run(world, world["watch"])
+    assert run.status == "completed", run.error_code
+    s = world["session"]
+    active = _active_board(world, world["watch"])
+    ids = {b.corpus_item_id for b in active if b.corpus_item_id}
+    shas = {b.sha256 for b in active if b.sha256}
+    assert ids
+    for c in (c for c in cands(world, run) if c.rank):
+        assert c.corpus_item_id not in ids
+        assert s.get(CorpusItem, c.corpus_item_id).sha256 not in shas
+    assert any(c.excluded_reason == "on_board" for c in cands(world, run))
+
+
+def test_summary_counts_on_board_exclusions_and_the_shortfall_message_mentions_them(  # type: ignore[no-untyped-def]
+    world,
+) -> None:
+    run = make_run(world, world["watch"])
+    summ = run.summary_json
+    n = summ["excluded"]["on_board"]
+    assert n > 0
+    if summ["returned"] < 6:
+        row = next(r for r in summ["shortfall"] if r["code"] == "on_board")
+        assert row["count"] == n and row["message"] == f"{n} are already on your board"
