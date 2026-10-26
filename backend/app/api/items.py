@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 
-from app import events, jobs
+from app import demo, events, jobs
 from app.api.boards import require_board
 from app.api.deps import SessionDep
 from app.api.extension import require_extension_token
@@ -25,6 +25,7 @@ from app.ingest.sniff import sniff_image, sniff_video
 from app.ingest.video import choose_frame, ingest_video
 
 router = APIRouter(prefix="/api")
+POSITION_FIELDS = frozenset({"x", "y", "w", "h", "z"})
 MAX_FILES = 50
 
 
@@ -156,9 +157,13 @@ def _require_item(session: Session, item_id: str) -> BoardItem:
 
 
 @router.patch("/items/{item_id}")
-def patch_item(item_id: str, body: ItemPatch, session: SessionDep) -> dict[str, Any]:
+def patch_item(
+    item_id: str, body: ItemPatch, request: Request, session: SessionDep
+) -> dict[str, Any]:
     item = _require_item(session, item_id)
     fields = body.model_dump(exclude_none=True)
+    if fields.keys() - POSITION_FIELDS:
+        demo.require_unlocked(request)  # role and chosen frame are edits; moving is open
     frame_id = fields.pop("chosen_frame_id", None)
     if frame_id is not None:
         choose_frame(session, item_id, frame_id)

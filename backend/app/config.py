@@ -37,6 +37,15 @@ class Settings(BaseSettings):
     EXTENSION_ORIGIN: str | None = None
     PUBLIC_APP_URL: str = "http://localhost:5173"
     JOBS_SYNC: bool = False
+    # Public demo guard (see app/demo.py); off by default
+    DEMO_MODE: bool = False
+    DEMO_PASSCODE: str | None = None
+    DEMO_SECRET: str | None = None
+    DEMO_RUNS_PER_IP_PER_HOUR: int = 10
+    DEMO_RUNS_PER_DAY: int = 150
+    DEMO_TRUST_PROXY: bool = False  # take the client IP from X-Forwarded-For's first hop
+    # Built frontend to serve at / (the single-container deploy); unset in development
+    FRONTEND_DIST: str | None = None
 
 
 def get_settings() -> Settings:

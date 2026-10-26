@@ -1,14 +1,17 @@
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, Request
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.orm import Session
 
+from app import demo
 from app.api.boards import require_board
 from app.api.deps import SessionDep
+from app.config import get_settings
 from app.db.models import CorpusItem, RunCandidate, VariationRun
 from app.db.repos import corpus as corpus_repo
 from app.db.repos import decisions as decisions_repo
+from app.db.repos import idempotency as idem_repo
 from app.db.repos import lenses as lenses_repo
 from app.db.repos import runs as runs_repo
 from app.domain.lens import LensSpec
@@ -26,11 +29,25 @@ NEEDS_REVIEW_MAX = 6
 def create_run(
     board_id: str,
     body: VariationRequest,
+    request: Request,
     session: SessionDep,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> JSONResponse:
     require_board(session, board_id)
+    settings = get_settings()
+    counted = settings.DEMO_MODE and not (
+        idempotency_key and idem_repo.get(session, idempotency_key) is not None
+    )
+    if counted:
+        # the same request again within 24 h replays the finished run: no new model calls
+        done = demo.replayable_run(session, board_id, body)
+        if done is not None:
+            return JSONResponse({"run_id": done.id, "replayed": True}, status_code=200)
+        ip = demo.client_ip(request, settings)
+        demo.check_run_limits(ip, settings)
     run = orchestrator.create_run(session, board_id, body, idempotency_key or None)
+    if counted:
+        demo.record_run(ip)
     return JSONResponse({"run_id": run.id}, status_code=202)
 
 
