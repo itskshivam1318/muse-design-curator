@@ -1,0 +1,15 @@
+.superpowers/
+.remember/
+data/
+node_modules/
+dist/
+.venv/
+__pycache__/
+*.pyc
+.env
+.DS_Store
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+playwright-report/
+test-results/
