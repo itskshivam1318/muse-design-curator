@@ -22,8 +22,11 @@ lint:
 	cd frontend && npm run lint && npx tsc -b
 	cd extension && npm run lint
 
+# Offline: Playwright starts a MOCK-provider backend on a fresh data/e2e, a fixture site and the
+# frontend (see frontend/playwright.config.ts), then tears them down. Never touches .env providers.
 e2e:
-	@echo "e2e: not implemented yet (Task 14)"
+	cd extension && npm run build
+	cd frontend && npx playwright test
 
 seed:
 	cd backend && uv run python scripts/seed.py --fixtures
