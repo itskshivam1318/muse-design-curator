@@ -1517,3 +1517,7 @@ button.onboarding-step:hover {
   padding: 0;
   min-width: 0;
 }
+.add-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
