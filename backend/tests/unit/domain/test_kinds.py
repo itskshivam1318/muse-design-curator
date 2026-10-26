@@ -53,3 +53,24 @@ def test_shape_requires_part_and_experimental() -> None:
 def test_key_must_be_snake_case() -> None:
     with pytest.raises(ValidationError):
         adapter.validate_python({**BASE, "key": "Bad Key", "kind": "boolean"})
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"kind": "enum", "vocabulary": ["Round", "b"]},
+        {"kind": "enum", "vocabulary": ["a b"]},
+        {"kind": "ordinal", "scale": ["low", "Mid", "high"]},
+        {"kind": "ordinal", "scale": ["low", "mid-way", "high"]},
+    ],
+)
+def test_vocabulary_and_scale_must_be_canonical_snake(extra: dict) -> None:
+    with pytest.raises(ValidationError):
+        adapter.validate_python({**BASE, **extra})
+
+
+def test_curated_lenses_still_validate() -> None:
+    from app.domain.lens import LENS_DIR, load_curated_lens
+
+    for p in LENS_DIR.glob("*.json"):
+        assert load_curated_lens(p.stem, True) is not None

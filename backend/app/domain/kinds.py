@@ -6,6 +6,16 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 SNAKE_RE = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)*$")
 
 
+TOKEN_RE = re.compile(r"^[a-z0-9]+(_[a-z0-9]+)*$")
+
+
+def check_token(value: str) -> str:
+    """Canonical vocabulary token: lowercase letters, digits and underscores."""
+    if not TOKEN_RE.match(value):
+        raise ValueError(f"{value!r} is not a canonical snake_case token")
+    return value
+
+
 def check_snake(value: str) -> str:
     if not SNAKE_RE.match(value):
         raise ValueError(f"{value!r} is not snake_case")
@@ -29,6 +39,13 @@ class EnumSpec(_Base):
     vocabulary: list[str] | None = None
     open_vocabulary: bool = False
 
+    @field_validator("vocabulary")
+    @classmethod
+    def _vocab_canonical(cls, v: list[str] | None) -> list[str] | None:
+        for entry in v or []:
+            check_token(entry)
+        return v
+
     @model_validator(mode="after")
     def _vocab_required(self) -> "EnumSpec":
         if not self.open_vocabulary and not self.vocabulary:
@@ -43,6 +60,8 @@ class OrdinalSpec(_Base):
     @field_validator("scale")
     @classmethod
     def _unique(cls, v: list[str]) -> list[str]:
+        for step in v:
+            check_token(step)
         if len(set(v)) != len(v):
             raise ValueError("scale steps must be unique")
         return v
