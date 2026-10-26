@@ -82,7 +82,7 @@ def test_kept_item_carries_licence_credit_and_parent_link(client, world) -> None
     assert row.origin == "candidate" and row.rights_status == "licensed"
     assert row.role == "reference" and row.parse_status == "completed"
     assert row.corpus_item_id == top["corpus_item_id"] and row.parent_item_id == parent.id
-    assert (row.x, row.y) == (parent.x + parent.w + 24, parent.y)
+    assert row.x >= parent.x + parent.w + 24  # beside the parent, clear of other items
     assert max(row.w, row.h) <= 320 and row.storage_path and row.thumb_path
     assert row.page_url == top["provenance"]["landing_url"]
     attrs = {a.key: a for a in attrs_repo.for_item(s, row.id)}
@@ -90,6 +90,22 @@ def test_kept_item_carries_licence_credit_and_parent_link(client, world) -> None
     assert "dial_color" in attrs and attrs["dial_color"].value_json is not None
     got = client.get(f"/api/runs/{rid}").json()["results"][0]
     assert got["decision"]["item_id"] == row.id
+
+
+def test_second_kept_item_does_not_overlap_the_first(client, world) -> None:  # type: ignore[no-untyped-def]
+    rid, _top = setup(client, world)
+    results = client.get(f"/api/runs/{rid}").json()["results"]
+    ids = [decide(client, rid, r["id"], decision="keep").json()["item"]["id"] for r in results[:3]]
+    s = world["session"]
+    s.expire_all()
+    rows = [s.get(BoardItem, i) for i in ids]
+    assert len(rows) == 3
+    for a in rows:
+        for b in rows:
+            if a is not b:
+                assert (
+                    a.x + a.w <= b.x or b.x + b.w <= a.x or a.y + a.h <= b.y or b.y + b.h <= a.y
+                )
 
 
 def test_keep_then_reject_appends_history_latest_is_reject(client, world) -> None:  # type: ignore[no-untyped-def]

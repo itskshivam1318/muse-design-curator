@@ -93,6 +93,36 @@ def _copy_attributes(session: Session, item: BoardItem, cx: CorpusItem, lens: Le
         )  # fmt: skip
 
 
+Rect = tuple[float, float, float, float]  # x, y, w, h
+PLACE_MARGIN = 16.0
+PLACE_ROWS = 5  # rows tried per column; 4 columns make the 20 tries
+PLACE_COLUMNS = 4
+
+
+def _hits(a: Rect, b: Rect, margin: float) -> bool:
+    return (
+        a[0] < b[0] + b[2] + margin and b[0] < a[0] + a[2] + margin
+        and a[1] < b[1] + b[3] + margin and b[1] < a[1] + a[3] + margin
+    )  # fmt: skip
+
+
+def place_beside(
+    parent: Rect, size: tuple[float, float], occupied: list[Rect]
+) -> tuple[float, float]:
+    """First free spot right of `parent`: down the column, then the next column to the right.
+
+    Falls back to the first position when all 20 tries collide.
+    """
+    w, h = size
+    x0, y0 = parent[0] + parent[2] + GAP, parent[1]
+    for col in range(PLACE_COLUMNS):
+        for row in range(PLACE_ROWS):
+            x, y = x0 + col * (w + GAP), y0 + row * (h + GAP)
+            if not any(_hits((x, y, w, h), r, PLACE_MARGIN) for r in occupied):
+                return x, y
+    return x0, y0
+
+
 def _create_item(
     session: Session, run: VariationRun, cx: CorpusItem, role: str
 ) -> tuple[BoardItem, bool]:
@@ -115,7 +145,11 @@ def _create_item(
     parent = items_repo.get(session, run.source_item_id)
     active = items_repo.list_active(session, run.board_id)
     z = max((i.z for i in active), default=-1) + 1
-    x, y = (parent.x + parent.w + GAP, parent.y) if parent is not None else (0.0, 0.0)
+    if parent is not None:
+        taken = [(i.x, i.y, i.w, i.h) for i in active]
+        x, y = place_beside((parent.x, parent.y, parent.w, parent.h), (w, h), taken)
+    else:
+        x, y = 0.0, 0.0
     item = items_repo.create(
         session, board_id=run.board_id, kind="image", origin="candidate", sha256=sha,
         storage_path=storage, thumb_path=thumb, mime=mime, width=img.size[0],
