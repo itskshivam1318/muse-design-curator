@@ -1,5 +1,6 @@
-import { type Ref, useId, useImperativeHandle, useRef, useState } from 'react'
+import { type ReactNode, type Ref, useId, useImperativeHandle, useRef, useState } from 'react'
 import type { Board, BoardProfile } from '../api'
+import { LOCKED_TITLE } from '../demo'
 import { humanize } from '../format'
 import { DOMAINS, inferredDomain, toSnake } from './domains'
 
@@ -11,6 +12,10 @@ interface Props {
   profile: BoardProfile | undefined
   onSave: (patch: Partial<Pick<Board, 'title' | 'context' | 'domain'>>) => Promise<unknown>
   ref?: Ref<ContextBarHandle>
+  /** Public demo, not unlocked: title and brief are read-only. */
+  locked?: boolean
+  /** Rendered under the brief (the demo badge). */
+  badge?: ReactNode
 }
 
 export interface ContextBarHandle {
@@ -27,7 +32,7 @@ function domainState(board: Board) {
 }
 
 /** Floating top-left: board title (inline edit) and its one-line brief; expands to edit the brief and domain. */
-export function ContextBar({ board, profile, onSave, ref }: Props) {
+export function ContextBar({ board, profile, onSave, ref, locked = false, badge }: Props) {
   const [titleDraft, setTitleDraft] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [context, setContext] = useState(board.context)
@@ -49,6 +54,7 @@ export function ContextBar({ board, profile, onSave, ref }: Props) {
 
   useImperativeHandle(ref, () => ({
     focus: () => {
+      if (locked) return
       if (!open) openEditor()
       titleRef.current?.focus()
       titleRef.current?.select()
@@ -67,7 +73,7 @@ export function ContextBar({ board, profile, onSave, ref }: Props) {
   const commitTitle = () => {
     const t = title.trim()
     setTitleDraft(null)
-    if (t && t !== board.title) void save({ title: t })
+    if (!locked && t && t !== board.title) void save({ title: t })
   }
 
   const commitDetails = async () => {
@@ -89,6 +95,8 @@ export function ContextBar({ board, profile, onSave, ref }: Props) {
         ref={titleRef}
         className="context-title"
         value={title}
+        readOnly={locked}
+        title={locked ? LOCKED_TITLE : undefined}
         onChange={(e) => setTitleDraft(e.target.value)}
         onBlur={commitTitle}
         onKeyDown={(e) => {
@@ -104,6 +112,8 @@ export function ContextBar({ board, profile, onSave, ref }: Props) {
           type="button"
           className="context-summary"
           aria-expanded={false}
+          disabled={locked}
+          title={locked ? LOCKED_TITLE : undefined}
           onClick={openEditor}
         >
           <span className={board.context ? '' : 'is-placeholder'}>
@@ -166,6 +176,7 @@ export function ContextBar({ board, profile, onSave, ref }: Props) {
           {error}
         </p>
       )}
+      {badge}
     </section>
   )
 }

@@ -24,7 +24,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-function setup() {
+function setup(locked = false) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   qc.setQueryData(keys.items('b1'), [makeItem({ id: 'i1', board_id: 'b1' })])
   qc.setQueryData(keys.attributes('i1'), makeAttrs({ case_finish: { status: 'edited', source: 'user' } }))
@@ -34,13 +34,23 @@ function setup() {
   })
   render(
     <QueryClientProvider client={qc}>
-      <InspectPanel boardId="b1" itemId="i1" onClose={() => {}} />
+      <InspectPanel boardId="b1" itemId="i1" onClose={() => {}} locked={locked} />
     </QueryClientProvider>,
   )
   return qc
 }
 
 describe('InspectPanel', () => {
+  it('locked demo: values are shown but every editor is disabled', () => {
+    setup(true)
+    expect(screen.getByText('Demo — read-only: unlock to edit values.')).toBeTruthy()
+    const row = screen.getByRole('group', { name: 'Legibility' })
+    const controls = row.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, select, button[role="radio"]')
+    expect(controls.length).toBeGreaterThan(0)
+    for (const c of controls) expect(c.matches(':disabled')).toBe(true)
+    expect((screen.getByRole('button', { name: 'Vary Legibility' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
   it('groups rows by category with status chips and board signal marks', () => {
     setup()
     expect(screen.getByRole('heading', { name: 'Dial' })).toBeTruthy()

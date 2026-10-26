@@ -49,6 +49,8 @@ interface Props {
   onOpenPanel: (kind: 'vary' | 'inspect' | 'compare', itemId: string, params?: Record<string, unknown>) => void
   spaceDown: boolean
   ref?: Ref<CanvasHandle>
+  /** Public demo, not unlocked: no file drops, role changes, removal or frame choice. */
+  readOnly?: boolean
 }
 
 type KEvent<E extends Event = MouseEvent> = Konva.KonvaEventObject<E>
@@ -73,7 +75,7 @@ function useSize(el: HTMLElement | null) {
   return size
 }
 
-export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref }: Props) {
+export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref, readOnly = false }: Props) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const size = useSize(container)
   const stageRef = useRef<Konva.Stage>(null)
@@ -298,14 +300,14 @@ export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref }:
     }
   }, [])
   const onDragOver = (e: ReactDragEvent) => {
-    if (!Array.from(e.dataTransfer.types).includes('Files')) return
+    if (readOnly || !Array.from(e.dataTransfer.types).includes('Files')) return
     e.preventDefault()
     e.dataTransfer.dropEffect = 'copy'
     setDropActive(true)
   }
   const onDrop = (e: ReactDragEvent) => {
     setDropActive(false)
-    if (!container || e.dataTransfer.files.length === 0) return
+    if (readOnly || !container || e.dataTransfer.files.length === 0) return
     e.preventDefault()
     handleDrop(
       {
@@ -439,6 +441,7 @@ export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref }:
           }
           onNotThis={() => actions.toggleNotThis(selectedItems)}
           onRemove={() => actions.remove(selected)}
+          readOnly={readOnly}
         />
       )}
       {stripItem && !dragging && (
@@ -446,6 +449,7 @@ export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref }:
           itemId={stripItem.id}
           screen={toScreenBounds(itemBounds(positioned(stripItem)), view)}
           onChoose={(frameId) => void actions.chooseFrame(stripItem.id, frameId)}
+          readOnly={readOnly}
           onEnter={() => {
             overStrip.current = true
             clearTimeout(stripTimer.current)

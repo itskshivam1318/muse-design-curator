@@ -63,7 +63,7 @@ function blank(spec: AttributeSpec): ItemAttribute {
 }
 
 /** Every attribute of one item, grouped by category, each with an editor for its kind. */
-export function InspectPanel({ boardId, itemId, onClose }: DrawerPanelProps) {
+export function InspectPanel({ boardId, itemId, onClose, locked = false }: DrawerPanelProps) {
   const q = useAttributes(itemId)
   const item = useItems(boardId).data?.find((i) => i.id === itemId)
   const profile = useProfile(boardId).data?.profile
@@ -99,6 +99,7 @@ export function InspectPanel({ boardId, itemId, onClose }: DrawerPanelProps) {
           <p className="small muted">Values were read by the mock provider, not a real model.</p>
         )}
         {q.isSuccess && !lens && <p className="muted">This board has no confirmed lens yet.</p>}
+        {locked && <p className="note small">Demo — read-only: unlock to edit values.</p>}
         {error && (
           <p className="error small" role="alert">
             {error}
@@ -115,6 +116,7 @@ export function InspectPanel({ boardId, itemId, onClose }: DrawerPanelProps) {
                   spec={spec}
                   rec={rec}
                   signal={isBoardSignal(spec.key, profile)}
+                  locked={locked}
                   onPatch={(body) => void send(spec.key, body)}
                 />
               ))}
@@ -132,12 +134,14 @@ function AttributeRow({
   rec,
   signal,
   onPatch,
+  locked = false,
 }: {
   itemId: string
   spec: AttributeSpec
   rec: ItemAttribute
   signal: boolean
   onPatch: (body: Patch) => void
+  locked?: boolean
 }) {
   const chip = STATUS_CHIP[rec.status]
   const labelId = `attr-${spec.key}`
@@ -155,14 +159,17 @@ function AttributeRow({
             role="switch"
             aria-label={`Use ${spec.label}`}
             checked={rec.enabled}
+            disabled={locked}
             onChange={(e) => onPatch({ action: e.target.checked ? 'enable' : 'disable' })}
           />
         </label>
       </div>
-      <Editor spec={spec} rec={rec} onValue={(value) => value !== rec.value && onPatch({ value })} />
+      <fieldset className="plain-fieldset" disabled={locked}>
+        <Editor spec={spec} rec={rec} onValue={(value) => value !== rec.value && onPatch({ value })} />
+      </fieldset>
       <div className="attr-actions">
         {rec.value !== null && rec.status !== 'confirmed' && rec.status !== 'edited' && (
-          <button type="button" className="btn-quiet small" aria-label={`Confirm ${spec.label}`} onClick={() => onPatch({ action: 'confirm' })}>
+          <button type="button" className="btn-quiet small" aria-label={`Confirm ${spec.label}`} disabled={locked} onClick={() => onPatch({ action: 'confirm' })}>
             Confirm
           </button>
         )}

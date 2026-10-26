@@ -19,10 +19,12 @@ import { usePrefersReducedMotion } from '../canvas/palette'
 import { handlePaste, readClipboard } from '../canvas/paste'
 import { selection, selectionStore, useSelection } from '../canvas/selection'
 import { useAddFlow } from '../canvas/useAddFlow'
+import { useDemo } from '../demo'
 import { connectBoardEvents } from '../events'
 import { AddMenu } from '../panels/AddMenu'
 import { BoardSignals } from '../panels/BoardSignals'
 import { ContextBar, type ContextBarHandle } from '../panels/ContextBar'
+import { DemoBadge } from '../panels/DemoBadge'
 import { LensReview } from '../panels/LensReview'
 import { Onboarding } from '../panels/Onboarding'
 import { hasDrawerPanel } from '../panels/drawerRegistry'
@@ -57,6 +59,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
   const [live, setLive] = useState<'connecting' | 'open' | 'reconnecting'>('connecting')
   const { drawer } = useSelection()
   const reduced = usePrefersReducedMotion()
+  const { locked } = useDemo()
   const [flight, setFlight] = useState<{ id: string; src: string; from: Bounds; to: Bounds } | null>(null)
 
   useEffect(() => {
@@ -98,7 +101,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
   // ⌘V: images upload, URLs become link items, both at the viewport centre
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
-      if (isTyping(e.target)) return
+      if (locked || isTyping(e.target)) return
       const data = readClipboard(e.clipboardData)
       if (data.files.length === 0 && !data.text) return
       e.preventDefault()
@@ -106,7 +109,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
     }
     window.addEventListener('paste', onPaste)
     return () => window.removeEventListener('paste', onPaste)
-  }, [addLink, center, uploadAt])
+  }, [addLink, center, uploadAt, locked])
 
   // keyboard shortcuts
   const itemsData = items.data
@@ -139,11 +142,11 @@ export function BoardPage({ boardId }: { boardId: string }) {
           if (chosen.length === 1) openPanel('inspect', chosen[0].id)
           break
         case 'x':
-          actions.toggleNotThis(chosen)
+          if (!locked) actions.toggleNotThis(chosen)
           break
         case 'delete':
         case 'backspace':
-          if (chosen.length) {
+          if (chosen.length && !locked) {
             e.preventDefault()
             actions.remove(chosen.map((i) => i.id))
           }
@@ -169,7 +172,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
       window.removeEventListener('keyup', onUp)
       window.removeEventListener('blur', onBlur)
     }
-  }, [actions, itemsData, openPanel])
+  }, [actions, itemsData, openPanel, locked])
 
   const saveBoard = async (patch: Partial<Pick<Board, 'title' | 'context' | 'domain'>>) => {
     const next = await patchBoard(boardId, patch)
@@ -207,6 +210,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
         onFiles={uploadAt}
         onOpenPanel={openPanel}
         spaceDown={spaceDown}
+        readOnly={locked}
       />
 
       <div className="float top-left">
@@ -220,6 +224,8 @@ export function BoardPage({ boardId }: { boardId: string }) {
             profile={profile.data?.profile}
             onSave={saveBoard}
             ref={contextBar}
+            locked={locked}
+            badge={<DemoBadge />}
           />
         )}
       </div>
@@ -235,7 +241,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
       <div className="float right">
         {!drawer && <BoardSignals boardId={boardId} />}
         {proposed && (
-          <LensReview key={proposed.id} lens={proposed} onConfirm={onConfirmLens} onDismiss={() => setDismissedLens(proposed.id)} />
+          <LensReview key={proposed.id} lens={proposed} onConfirm={onConfirmLens} onDismiss={() => setDismissedLens(proposed.id)} locked={locked} />
         )}
       </div>
       <RightDrawer boardId={boardId} />
@@ -257,6 +263,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
           onOpenChange={setAddOpen}
           onFiles={(files) => uploadAt(files, center(), 'upload')}
           onLink={(url) => addLink(url, center())}
+          disabled={locked}
         />
       </div>
 

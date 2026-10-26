@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useState } from 'react'
 import { createBoard, keys, listBoards } from '../api'
+import { useDemo } from '../demo'
 import { Link } from '../Link'
+import { DemoBadge } from '../panels/DemoBadge'
 import { navigate } from '../router'
 
 function when(iso: string): string {
@@ -14,6 +16,7 @@ export function BoardsPage() {
   const boards = useQuery({ queryKey: keys.boards, queryFn: listBoards })
   const [title, setTitle] = useState('')
   const id = useId()
+  const { locked } = useDemo()
   const create = useMutation({
     mutationFn: (t: string) => createBoard({ title: t }),
     onSuccess: (b) => {
@@ -28,22 +31,24 @@ export function BoardsPage() {
       <header>
         <p className="eyebrow">Design Language Engine</p>
         <h1>Boards</h1>
+        <DemoBadge />
       </header>
       <form
         className="new-board"
         onSubmit={(e) => {
           e.preventDefault()
           const t = title.trim()
-          if (t) create.mutate(t)
+          if (t && !locked) create.mutate(t)
         }}
       >
         <label htmlFor={id}>New board</label>
         <div className="row">
-          <input id={id} value={title} placeholder="e.g. Field watch, warmer" onChange={(e) => setTitle(e.target.value)} />
-          <button type="submit" className="btn" disabled={!title.trim() || create.isPending}>
+          <input id={id} value={title} disabled={locked} placeholder="e.g. Field watch, warmer" onChange={(e) => setTitle(e.target.value)} />
+          <button type="submit" className="btn" disabled={locked || !title.trim() || create.isPending}>
             Create board
           </button>
         </div>
+        {locked && <p className="muted small">This is a read-only demo: open a board below, or unlock to create one.</p>}
         {create.isError && (
           <p className="error small" role="alert">
             {create.error.message}

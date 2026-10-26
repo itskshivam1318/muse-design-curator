@@ -9,12 +9,14 @@ interface Props {
   onOpenChange: (open: boolean) => void
   onFiles: (files: File[]) => void
   onLink: (url: string) => Promise<unknown>
+  /** Public demo, not unlocked: nothing can be added. */
+  disabled?: boolean
 }
 
 type Pane = 'menu' | 'link' | 'extension'
 
 /** The + button: upload, paste a link, or pair the Chrome extension. */
-export function AddMenu({ open, onOpenChange, onFiles, onLink }: Props) {
+export function AddMenu({ open, onOpenChange, onFiles, onLink, disabled = false }: Props) {
   const fileRef = useRef<HTMLInputElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   return (
@@ -34,14 +36,16 @@ export function AddMenu({ open, onOpenChange, onFiles, onLink }: Props) {
           onOpenChange(false)
         }}
       />
-      {open && (
+      {open && !disabled && (
         <AddPanel rootRef={rootRef} onClose={() => onOpenChange(false)} onUpload={() => fileRef.current?.click()} onLink={onLink} />
       )}
       <button
         type="button"
         className="add-btn"
         aria-label="Add to board"
-        aria-expanded={open}
+        title={disabled ? 'Demo — read-only. Unlock to add references.' : undefined}
+        disabled={disabled}
+        aria-expanded={open && !disabled}
         aria-haspopup="dialog"
         onClick={() => onOpenChange(!open)}
       >

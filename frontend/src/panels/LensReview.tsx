@@ -8,10 +8,12 @@ interface Props {
   /** No spec: confirm the proposal as it is. With a spec: save the edited lens. */
   onConfirm: (spec?: LensSpec) => Promise<unknown>
   onDismiss: () => void
+  /** Public demo, not unlocked: the lens can be read but not edited or confirmed. */
+  locked?: boolean
 }
 
 /** Review a proposed lens: its parts (with SAM hit-rate notes) and attributes by kind. */
-export function LensReview({ lens, onConfirm, onDismiss }: Props) {
+export function LensReview({ lens, onConfirm, onDismiss, locked = false }: Props) {
   const [editing, setEditing] = useState<LensSpec | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -131,10 +133,10 @@ export function LensReview({ lens, onConfirm, onDismiss }: Props) {
             <button type="button" className="btn-quiet" onClick={onDismiss}>
               Later
             </button>
-            <button type="button" className="btn-quiet" onClick={() => setEditing(structuredClone(lens.spec))}>
+            <button type="button" className="btn-quiet" disabled={locked} onClick={() => setEditing(structuredClone(lens.spec))}>
               Edit
             </button>
-            <button type="button" className="btn" disabled={busy} onClick={() => void run()}>
+            <button type="button" className="btn" disabled={busy || locked} onClick={() => void run()}>
               Confirm
             </button>
           </>

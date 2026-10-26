@@ -1480,3 +1480,40 @@ button.onboarding-step:hover {
     animation: none !important;
   }
 }
+
+/* ---- public demo guard ---- */
+.demo-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.chip.is-demo {
+  background: transparent;
+  border: 1px solid var(--rule);
+  color: inherit;
+}
+.unlock-dialog {
+  position: fixed;
+  left: 50%;
+  top: 30%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: grid;
+  gap: 8px;
+  width: min(360px, calc(100vw - 32px));
+  padding: 16px;
+  border-radius: 10px;
+  background: var(--raised);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+}
+.unlock-dialog h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.plain-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}

@@ -11,6 +11,8 @@ export interface DrawerPanelProps {
   itemId: string
   params?: Record<string, unknown>
   onClose: () => void
+  /** Public demo, not unlocked: panels show values but disable their editors. */
+  locked?: boolean
 }
 
 const panels = new Map<string, ComponentType<DrawerPanelProps>>()

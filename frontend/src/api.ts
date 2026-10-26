@@ -330,7 +330,13 @@ export class ApiError extends Error {
   }
 }
 
+export interface DemoStatus {
+  demo_mode: boolean
+  unlocked: boolean
+}
+
 export const keys = {
+  demo: ['demo'] as const,
   boards: ['boards'] as const,
   board: (id: string) => ['board', id] as const,
   items: (id: string) => ['items', id] as const,
@@ -415,6 +421,11 @@ export const confirmLens = (boardId: string, spec?: LensSpec) =>
     method: 'PUT',
     ...(spec ? { json: spec } : {}),
   })
+export const getDemoStatus = () => request<DemoStatus>('/demo/status')
+/** Sets the HttpOnly unlock cookie on success; 401 for a wrong passcode, 429 after too many. */
+export const unlockDemo = (passcode: string) =>
+  request<DemoStatus>('/demo/unlock', { method: 'POST', json: { passcode } })
+
 export const pairCode = () =>
   request<{ code: string; expires_at: string }>('/extension/pair-code', { method: 'POST' })
 

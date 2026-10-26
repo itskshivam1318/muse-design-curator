@@ -11,6 +11,8 @@ interface Props {
   onCompare: () => void
   onNotThis: () => void
   onRemove: () => void
+  /** Public demo, not unlocked: role changes and removal are disabled. */
+  readOnly?: boolean
 }
 
 export const COMPARE_MAX = 4
@@ -19,7 +21,7 @@ export const COMPARE_MAX = 4
  * Floating toolbar above the selection. One item: Vary · Inspect · Not this · Open source · Remove.
  * Several: Compare (2–4) · Not this · Remove. Panel buttons appear once their panels are registered.
  */
-export function ItemToolbar({ items, screen, onVary, onInspect, onCompare, onNotThis, onRemove }: Props) {
+export function ItemToolbar({ items, screen, onVary, onInspect, onCompare, onNotThis, onRemove, readOnly = false }: Props) {
   const single = items.length === 1 ? items[0] : null
   const source = single ? (safeExternalUrl(single.page_url) ?? safeExternalUrl(single.source_url)) : null
   const allNot = items.every((i) => i.role === 'counter_example')
@@ -48,7 +50,7 @@ export function ItemToolbar({ items, screen, onVary, onInspect, onCompare, onNot
           Compare
         </button>
       )}
-      <button type="button" onClick={onNotThis} aria-keyshortcuts="X" aria-pressed={allNot}>
+      <button type="button" onClick={onNotThis} aria-keyshortcuts="X" aria-pressed={allNot} disabled={readOnly}>
         {allNot ? 'Back to reference' : 'Not this'}
       </button>
       {source && (
@@ -56,7 +58,7 @@ export function ItemToolbar({ items, screen, onVary, onInspect, onCompare, onNot
           Open source ↗
         </a>
       )}
-      <button type="button" onClick={onRemove} aria-keyshortcuts="Delete">
+      <button type="button" onClick={onRemove} aria-keyshortcuts="Delete" disabled={readOnly}>
         Remove
       </button>
     </div>
