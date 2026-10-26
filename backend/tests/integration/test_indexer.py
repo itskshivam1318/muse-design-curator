@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import jobs
+from app.corpus import hashing
 from app.corpus.indexer import embeddings_path, index_corpus
 from app.db.models import Board, BoardItem, CorpusAttribute, CorpusItem
 
@@ -46,8 +47,7 @@ def test_fixture_corpus_indexes_with_mock_providers_quickly(
     assert time.perf_counter() - started < 10
     rows = by_source_id(session)
     assert len(rows) == 37
-    assert sum(r.indexed for r in reports) == 32
-    assert sum(r.duplicates for r in reports) == 2
+    assert sum(r.indexed for r in reports) == 34  # 32 + byte-identical + resized copies
     assert sum(r.invalid for r in reports) == 2
     assert sum(r.failed for r in reports) == 1
 
@@ -57,12 +57,29 @@ def test_fixture_corpus_indexes_with_mock_providers_quickly(
     assert ok.local_path and (data_dir / ok.local_path).is_file()
     assert session.scalars(select(CorpusAttribute).where(CorpusAttribute.item_id == ok.id)).first()
 
-    assert rows["watch_reserved"].provenance_issue == "LICENSE_NOT_ALLOWED"
-    assert rows["watch_by_nocreator"].provenance_issue == "MISSING_CREATOR"
-    for sid in ("watch_reserved", "watch_by_nocreator", "watch_dup", "watch_02_small"):
-        assert rows[sid].indexing_status == "failed" and rows[sid].embedding_row is None
-    assert rows["watch_01"].indexing_status == "indexed"  # the original wins, the copy loses
-    assert rows["watch_02"].indexing_status == "indexed"
+    # no rights, no processing: pending + invalid, never fetched, no embedding, no attributes
+    for sid, issue in (
+        ("watch_reserved", "LICENSE_NOT_ALLOWED"),
+        ("watch_by_nocreator", "MISSING_CREATOR"),
+    ):
+        r = rows[sid]
+        assert (r.indexing_status, r.provenance_status, r.provenance_issue) == (
+            "pending", "invalid", issue,
+        )  # fmt: skip
+        assert r.embedding_row is None and r.sha256 is None and r.local_path is None
+        assert not session.scalars(
+            select(CorpusAttribute).where(CorpusAttribute.item_id == r.id)
+        ).first()
+
+    # duplicates are not dropped at index time: retrieval decides at query time
+    orig, dup, small = rows["watch_01"], rows["watch_dup"], rows["watch_02_small"]
+    for r in (orig, dup, small, rows["watch_02"]):
+        assert r.indexing_status == "indexed" and r.embedding_row is not None and r.dhash
+    assert dup.sha256 == orig.sha256 and dup.embedding_row != orig.embedding_row
+    assert hashing.hamming(small.dhash or "", rows["watch_02"].dhash or "") <= 6
+
+    missing = rows["watch_missing"]
+    assert (missing.indexing_status, missing.provenance_status) == ("failed", "valid")
 
 
 def test_embeddings_are_normalised_float32_one_row_per_indexed_item(indexed: Session) -> None:
@@ -70,8 +87,8 @@ def test_embeddings_are_normalised_float32_one_row_per_indexed_item(indexed: Ses
     rows = [
         c.embedding_row for c in indexed.scalars(select(CorpusItem)) if c.embedding_row is not None
     ]
-    assert m.dtype == np.float32 and m.shape[0] == len(rows) == 32
-    assert sorted(rows) == list(range(32))
+    assert m.dtype == np.float32 and m.shape[0] == len(rows) == 34
+    assert sorted(rows) == list(range(34))
     assert np.allclose(np.linalg.norm(m, axis=1), 1.0, atol=1e-5)
     assert not list(embeddings_path().parent.glob("*.tmp"))
 
@@ -84,7 +101,7 @@ def test_indexer_is_idempotent(session: Session, data_dir: Path) -> None:
     second = [index_corpus(session, d, MANIFEST) for d in DOMAINS]
     assert counts(session) == before
     assert np.array_equal(np.load(embeddings_path()), matrix)
-    assert sum(r.skipped for r in second) == 32
+    assert sum(r.skipped for r in second) == 34
     assert sum(r.indexed for r in second) == 0
 
 
@@ -122,6 +139,8 @@ def test_changed_license_in_manifest_updates_provenance(
     shutil.copytree(FIXTURES, tmp_path / "c")
     man = tmp_path / "c" / "manifest.jsonl"
     index_corpus(session, "ui", man)
+    erow = by_source_id(session)["ui_01"].embedding_row
+    assert erow is not None
     rows = [json.loads(ln) for ln in man.read_text().splitlines()]
     for r in rows:
         if r["source_id"] == "ui_01":
@@ -130,7 +149,7 @@ def test_changed_license_in_manifest_updates_provenance(
     index_corpus(session, "ui", man)
     row = by_source_id(session)["ui_01"]
     assert (row.provenance_status, row.provenance_issue) == ("invalid", "LICENSE_NOT_ALLOWED")
-    assert row.indexing_status == "failed"
+    assert row.indexing_status == "indexed" and row.embedding_row == erow  # row kept, just excluded
 
 
 def _seed_module() -> Any:

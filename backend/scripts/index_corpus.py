@@ -33,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
         session.close()
     print(
         f"indexed {report.indexed}, unchanged {report.skipped}, failed {report.failed}, "
-        f"invalid provenance {report.invalid}, duplicates {report.duplicates}"
+        f"invalid provenance (not processed) {report.invalid}"
     )
     for item_id, why in report.reasons.items():
         print(f"  {item_id}: {why}")

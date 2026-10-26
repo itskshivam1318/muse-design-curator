@@ -36,7 +36,6 @@ from app.storage import files
 
 log = logging.getLogger(__name__)
 
-NEAR_DUPLICATE_MAX_DISTANCE = 4  # dHash bits; a resized copy of an image stays within 6
 BATCH_SIZE = 25
 
 
@@ -46,7 +45,6 @@ class IndexReport:
     skipped: int = 0
     failed: int = 0
     invalid: int = 0
-    duplicates: int = 0
     reasons: dict[str, str] = field(default_factory=dict)
 
 
@@ -170,24 +168,6 @@ def index_corpus(
     top = session.scalar(select(func.max(CorpusItem.embedding_row)))
     store = EmbeddingStore(embeddings_path(), keep_rows=0 if top is None else top + 1)
     embedder = get_embedder(get_settings())
-    known: dict[str, tuple[str | None, str | None]] = {
-        r.id: (r.sha256, r.dhash)
-        for r in session.scalars(
-            select(CorpusItem).where(
-                CorpusItem.domain == domain, CorpusItem.indexing_status == "indexed"
-            )
-        )
-    }
-
-    def duplicate_of(own_id: str, sha: str, dh: str) -> str | None:
-        for other, (osha, odh) in known.items():
-            if other == own_id:
-                continue
-            if osha == sha:
-                return other
-            if odh and hashing.hamming(odh, dh) <= NEAR_DUPLICATE_MAX_DISTANCE:
-                return other
-        return None
 
     def checkpoint() -> None:
         store.flush()  # rows on disk before the commit that points at them
@@ -205,8 +185,8 @@ def index_corpus(
         else:
             corpus_repo.update(session, item.id, **fields)
         if status == "invalid":
-            corpus_repo.update(session, item.id, indexing_status="failed")
-            known.pop(item.id, None)
+            # no rights, no processing: never fetched or embedded. An item that was already
+            # indexed keeps its row; retrieval excludes it through provenance_status.
             report.invalid += 1
             report.reasons[item.id] = issue or "INVALID"
             continue
@@ -227,13 +207,6 @@ def index_corpus(
                 width, height = im.size
                 thumb_src = im.copy()
             sha, dh = hashing.sha256(data), hashing.dhash(data)
-            twin = duplicate_of(item.id, sha, dh)
-            if twin is not None:
-                corpus_repo.update(session, item.id, indexing_status="failed", sha256=sha, dhash=dh)
-                known.pop(item.id, None)
-                report.duplicates += 1
-                report.reasons[item.id] = f"DUPLICATE_OF {twin}"
-                continue
             _mime, ext = sniff_image(data)  # type: ignore[misc]
             local = files.save_original(data, sha, ext)
             files.save_thumb(thumb_src, sha)
@@ -245,12 +218,10 @@ def index_corpus(
                 session, item.id, sha256=sha, dhash=dh, width=width, height=height,
                 local_path=local, embedding_row=erow, indexing_status="indexed",
             )  # fmt: skip
-            known[item.id] = (sha, dh)
             report.indexed += 1
         except Exception as exc:  # noqa: BLE001 - one bad item must not stop the run
             log.warning("indexing %s failed: %s", item.id, exc)
             corpus_repo.update(session, item.id, indexing_status="failed")
-            known.pop(item.id, None)
             report.failed += 1
             report.reasons[item.id] = type(exc).__name__ if not str(exc) else str(exc)
         done += 1

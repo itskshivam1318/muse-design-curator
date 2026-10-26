@@ -75,9 +75,14 @@ def seed_board(session: Session, spec: dict[str, str], limit: int = ITEMS_PER_BO
             CorpusItem.provenance_status == "valid", CorpusItem.local_path.is_not(None),
         )
         .order_by(CorpusItem.id)
-        .limit(limit)
     )  # fmt: skip
-    for i, cx in enumerate(session.scalars(q)):
+    chosen: list[CorpusItem] = []
+    shas: set[str] = set()
+    for cx in session.scalars(q):  # one board holds a given image once
+        if cx.sha256 and cx.sha256 not in shas and len(chosen) < limit:
+            shas.add(cx.sha256)
+            chosen.append(cx)
+    for i, cx in enumerate(chosen):
         path = files.abs_path(cx.local_path or "")
         data = path.read_bytes()
         mime, _ext = sniff_image(data) or ("image/jpeg", "jpg")
@@ -111,7 +116,7 @@ def index_all(session: Session, fixtures: bool) -> None:
             continue
         report = index_corpus(session, domain, manifest)
         print(f"{domain}: {report.indexed} indexed, {report.skipped} unchanged, "
-              f"{report.failed + report.invalid + report.duplicates} excluded")  # fmt: skip
+              f"{report.failed} failed, {report.invalid} invalid")  # fmt: skip
 
 
 def main(argv: list[str] | None = None) -> int:
