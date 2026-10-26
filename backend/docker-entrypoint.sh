@@ -8,5 +8,6 @@ if [ "$DATA_DIR" != "$BAKED" ] && [ ! -f "$DATA_DIR/dle.sqlite" ] && [ -f "$BAKE
   cp -a "$BAKED/." "$DATA_DIR/"
   echo "data: copied the baked snapshot into $DATA_DIR"
 fi
-exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-7860}" \
-  --proxy-headers --forwarded-allow-ips='*'
+# No --proxy-headers: the client address is only taken from X-Forwarded-For by the demo guard,
+# and only as configured (DEMO_TRUST_PROXY, DEMO_PROXY_HOPS), so clients cannot spoof it.
+exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-7860}"

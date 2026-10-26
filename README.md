@@ -147,7 +147,7 @@ cd extension && npm test    # extension unit tests (vitest)
 make e2e            # Playwright: builds the extension, runs the full demo flow and the extension flow
 ```
 
-Current counts (2026-10-27): backend **429 passed**, frontend **83 passed**, extension **13 passed**,
+Current counts (2026-10-27): backend **432 passed**, frontend **83 passed**, extension **13 passed**,
 e2e **2 passed** (`demo-flow.spec.ts`, `extension.spec.ts`).
 
 `make e2e` is fully offline and ignores the providers in `.env`: Playwright starts a mock-provider
@@ -200,7 +200,8 @@ For a public instance, set `DEMO_MODE=1`. Visitors can then look but not add:
 | `DEMO_MODE` | variable | `1` |
 | `DEMO_PASSCODE` | secret | the passcode you hand out |
 | `DEMO_SECRET` | secret | random, e.g. `python3 -c "import secrets; print(secrets.token_hex(32))"` |
-| `DEMO_TRUST_PROXY` | variable | `1` on a Space (client address from the first `X-Forwarded-For` hop); leave `0` when nothing proxies the app |
+| `DEMO_TRUST_PROXY` | variable | `1` on a Space: the client address comes from `X-Forwarded-For`; leave `0` when nothing proxies the app (the connection address is used and the header ignored) |
+| `DEMO_PROXY_HOPS` | variable | `1` on a Space: how many entries from the right of `X-Forwarded-For` the client address is (those are appended by trusted proxies; leftmost entries are client-supplied and never used) |
 
 The API refuses to start with `DEMO_MODE=1` and no `DEMO_PASSCODE` or `DEMO_SECRET`.
 
@@ -269,7 +270,7 @@ git add -A && git commit -m "Deploy Design Language Engine" && git push
 |---|---|---|
 | `MODEL_API_KEY` | secret | your Meta key (`LLM_…`) |
 | `DEMO_PASSCODE`, `DEMO_SECRET` | secret | see [Public demo guard](#public-demo-guard) |
-| `DEMO_MODE`, `DEMO_TRUST_PROXY` | variable | `1`, `1` |
+| `DEMO_MODE`, `DEMO_TRUST_PROXY`, `DEMO_PROXY_HOPS` | variable | `1`, `1`, `1` |
 | `REASONING_PROVIDER`, `SEGMENTATION_PROVIDER`, `EMBEDDER` | variable | `muse-spark`, `sam-3.1`, `siglip2` |
 | `CONTACT_EMAIL` | variable | your email (link-unfurl User-Agent) |
 

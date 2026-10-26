@@ -43,7 +43,10 @@ class Settings(BaseSettings):
     DEMO_SECRET: str | None = None
     DEMO_RUNS_PER_IP_PER_HOUR: int = 10
     DEMO_RUNS_PER_DAY: int = 150
-    DEMO_TRUST_PROXY: bool = False  # take the client IP from X-Forwarded-For's first hop
+    # Behind a proxy: take the client IP from X-Forwarded-For, DEMO_PROXY_HOPS entries from the right
+    # (the entries trusted proxies appended; the leftmost ones are client-controlled)
+    DEMO_TRUST_PROXY: bool = False
+    DEMO_PROXY_HOPS: int = 1
     # Built frontend to serve at / (the single-container deploy); unset in development
     FRONTEND_DIST: str | None = None
 

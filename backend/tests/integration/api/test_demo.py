@@ -220,3 +220,50 @@ def test_demo_off_changes_nothing(client: TestClient, monkeypatch: pytest.Monkey
     assert client.get("/api/demo/status").json() == {"demo_mode": False, "unlocked": True}
     assert client.post("/api/boards", json={"title": "x"}).status_code == 201
     assert unlock(client).json()["error"]["code"] == "DEMO_MODE_OFF"
+
+
+def _req(xff: str | None) -> Any:
+    from starlette.requests import Request
+
+    headers = [(b"x-forwarded-for", xff.encode())] if xff is not None else []
+    return Request({"type": "http", "headers": headers, "client": ("9.9.9.9", 1),
+                    "method": "GET", "path": "/"})  # fmt: skip
+
+
+def test_client_ip_uses_rightmost_trusted_hop_not_spoofable_left() -> None:
+    trust = Settings(DEMO_TRUST_PROXY=True, DEMO_PROXY_HOPS=1)
+    real = demo.client_ip(_req("203.0.113.7"), trust)
+    assert real == "203.0.113.7"
+    # a client prepending fake addresses does not change the limiter key
+    for fake in ("1.1.1.1", "1.1.1.1, 2.2.2.2", "evil"):
+        assert demo.client_ip(_req(f"{fake}, 203.0.113.7"), trust) == real
+    two = Settings(DEMO_TRUST_PROXY=True, DEMO_PROXY_HOPS=2)
+    assert demo.client_ip(_req("6.6.6.6, 203.0.113.7, 10.0.0.2"), two) == "203.0.113.7"
+    assert demo.client_ip(_req("10.0.0.2"), two) == "9.9.9.9"  # too few hops: connection address
+    assert demo.client_ip(_req(None), trust) == "9.9.9.9"
+    off = Settings(DEMO_TRUST_PROXY=False)
+    assert demo.client_ip(_req("1.1.1.1, 203.0.113.7"), off) == "9.9.9.9"
+
+
+def test_spoofed_xff_cannot_dodge_the_run_limit(
+    client: TestClient, world: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DEMO_RUNS_PER_IP_PER_HOUR", "1")
+    url = f"/api/boards/{world['watch']}/runs"
+    for trust, mode in (("1", "avoid"), ("0", "prefer")):
+        demo.reset()
+        monkeypatch.setenv("DEMO_TRUST_PROXY", trust)
+        first = client.post(url, json=_run_body(world, mode=mode, target_values=["red"]),
+                            headers={"X-Forwarded-For": "1.1.1.1, 203.0.113.7"})  # fmt: skip
+        assert first.status_code == 202
+        r = client.post(url, json=_run_body(world, mode=mode, target_values=["blue"]),
+                        headers={"X-Forwarded-For": "8.8.8.8, 203.0.113.7"})  # fmt: skip
+        assert r.status_code == 429, trust
+
+
+def test_non_ascii_cookie_is_locked_not_500(client: TestClient) -> None:
+    assert not demo.cookie_valid(SECRET, "4102444800.é" + "a" * 63)
+    raw = [(b"cookie", "dle_demo=4102444800.éé".encode())]  # raw UTF-8 bytes, not ASCII
+    status = client.get("/api/demo/status", headers=raw)
+    assert status.json() == {"demo_mode": True, "unlocked": False}
+    assert locked(client.post("/api/boards", json={"title": "x"}, headers=raw))

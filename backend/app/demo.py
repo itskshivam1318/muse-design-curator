@@ -72,7 +72,9 @@ def cookie_valid(secret: str, value: str | None) -> bool:
         expiry = int(raw_expiry)
     except ValueError:
         return False
-    return hmac.compare_digest(sig, _sign(secret, expiry)) and expiry > now()
+    # bytes, not str: compare_digest raises TypeError on non-ASCII str (a crafted cookie)
+    expected = _sign(secret, expiry).encode()
+    return hmac.compare_digest(sig.encode("utf-8", "surrogateescape"), expected) and expiry > now()
 
 
 def is_unlocked(request: Request, settings: Settings | None = None) -> bool:
@@ -95,10 +97,11 @@ def write_is_open(method: str, path: str) -> bool:
 
 def client_ip(request: Request, settings: Settings | None = None) -> str:
     st = settings or get_settings()
-    if st.DEMO_TRUST_PROXY:
-        first = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-        if first:
-            return first
+    if st.DEMO_TRUST_PROXY and st.DEMO_PROXY_HOPS >= 1:
+        hops = [h.strip() for h in request.headers.get("x-forwarded-for", "").split(",")]
+        hops = [h for h in hops if h]
+        if len(hops) >= st.DEMO_PROXY_HOPS:
+            return hops[-st.DEMO_PROXY_HOPS]
     return request.client.host if request.client else "unknown"
 
 
