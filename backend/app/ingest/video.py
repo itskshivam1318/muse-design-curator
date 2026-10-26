@@ -1,4 +1,5 @@
 import io
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -26,14 +27,20 @@ DUP_HAMMING = 6
 
 @dataclass
 class Sampled:
+    """Lightweight per-sample record; no pixel data beyond a 32x32 grey is retained."""
+
+    idx: int
     t: float
-    image: Image.Image
     grey: np.ndarray
+    dhash: int
     score: float
 
 
+MAX_DIM = 8192
+
+
 def probe(data: bytes) -> tuple[float, int, int]:
-    """(duration_s, width, height) via PyAV."""
+    """(duration_s, width, height) via PyAV. Duration is 0.0 when the container omits it."""
     try:
         c: Any
         with av.open(io.BytesIO(data)) as c:
@@ -43,32 +50,58 @@ def probe(data: bytes) -> tuple[float, int, int]:
             dur = c.duration / av.time_base if c.duration else 0.0
             if not dur and vs.duration and vs.time_base:
                 dur = float(vs.duration * vs.time_base)
-            return dur, vs.codec_context.width, vs.codec_context.height
+            w, h = vs.codec_context.width, vs.codec_context.height
+            if max(w, h) > MAX_DIM:
+                raise AppError(400, "VIDEO_DIMENSIONS_TOO_LARGE", f"Video exceeds {MAX_DIM}px")
+            return dur, w, h
     except AppError:
         raise
     except Exception as e:
         raise AppError(400, "INVALID_VIDEO", "Video could not be decoded") from e
 
 
-def sample_frames(data: bytes) -> list[Sampled]:
-    out: list[Sampled] = []
+def _iter_samples(data: bytes) -> Iterator[tuple[int, float, Any]]:
+    """Yield (index, time_s, av frame) at ~SAMPLE_FPS; stops with VIDEO_TOO_LONG past the limit."""
+    limit = get_settings().MAX_VIDEO_SECONDS
     next_t = 0.0
-    prev: np.ndarray | None = None
+    idx = 0
     c: Any
     with av.open(io.BytesIO(data)) as c:
         vs = next(s for s in c.streams if s.type == "video")
         frame: Any
         for frame in c.decode(vs):
             t = float(frame.time) if frame.time is not None else next_t
+            if t > limit:
+                raise AppError(400, "VIDEO_TOO_LONG", f"Video exceeds {limit}s")
             if t + 1e-6 < next_t:
                 continue
             next_t = t + 1.0 / SAMPLE_FPS
-            img = frame.to_image()
-            grey = np.asarray(img.convert("L").resize((32, 32)), dtype=np.float32)
-            score = 255.0 if prev is None else float(np.abs(grey - prev).mean())
-            prev = grey
-            out.append(Sampled(t, img, grey, score))
+            yield idx, t, frame
+            idx += 1
+
+
+def sample_frames(data: bytes) -> list[Sampled]:
+    """Pass 1: scores and hashes only, streaming; nothing full-resolution is kept."""
+    out: list[Sampled] = []
+    prev: np.ndarray | None = None
+    for idx, t, frame in _iter_samples(data):
+        img = frame.to_image()
+        grey = np.asarray(img.convert("L").resize((32, 32)), dtype=np.float32)
+        score = 255.0 if prev is None else float(np.abs(grey - prev).mean())
+        prev = grey
+        out.append(Sampled(idx, t, grey, dhash(img), score))
     return out
+
+
+def extract_frames(data: bytes, wanted: set[int]) -> dict[int, Image.Image]:
+    """Pass 2: re-decode and keep only the selected samples."""
+    found: dict[int, Image.Image] = {}
+    for idx, _t, frame in _iter_samples(data):
+        if idx in wanted:
+            found[idx] = frame.to_image()
+            if len(found) == len(wanted):
+                break
+    return found
 
 
 def select_keyframes(samples: list[Sampled]) -> list[Sampled]:
@@ -84,7 +117,7 @@ def select_keyframes(samples: list[Sampled]) -> list[Sampled]:
             continue
         if any(abs(s.t - p.t) < MIN_GAP_S for p in picked):
             continue
-        h = dhash(s.image)
+        h = s.dhash
         if any(hamming(h, o) <= DUP_HAMMING for o in hashes):
             continue
         picked.append(s)
@@ -109,6 +142,9 @@ def ingest_video(session: Session, board_id: str, data: bytes, meta: ItemMeta) -
         return IngestResult(dup, deduped=True)
     try:
         keyframes = select_keyframes(sample_frames(data))
+        images = extract_frames(data, {k.idx for k in keyframes})
+    except AppError:
+        raise
     except Exception as e:
         raise AppError(400, "INVALID_VIDEO", "Video could not be decoded") from e
     storage = files.save_original(data, sha, ext)
@@ -117,7 +153,9 @@ def ingest_video(session: Session, board_id: str, data: bytes, meta: ItemMeta) -
         session, board_id, meta, kind="video", sha256=sha, storage_path=storage, mime=mime,
         width=width, height=height, w=w, h=h,
     )  # fmt: skip
-    attach_frames(session, item.id, [(s.image, int(s.t * 1000)) for s in keyframes])
+    attach_frames(
+        session, item.id, [(images[s.idx], int(s.t * 1000)) for s in keyframes if s.idx in images]
+    )
     if not keyframes:
         items_repo.update(
             session, item.id, parse_status="failed", parse_error_code="NO_USABLE_FRAMES"

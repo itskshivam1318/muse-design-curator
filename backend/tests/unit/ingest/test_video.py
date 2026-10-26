@@ -71,3 +71,39 @@ def test_dhash_identical_zero_distance() -> None:
     im = Image.linear_gradient("L").rotate(90)  # horizontal gradient
     assert hamming(dhash(im), dhash(im.copy())) == 0
     assert hamming(dhash(im), dhash(im.transpose(Image.Transpose.FLIP_LEFT_RIGHT))) > 6
+
+
+def test_unknown_duration_still_capped_by_timestamp(
+    session: Session, data_dir, board_id: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.ingest import video
+
+    monkeypatch.setattr(video, "probe", lambda data: (0.0, 320, 240))  # container omits duration
+    monkeypatch.setenv("MAX_VIDEO_SECONDS", "2")
+    with pytest.raises(AppError) as e:
+        ingest_video(session, board_id, video_bytes([0, 1, 2]), ItemMeta())
+    assert e.value.code == "VIDEO_TOO_LONG"
+
+
+def test_sampling_retains_no_pixels_and_extracts_only_selected() -> None:
+    from app.ingest import video
+
+    data = video_bytes([0, 1, 2, 3, 0, 1, 2, 3], seg_seconds=1.5)
+    samples = video.sample_frames(data)
+    assert len(samples) > 6
+    assert all(not hasattr(s, "image") for s in samples)
+    picked = video.select_keyframes(samples)
+    assert len(picked) <= 6
+    images = video.extract_frames(data, {p.idx for p in picked})
+    assert set(images) == {p.idx for p in picked} and len(images) <= 6
+
+
+def test_oversized_dimensions_rejected(
+    session: Session, data_dir, board_id: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.ingest import video
+
+    monkeypatch.setattr(video, "MAX_DIM", 100)
+    with pytest.raises(AppError) as e:
+        ingest_video(session, board_id, video_bytes([0]), ItemMeta())
+    assert e.value.code == "VIDEO_DIMENSIONS_TOO_LARGE"

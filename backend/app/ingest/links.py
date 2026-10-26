@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlsplit
 
+import httpcore
 import httpx
 from selectolax.lexbor import LexborHTMLParser as HTMLParser
 from sqlalchemy.orm import Session
@@ -36,7 +37,7 @@ def _blocked(ip: str) -> bool:
 
 
 def check_url(url: str) -> str:
-    """Validate scheme and that every resolved address is public. Returns the host."""
+    """Validate scheme and that every resolved address is public. Returns a vetted IP."""
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.hostname:
         raise AppError(400, "INVALID_URL", "Only http(s) URLs are accepted")
@@ -50,7 +51,35 @@ def check_url(url: str) -> str:
             raise AppError(400, "LINK_UNREACHABLE", "Host could not be resolved") from e
     if not ips or any(_blocked(ip) for ip in ips):
         raise AppError(400, "SSRF_BLOCKED", "URL points to a disallowed address")
-    return host
+    return ips[0]
+
+
+class _PinnedBackend(httpcore.NetworkBackend):
+    """Connects to the vetted IP; TLS SNI/verification still use the URL hostname."""
+
+    def __init__(self, ip: str, inner: httpcore.NetworkBackend) -> None:
+        self._ip = ip
+        self._inner = inner
+
+    def connect_tcp(
+        self, host: str, port: int, timeout=None, local_address=None, socket_options=None
+    ):  # type: ignore[no-untyped-def]
+        return self._inner.connect_tcp(
+            self._ip, port, timeout=timeout, local_address=local_address,
+            socket_options=socket_options,
+        )  # fmt: skip
+
+    def connect_unix_socket(self, *a, **k):  # type: ignore[no-untyped-def]
+        raise httpcore.ConnectError("unix sockets are not allowed")
+
+    def sleep(self, seconds: float) -> None:
+        self._inner.sleep(seconds)
+
+
+def _pinned_transport(ip: str) -> httpx.HTTPTransport:
+    t = httpx.HTTPTransport()
+    t._pool._network_backend = _PinnedBackend(ip, t._pool._network_backend)  # type: ignore[attr-defined]
+    return t
 
 
 def user_agent() -> str:
@@ -63,9 +92,12 @@ def fetch(url: str, max_bytes: int = MAX_PAGE_BYTES) -> tuple[str, str, bytes]:
     timeout = get_settings().LINK_FETCH_TIMEOUT_S
     headers = {"User-Agent": user_agent()}
     current = url
-    with httpx.Client(follow_redirects=False, timeout=timeout, headers=headers) as client:
-        for _hop in range(MAX_REDIRECTS + 1):
-            check_url(current)
+    for _hop in range(MAX_REDIRECTS + 1):
+        ip = check_url(current)
+        with httpx.Client(
+            follow_redirects=False, timeout=timeout, headers=headers, trust_env=False,
+            transport=_pinned_transport(ip),
+        ) as client:  # fmt: skip
             try:
                 with client.stream("GET", current) as r:
                     if r.status_code in (301, 302, 303, 307, 308):

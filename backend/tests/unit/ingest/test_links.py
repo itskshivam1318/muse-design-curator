@@ -122,3 +122,38 @@ def test_parse_page_variants() -> None:
         b'<meta property="og:video" content="https://v.test/a.mp4">', "https://x.test"
     )
     assert p3.video == "https://v.test/a.mp4" and p3.image is None
+
+
+def test_connection_pinned_to_vetted_ip(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpcore
+
+    answers = iter([["93.184.216.34"], ["10.0.0.5"], ["10.0.0.5"]])
+    monkeypatch.setattr(links, "resolver", lambda host: next(answers))
+    seen: list[str] = []
+
+    def fake_connect(self, host, port, timeout=None, local_address=None, socket_options=None):  # type: ignore[no-untyped-def]
+        seen.append(host)
+        raise httpcore.ConnectError("stop")
+
+    monkeypatch.setattr(httpcore.SyncBackend, "connect_tcp", fake_connect)
+    with pytest.raises(AppError) as e:
+        links.fetch("https://rebind.example/")
+    assert e.value.code == "LINK_FETCH_FAILED"
+    assert seen == ["93.184.216.34"]
+
+
+def test_proxy_env_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
+    import httpcore
+
+    monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:9")
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:9")
+    seen: list[str] = []
+
+    def fake_connect(self, host, port, timeout=None, local_address=None, socket_options=None):  # type: ignore[no-untyped-def]
+        seen.append(f"{host}:{port}")
+        raise httpcore.ConnectError("stop")
+
+    monkeypatch.setattr(httpcore.SyncBackend, "connect_tcp", fake_connect)
+    with pytest.raises(AppError):
+        links.fetch("http://example.com/")
+    assert seen == ["93.184.216.34:80"]
