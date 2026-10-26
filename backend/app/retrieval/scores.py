@@ -1,6 +1,7 @@
 """Separate target / preservation / relevance scores for a candidate (all 0..1)."""
 
 from dataclasses import dataclass, replace
+from typing import Literal
 
 import numpy as np
 
@@ -71,28 +72,42 @@ def _explore(spec: AttributeSpec, src: AttrValue, cand: AttrValue, cfg: RankingC
     return _partial(cand)
 
 
-def _nudge(spec: VariationSpec, cand: AttrValue, cfg: RankingConfig) -> float:
+def nudge_position(
+    spec: VariationSpec, cand: AttrValue, cfg: RankingConfig
+) -> Literal["exact", "beyond", "near", "off"] | None:
+    """Where a candidate sits against the requested nudge; None when it cannot be judged.
+
+    exact: the requested position; beyond: one step further in the same direction;
+    near: a number within twice the tolerance of the request; off: anywhere else.
+    """
     tspec, nudge = spec.target_spec, spec.request.nudge
     if nudge is None or spec.target_value is None or cand.value is None:
-        return 0.0
+        return None
     sign = 1 if nudge.direction == "more" else -1
     if tspec.kind == "ordinal":
         scale = tspec.scale  # type: ignore[union-attr]
         if not cand.reliable(cfg) or cand.value not in scale or spec.target_value not in scale:
-            return 0.0
+            return None
         base, idx = scale.index(str(spec.target_value)), scale.index(str(cand.value))
         want = base + sign * nudge.steps
-        return 1.0 if idx == want else 0.5 if idx == want + sign else 0.0
+        return "exact" if idx == want else "beyond" if idx == want + sign else "off"
     if tspec.kind == "number":
         if isinstance(cand.value, bool | str) or isinstance(spec.target_value, bool | str):
-            return 0.0
+            return None
         tol, step = tspec.tolerance, number_step(tspec)  # type: ignore[union-attr]
         want_v = float(spec.target_value) + sign * nudge.steps * step
         x = float(cand.value)
         if abs(x - want_v) <= tol:
-            return 1.0
-        return 0.5 if abs(x - (want_v + sign * step)) <= tol else 0.0
-    return 0.0
+            return "exact"
+        if abs(x - (want_v + sign * step)) <= tol:
+            return "beyond"
+        return "near" if abs(x - want_v) <= 2 * tol else "off"
+    return None
+
+
+def _nudge(spec: VariationSpec, cand: AttrValue, cfg: RankingConfig) -> float:
+    pos = nudge_position(spec, cand, cfg)
+    return 1.0 if pos == "exact" else 0.5 if pos == "beyond" else 0.0
 
 
 def target_score(

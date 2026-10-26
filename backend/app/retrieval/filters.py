@@ -20,6 +20,7 @@ class SourceItem:
     sha256: str | None = None
     dhash: str | None = None
     corpus_item_id: str | None = None
+    storage_path: str | None = None
     attrs: dict[str, AttrValue] = field(default_factory=dict)
 
 
@@ -38,7 +39,9 @@ def source_from_board_item(
                 ValueError,
             ):  # unreadable image: duplicates are then judged by sha256 only
                 dh = None
-    return SourceItem(board_item.sha256, dh, board_item.corpus_item_id, attrs or {})
+    return SourceItem(
+        board_item.sha256, dh, board_item.corpus_item_id, board_item.storage_path, attrs or {}
+    )
 
 
 def _exclude(item: PoolItem, reason: str, **detail: Any) -> dict[str, Any]:
