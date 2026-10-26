@@ -147,7 +147,7 @@ cd extension && npm test    # extension unit tests (vitest)
 make e2e            # Playwright: builds the extension, runs the full demo flow and the extension flow
 ```
 
-Current counts (2026-10-27): backend **414 passed**, frontend **76 passed**, extension **13 passed**,
+Current counts (2026-10-27): backend **429 passed**, frontend **83 passed**, extension **13 passed**,
 e2e **2 passed** (`demo-flow.spec.ts`, `extension.spec.ts`).
 
 `make e2e` is fully offline and ignores the providers in `.env`: Playwright starts a mock-provider
@@ -158,10 +158,10 @@ in `frontend/` once.
 
 ## Known limitations
 
-- **No authentication.** The API has no accounts, and the extension pairing endpoints
-  (`/api/extension/pair-code`, `/pair`) are unauthenticated: any process that can reach the API can mint
-  a code and pair. This is a local, single-user tool. Before exposing an instance publicly, add real
-  auth and rate-limit pairing.
+- **No accounts.** Without `DEMO_MODE` the API has no authentication at all, and the extension
+  pairing endpoints (`/api/extension/pair-code`, `/pair`) are open: any process that can reach the API
+  can mint a code and pair. Run it locally, single-user. The [demo guard](#public-demo-guard) is a
+  shared passcode, not accounts, and its rate-limit counters live in memory (a restart resets them).
 - **Mock-verified vs live-verified.** Every feature is covered by tests on mock providers, and the
   Meta request/response shapes are verified live (`make smoke`) and replayed in tests. The whole
   pipeline on live models (extraction quality, verify calls, SigLIP 2 embeddings at corpus scale) has
@@ -178,55 +178,106 @@ in `frontend/` once.
 - With `REASONING_PROVIDER=muse-spark-open`, the Muse Model License requires a "Built with Muse Spark
   Open" notice, which the UI does not show yet.
 
+## Public demo guard
+
+For a public instance, set `DEMO_MODE=1`. Visitors can then look but not add:
+
+- **Open to everyone:** every read (boards, items, images, profile, live updates, runs, lenses),
+  moving items, **Vary** (rate-limited, below) and Keep / Reject on candidates.
+- **Needs the passcode:** creating or editing boards, uploads, links and extension captures,
+  removing items, Not this, choosing a video frame, re-parsing, lens propose / confirm / edit,
+  attribute edits and extension pairing. Locked requests get `403 DEMO_LOCKED`, and the app shows a
+  "Demo — read-only" chip with an **Unlock** button. A correct passcode sets an HttpOnly, SameSite=Lax
+  cookie (Secure over https), signed with `DEMO_SECRET` and valid 12 hours. Five wrong tries from one
+  address in 10 minutes lock that address out for the rest of the window (`429`).
+- **Vary limits:** `DEMO_RUNS_PER_IP_PER_HOUR` (default 10) per client address and
+  `DEMO_RUNS_PER_DAY` (default 150) across everyone, as sliding windows: `429 DEMO_RATE_LIMITED` says
+  when to retry. Repeating an identical request on the same board and source within 24 hours returns
+  the finished run instead of starting a new one, with no new model calls and no count against the limits.
+
+| Variable | Set as | Value |
+|---|---|---|
+| `DEMO_MODE` | variable | `1` |
+| `DEMO_PASSCODE` | secret | the passcode you hand out |
+| `DEMO_SECRET` | secret | random, e.g. `python3 -c "import secrets; print(secrets.token_hex(32))"` |
+| `DEMO_TRUST_PROXY` | variable | `1` on a Space (client address from the first `X-Forwarded-For` hop); leave `0` when nothing proxies the app |
+
+The API refuses to start with `DEMO_MODE=1` and no `DEMO_PASSCODE` or `DEMO_SECRET`.
+
+**Cost.** In live mode, every unlocked upload or link (Spark extraction plus a SAM call per lens part)
+and every Vary run that is not a replay (Spark verify calls, one per up to 8 shortlisted candidates)
+is billed to the Meta key behind `MODEL_API_KEY`. Uploads are limited to people with the passcode,
+and the Vary limits above cap what anonymous visitors can spend. Meta applies no spending cap of its
+own, so usage beyond the hackathon credit is charged to the card on file.
+
 ## Deploy
 
-Nothing is deployed by this repository; these are the commands to run yourself. The API goes to a
-Hugging Face Docker Space, the app to Vercel.
+Nothing is deployed by this repository; these are the commands to run yourself. One Hugging Face
+Docker Space serves the API (`/api`) and the built app (`/`) from the root `Dockerfile` on port 7860.
+The app calls the API on its own origin. `VITE_API_URL` exists only for hosting the frontend elsewhere.
 
-**1. Build the data snapshot** (live providers, real corpus; see above), then stop `make dev` so
-SQLite's WAL is checkpointed into `data/dle.sqlite`.
+**1. Build the data snapshot** with the providers the Space will use, because embeddings from
+different embedders cannot be mixed. Stop `make dev` first so SQLite's WAL is folded into
+`data/dle.sqlite`:
+
+```sh
+rm -rf data && make seed      # fixture corpus + the four demo boards, with the providers in .env
+```
+
+With the live `.env` this sends the 37 fixture images through Spark and SAM once (roughly a dollar
+at the published prices; my estimate). For a real corpus, use `make import` / `make index` and
+`scripts/seed.py` without `--fixtures` (see above).
 
 **2. Optional: check the image locally** (needs Docker):
 
 ```sh
-docker build -f backend/Dockerfile -t dle-api .
-docker run --rm -p 7860:7860 --env-file .env dle-api      # http://localhost:7860/api/health
+docker build -t dle .
+docker run --rm -p 7860:7860 --env-file .env -e DEMO_MODE=1 -e DEMO_PASSCODE=try-me \
+  -e DEMO_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))") dle
+# open http://localhost:7860
 ```
 
-Add `--build-arg EXTRAS=""` for a mock-only image without torch (much smaller).
+`--build-arg EXTRAS=""` builds a mock-only image without torch (much smaller).
 
-**3. API → Hugging Face Space.** Create a Space at <https://huggingface.co/new-space> (SDK: Docker,
-blank template), say `<you>/dle-api`. Then stage and upload:
+**3. Create the Space and push** (Docker SDK). Binary files (SQLite, embeddings, images) must go
+through Git LFS:
 
 ```sh
-STAGE=$(mktemp -d)
-rsync -a --exclude .venv --exclude tests --exclude __pycache__ --exclude '.*_cache' backend corpus "$STAGE"/
-rsync -a --exclude e2e data "$STAGE"/
-cp backend/Dockerfile .dockerignore "$STAGE"/
-printf -- '---\ntitle: Design Language Engine API\nsdk: docker\napp_port: 7860\n---\n' > "$STAGE/README.md"
-uvx --from huggingface_hub hf auth login
-uvx --from huggingface_hub hf upload <you>/dle-api "$STAGE" . --repo-type space
+pip install -U "huggingface_hub[cli]"
+huggingface-cli login
+huggingface-cli repo create dle --type space --space_sdk docker     # or create it at huggingface.co/new-space
+git clone https://huggingface.co/spaces/<you>/dle ../dle-space
+cd ../dle-space
+git lfs install
+git lfs track "*.sqlite*" "*.npy" "*.jpg" "*.jpeg" "*.png" "*.webp" "*.gif" "*.mp4"
+SRC=../muse-design-curator
+rsync -a --exclude node_modules --exclude dist --exclude test-results --exclude playwright-report \
+  --exclude '.env*' "$SRC/frontend" .
+rsync -a --exclude .venv --exclude tests --exclude __pycache__ --exclude '.*_cache' --exclude '.env*' \
+  "$SRC/backend" "$SRC/corpus" .
+rsync -a --exclude e2e "$SRC/data" .
+cp "$SRC/Dockerfile" "$SRC/.dockerignore" .
+printf -- '---\ntitle: Design Language Engine\nsdk: docker\napp_port: 7860\n---\n' > README.md
+git add -A && git commit -m "Deploy Design Language Engine" && git push
 ```
 
-In the Space's **Settings → Variables and secrets** add the secret `MODEL_API_KEY` and the variables
-`REASONING_PROVIDER=muse-spark`, `SEGMENTATION_PROVIDER=sam-3.1`, `EMBEDDER=siglip2`,
-`CONTACT_EMAIL=…` and `PUBLIC_APP_URL=https://<your-app>.vercel.app` (the CORS origin). The
-snapshot baked into the image is copied into `DATA_DIR` on first start; the Space's disk is
-ephemeral, so for persistence attach storage and set `DATA_DIR=/data` and
-`DATABASE_URL=sqlite:////data/dle.sqlite`. The API is then at `https://<you>-dle-api.hf.space`.
-Remember there is no authentication (see above).
+(With newer `huggingface_hub` releases the same commands are `hf auth login` and `hf repo create`.)
 
-**4. App → Vercel** (`frontend/vercel.json` adds the SPA rewrites):
+**4. Configure the Space** in *Settings → Variables and secrets*. Never put keys in files:
 
-```sh
-cd frontend
-npx vercel link
-npx vercel env add VITE_API_URL production      # https://<you>-dle-api.hf.space
-npx vercel deploy --prod
-```
+| Name | Kind | Value |
+|---|---|---|
+| `MODEL_API_KEY` | secret | your Meta key (`LLM_…`) |
+| `DEMO_PASSCODE`, `DEMO_SECRET` | secret | see [Public demo guard](#public-demo-guard) |
+| `DEMO_MODE`, `DEMO_TRUST_PROXY` | variable | `1`, `1` |
+| `REASONING_PROVIDER`, `SEGMENTATION_PROVIDER`, `EMBEDDER` | variable | `muse-spark`, `sam-3.1`, `siglip2` |
+| `CONTACT_EMAIL` | variable | your email (link-unfurl User-Agent) |
 
-`VITE_API_URL` is read at build time; without it the app expects the API on its own origin under
-`/api` (as with the dev proxy).
+The Space restarts with the new settings, and the app is at `https://<you>-dle.hf.space`. The
+Space's disk is ephemeral: changes made after unlock are lost on restart unless you attach
+persistent storage and set `DATA_DIR=/data` and `DATABASE_URL=sqlite:////data/dle.sqlite`. The baked
+snapshot is copied there on first start. The Chrome extension is a local tool: its host permission
+covers `localhost:8000` only, and pairing needs the passcode on a demo.
 
 ## Built during the hackathon
 
@@ -289,4 +340,11 @@ Generated with `git log --reverse --format='%ad %s' --date=short`:
 2026-10-27 feat(frontend): VITE_API_URL for a cross-origin API; DLE_API_PROXY for dev
 2026-10-27 test(e2e): offline Playwright demo flow and extension suite
 2026-10-27 build(deploy): HF Docker Space image for the API, Vercel config for the app
+2026-10-27 docs: README with quick start, live vs mock, keys, corpus licences, extension, architecture, tests, limitations, deploy
+2026-10-27 test(e2e): wait for the nudge run itself, not the previous run's status
+2026-10-27 feat(demo): DEMO_MODE guard - read-only until unlocked, capped Vary runs
+2026-10-27 feat(api): serve the built frontend with an SPA fallback when FRONTEND_DIST is set
+2026-10-27 feat(frontend): demo badge, passcode unlock, read-only controls while locked
+2026-10-27 style(frontend): show the + button as disabled in a locked demo
+2026-10-27 build(deploy): one Space serves API and app; root multi-stage Dockerfile
 ```
