@@ -9,7 +9,13 @@ export function RightDrawer({ boardId }: { boardId: string }) {
   if (!drawer || !panel) return null
   return (
     <aside className="right-drawer" aria-label={`${drawer.kind} panel`}>
-      {createElement(panel, { boardId, itemId: drawer.itemId, onClose: () => selection.closeDrawer() })}
+      {createElement(panel, {
+        key: `${drawer.kind}:${drawer.itemId}:${JSON.stringify(drawer.params ?? {})}`,
+        boardId,
+        itemId: drawer.itemId,
+        params: drawer.params,
+        onClose: () => selection.closeDrawer(),
+      })}
     </aside>
   )
 }

@@ -9,6 +9,7 @@ import type { ComponentType } from 'react'
 export interface DrawerPanelProps {
   boardId: string
   itemId: string
+  params?: Record<string, unknown>
   onClose: () => void
 }
 

@@ -46,6 +46,7 @@ export function applyEvent(qc: QueryClient, boardId: string, type: string, data:
       return
     }
     case 'item.parsed':
+      void qc.invalidateQueries({ queryKey: keys.attributes(String(d.item_id)) })
       qc.setQueryData<Item[]>(keys.items(boardId), (old) =>
         patch(old, String(d.item_id), {
           parse_status: d.parse_status as Item['parse_status'],

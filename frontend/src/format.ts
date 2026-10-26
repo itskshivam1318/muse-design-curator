@@ -1,3 +1,5 @@
+import type { Item } from './api'
+
 /** "brushed_steel" → "Brushed steel" */
 export function humanize(token: string | null | undefined): string {
   if (token === null || token === undefined || token === '') return 'Unknown'
@@ -17,4 +19,9 @@ export function hostOf(url: string | null | undefined): string | null {
   } catch {
     return null
   }
+}
+
+/** A short human title for an item. */
+export function itemTitle(item: Item): string {
+  return item.page_title || item.original_filename || item.creator_handle || `${item.kind} item`
 }

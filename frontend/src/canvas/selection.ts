@@ -8,6 +8,8 @@ import { useSyncExternalStore } from 'react'
 export interface DrawerState {
   kind: string
   itemId: string
+  /** Panel-specific options, e.g. Vary's preset target or Compare's item ids. */
+  params?: Record<string, unknown>
 }
 
 export interface SelectionState {
@@ -56,8 +58,8 @@ export const selection = {
     const d = selectionStore.get().drawer
     if (d && !existing.has(d.itemId)) selectionStore.set({ drawer: null })
   },
-  openDrawer(kind: string, itemId: string) {
-    selectionStore.set({ drawer: { kind, itemId } })
+  openDrawer(kind: string, itemId: string, params?: Record<string, unknown>) {
+    selectionStore.set({ drawer: { kind, itemId, ...(params ? { params } : {}) } })
   },
   closeDrawer() {
     selectionStore.set({ drawer: null })
