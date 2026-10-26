@@ -244,6 +244,41 @@ def _model_records(lens: LensSpec, raw: Any, source: str, detail: str) -> list[A
     return out
 
 
+def ground_parts(
+    session: Session, lens: LensSpec, image: bytes, sha: str, size: tuple[int, int]
+) -> dict[str, tuple[Any, Any]]:
+    """SAM-grounded parts of the lens as {part id: (mask, bbox)}; mask is None when not found."""
+    seg = get_segmentation(get_settings())
+    return {
+        part.id: _part_mask(session, seg, image, sha, part.sam_prompt, size)
+        for part in lens.parts
+        if part.grounding == "sam"
+    }
+
+
+def model_extract(
+    session: Session, lens: LensSpec, image: bytes, sha: str, context: str = ""
+) -> list[AttributeRecord]:
+    """The reasoning model's reading of the lens attributes it owns (cached, normalised)."""
+    specs = model_specs(lens.attributes)
+    if not specs:
+        return []
+    from app.providers.cache import cached_call
+
+    provider = get_reasoning(get_settings())
+    key_parts = [
+        provider.id, provider.model, PROMPT_VERSION, lens.id, sha,
+        hashlib.sha256(context.encode()).hexdigest(),
+    ]  # fmt: skip
+    raw = cached_call(
+        session, key_parts, None,
+        lambda: provider.extract([image], build_extraction_schema(lens), _prompt(lens, context)),
+    )  # fmt: skip
+    return _model_records(
+        lens, raw, "mock" if provider.is_mock else "model", f"{provider.id}/{provider.model}"
+    )
+
+
 # ---- the job ----
 
 
@@ -330,34 +365,13 @@ def _run(session: Session, item_id: str, board_id: str) -> None:
         session.commit()
         return
 
-    seg = get_segmentation(settings)
-    grounded: dict[str, tuple[Any, Any]] = {}
-    for part in lens.parts:
-        if part.grounding == "sam":
-            grounded[part.id] = _part_mask(session, seg, image, sha, part.sam_prompt, rgb.shape[:2])
+    grounded = ground_parts(session, lens, image, sha, rgb.shape[:2])
     # whole-image parts are not in `grounded`: their attributes are measured on the full image
     records = measure_attributes(lens, rgb, grounded)
     session.commit()  # release the write lock (masks) before the slow model call
 
-    provider = get_reasoning(settings)
-    specs = model_specs(lens.attributes)
-    raw: Any = None
-    if specs:
-        board = boards_repo.get(session, board_id)
-        context = (board.context if board else "") or ""
-        key_parts = [
-            provider.id, provider.model, PROMPT_VERSION, lens.id, sha,
-            hashlib.sha256(context.encode()).hexdigest(),
-        ]  # fmt: skip
-        from app.providers.cache import cached_call
-
-        raw = cached_call(
-            session, key_parts, None,
-            lambda: provider.extract([image], build_extraction_schema(lens), _prompt(lens, context)),
-        )  # fmt: skip
-    records += _model_records(
-        lens, raw, "mock" if provider.is_mock else "model", f"{provider.id}/{provider.model}"
-    )
+    board = boards_repo.get(session, board_id)
+    records += model_extract(session, lens, image, sha, (board.context if board else "") or "")
     _finish(session, item_id, board_id, records, sha)
 
 
@@ -486,6 +500,6 @@ def provider_info() -> dict[str, Any]:
 
 
 __all__ = [
-    "attribute_to_dict", "current_lens", "edit_attribute", "parse_item",
-    "parse_item_job", "provider_info", "request_parse",
+    "attribute_to_dict", "current_lens", "edit_attribute", "ground_parts", "measure_attributes",
+    "model_extract", "parse_item", "parse_item_job", "provider_info", "request_parse",
 ]  # fmt: skip

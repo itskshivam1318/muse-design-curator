@@ -1,6 +1,6 @@
 export PATH := $(HOME)/.local/bin:$(PATH)
 
-.PHONY: dev test lint e2e seed ext smoke
+.PHONY: dev test lint e2e seed import index ext smoke
 
 dev:
 	cd backend && uv run uvicorn app.main:app --reload --port 8000 & \
@@ -19,7 +19,13 @@ e2e:
 	@echo "e2e: not implemented yet (Task 14)"
 
 seed:
-	@echo "seed: not implemented yet (Task 15)"
+	cd backend && uv run python scripts/seed.py --fixtures
+
+import:
+	cd backend && uv run python scripts/import_corpus.py --domain $(DOMAIN) --source $(SOURCE) --query "$(QUERY)" --limit $(or $(LIMIT),200)
+
+index:
+	cd backend && uv run python scripts/index_corpus.py --domain $(DOMAIN)
 
 ext:
 	cd extension && npm run build
