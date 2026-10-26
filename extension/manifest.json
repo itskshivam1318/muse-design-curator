@@ -4,5 +4,7 @@
   "version": "0.1.0",
   "description": "Save design references to your Design Language Engine board.",
   "background": { "service_worker": "background.js", "type": "module" },
-  "permissions": ["contextMenus", "storage"]
+  "action": { "default_title": "Design Language Engine", "default_popup": "popup.html" },
+  "permissions": ["contextMenus", "activeTab", "scripting", "storage"],
+  "host_permissions": ["http://localhost:8000/*"]
 }

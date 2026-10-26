@@ -4,14 +4,17 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && vite build --config vite.content.config.ts",
+    "test": "vitest run",
     "lint": "oxlint && tsc --noEmit"
   },
   "devDependencies": {
     "@types/chrome": "^0.3.6",
     "@types/node": "^26.6.5",
+    "jsdom": "^30.1.3",
     "oxlint": "^1.89.0",
     "typescript": "^7.0.2",
-    "vite": "^8.3.5"
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
   }
 }

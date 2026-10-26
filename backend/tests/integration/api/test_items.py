@@ -21,6 +21,13 @@ def board(client: TestClient) -> str:
     return r.json()["id"]
 
 
+@pytest.fixture
+def ext(client: TestClient) -> dict[str, str]:
+    code = client.post("/api/extension/pair-code").json()["code"]
+    token = client.post("/api/extension/pair", json={"code": code}).json()["token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 def upload(client: TestClient, board: str, files: list[tuple[str, bytes]], **data):  # type: ignore[no-untyped-def]
     return client.post(
         f"/api/boards/{board}/items",
@@ -62,39 +69,42 @@ def test_all_bad_is_400_and_too_many_files(client: TestClient, board: str) -> No
     assert r.status_code == 400 and r.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
-def test_same_bytes_upload_and_capture_one_item(client: TestClient, board: str) -> None:
+def test_same_bytes_upload_and_capture_one_item(client: TestClient, board: str, ext: dict[str, str]) -> None:
     data = image_bytes()
     assert upload(client, board, [("a.png", data)]).status_code == 200
     r = client.post(
         f"/api/boards/{board}/items",
         json={"capture": {"image_b64": base64.b64encode(data).decode(), "kind": "image",
                           "source_url": "https://s.test/a.png", "page_url": "https://s.test/"}},
+        headers=ext,
     )  # fmt: skip
     assert r.status_code == 201 and r.json()["deduped"] is True
     assert len(client.get(f"/api/boards/{board}/items").json()["items"]) == 1
 
 
-def test_capture_provenance_and_invalid(client: TestClient, board: str) -> None:
+def test_capture_provenance_and_invalid(client: TestClient, board: str, ext: dict[str, str]) -> None:
     r = client.post(
         f"/api/boards/{board}/items",
         json={"capture": {"image_b64": base64.b64encode(image_bytes(seed=9)).decode(),
                           "source_url": "https://s.test/a.png", "page_url": "https://s.test/p",
                           "page_title": "P", "creator_handle": "@someone"}},
+        headers=ext,
     )  # fmt: skip
     item = r.json()["item"]
     assert item["origin"] == "extension" and item["creator_handle"] == "@someone"
     assert item["page_title"] == "P"
-    r = client.post(f"/api/boards/{board}/items", json={"capture": {"image_b64": "!!!"}})
+    r = client.post(f"/api/boards/{board}/items", json={"capture": {"image_b64": "!!!"}}, headers=ext)
     assert r.status_code == 400 and r.json()["error"]["code"] == "INVALID_BASE64"
     r = client.post(f"/api/boards/{board}/items", json={})
     assert r.status_code == 400
 
 
-def test_capture_frames(client: TestClient, board: str) -> None:
+def test_capture_frames(client: TestClient, board: str, ext: dict[str, str]) -> None:
     frames = [base64.b64encode(image_bytes(seed=s)).decode() for s in (1, 2, 3)]
     r = client.post(
         f"/api/boards/{board}/items",
         json={"capture": {"frames_b64": frames, "kind": "video", "page_url": "https://s.test/"}},
+        headers=ext,
     )
     assert r.status_code == 201 and r.json()["item"]["kind"] == "video"
 

@@ -28,6 +28,12 @@ def create_board(body: BoardCreate, session: SessionDep) -> dict[str, Any]:
     )
 
 
+@router.get("")
+def list_boards(session: SessionDep) -> dict[str, Any]:
+    rows = boards_repo.list_recent(session)
+    return {"boards": [{"id": b.id, "title": b.title, "updated_at": b.updated_at} for b in rows]}
+
+
 @router.get("/{board_id}")
 def get_board(board_id: str, session: SessionDep) -> dict[str, Any]:
     return board_to_dict(require_board(session, board_id))

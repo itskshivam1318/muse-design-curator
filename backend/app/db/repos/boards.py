@@ -26,6 +26,10 @@ def list_all(session: Session) -> list[Board]:
     return list(session.scalars(select(Board).order_by(Board.created_at.desc(), Board.id.desc())))
 
 
+def list_recent(session: Session) -> list[Board]:
+    return list(session.scalars(select(Board).order_by(Board.updated_at.desc(), Board.id.desc())))
+
+
 def update(session: Session, board_id: str, **fields: object) -> Board | None:
     board = session.get(Board, board_id)
     if board is None:

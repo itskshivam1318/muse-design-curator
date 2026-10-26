@@ -9,6 +9,7 @@ from starlette.datastructures import UploadFile
 from app import events, jobs
 from app.api.boards import require_board
 from app.api.deps import SessionDep
+from app.api.extension import require_extension_token
 from app.api.schemas import ItemPatch, JsonIngest, item_to_dict
 from app.board import profile_hook
 from app.db.models import BoardItem
@@ -137,6 +138,8 @@ async def add_items(board_id: str, request: Request, session: SessionDep) -> Any
             parsed = JsonIngest.model_validate(await request.json())
         except (ValidationError, ValueError) as e:
             raise AppError(400, "VALIDATION_ERROR", "Invalid request body") from e
+        if parsed.capture is not None:  # only extension captures need the pairing token
+            require_extension_token(request, session)
         res = await run_in_threadpool(_json_ingest, session, board_id, parsed)
         done = [res]
         body, status = {"item": item_to_dict(res.item), "deduped": res.deduped}, 201
