@@ -31,7 +31,7 @@ from app.storage import files
 
 FIXTURE_MANIFEST = REPO_ROOT / "backend" / "tests" / "fixtures" / "corpus" / "manifest.jsonl"
 MANIFEST_DIR = REPO_ROOT / "corpus" / "manifests"
-ITEMS_PER_BOARD = 10
+MAX_ITEMS_PER_BOARD, MIN_ITEMS_PER_BOARD, BOARD_SHARE = 8, 3, 0.4
 COLUMNS, CELL_W, CELL_H = 4, 360, 320
 
 BOARDS: list[dict[str, str]] = [
@@ -58,8 +58,12 @@ BOARDS: list[dict[str, str]] = [
 ]  # fmt: skip
 
 
-def seed_board(session: Session, spec: dict[str, str], limit: int = ITEMS_PER_BOARD) -> Board:
-    """One board of licensed, indexed corpus items for the spec's domain. Safe to re-run."""
+def seed_board(session: Session, spec: dict[str, str], limit: int = MAX_ITEMS_PER_BOARD) -> Board:
+    """One board of licensed, indexed corpus items for the spec's domain. Safe to re-run.
+
+    The board takes at most 40% of the domain's valid indexed items (3 to `limit`), every other
+    one by id, so the rest stay in the pool for Vary to draw candidates from.
+    """
     existing = session.scalars(
         select(Board).where(Board.title == spec["title"], Board.domain == spec["domain"])
     ).first()
@@ -76,12 +80,15 @@ def seed_board(session: Session, spec: dict[str, str], limit: int = ITEMS_PER_BO
         )
         .order_by(CorpusItem.id)
     )  # fmt: skip
-    chosen: list[CorpusItem] = []
+    pool: list[CorpusItem] = []
     shas: set[str] = set()
     for cx in session.scalars(q):  # one board holds a given image once
-        if cx.sha256 and cx.sha256 not in shas and len(chosen) < limit:
+        if cx.sha256 and cx.sha256 not in shas:
             shas.add(cx.sha256)
-            chosen.append(cx)
+            pool.append(cx)
+    take = min(limit, max(MIN_ITEMS_PER_BOARD, int(len(pool) * BOARD_SHARE)), len(pool))
+    chosen = pool[::2][:take]
+    chosen += [c for c in pool if c not in chosen][: take - len(chosen)]
     for i, cx in enumerate(chosen):
         path = files.abs_path(cx.local_path or "")
         data = path.read_bytes()

@@ -193,7 +193,17 @@ def test_seed_creates_four_boards_with_licensed_items(
     for b in boards:
         assert b.title and b.context
         items = list(indexed.scalars(select(BoardItem).where(BoardItem.board_id == b.id)))
-        assert 8 <= len(items) <= 12
+        assert 3 <= len(items) <= 8
+        in_domain = list(
+            indexed.scalars(
+                select(CorpusItem).where(
+                    CorpusItem.domain == b.domain, CorpusItem.indexing_status == "indexed",
+                    CorpusItem.provenance_status == "valid",
+                )
+            )
+        )  # fmt: skip
+        on_board = {i.corpus_item_id for i in items}
+        assert len([c for c in in_domain if c.id not in on_board]) >= len(items)  # pool left
         for it in items:
             assert (it.origin, it.rights_status) == ("seed", "licensed")
             assert it.corpus_item_id in valid_ids and it.storage_path and it.thumb_path

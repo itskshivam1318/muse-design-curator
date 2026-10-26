@@ -281,3 +281,15 @@ def test_summary_counts_on_board_exclusions_and_the_shortfall_message_mentions_t
     if summ["returned"] < 6:
         row = next(r for r in summ["shortfall"] if r["code"] == "on_board")
         assert row["count"] == n and row["message"] == f"{n} are already on your board"
+
+
+def test_vary_on_seeded_board_returns_candidate(world) -> None:  # type: ignore[no-untyped-def]
+    s = world["session"]
+    board = world["watch"]
+    on_board = {
+        i.corpus_item_id for i in s.scalars(select(BoardItem).where(BoardItem.board_id == board))
+    }
+    run = make_run(world, board)
+    assert run.status == "completed", run.error_code
+    got = [c for c in cands(world, run) if c.state in ("validated", "uncertain")]
+    assert got and all(c.corpus_item_id not in on_board for c in got)
