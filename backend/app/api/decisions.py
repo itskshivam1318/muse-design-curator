@@ -19,6 +19,12 @@ CSV_COLUMNS = [
 ]  # fmt: skip
 
 
+def _safe(v: str | None) -> str:
+    """Neutralise spreadsheet formulas: prefix cells starting with = + - @ tab or CR."""
+    text = v or ""
+    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+
+
 class DecisionBody(BaseModel):
     decision: str
     reason_code: str | None = None
@@ -51,7 +57,9 @@ def decisions_csv(board_id: str, session: SessionDep) -> Response:
     w.writerow(CSV_COLUMNS)
     for d in rows:
         w.writerow([
-            d.created_at, d.run_id, d.run_candidate_id, d.corpus_item_id, d.decision,
-            d.reason_code or "", d.note or "", d.item_id or "",
+            _safe(c) for c in (
+                d.created_at, d.run_id, d.run_candidate_id, d.corpus_item_id, d.decision,
+                d.reason_code, d.note, d.item_id,
+            )
         ])  # fmt: skip
     return Response(buf.getvalue(), media_type="text/csv")

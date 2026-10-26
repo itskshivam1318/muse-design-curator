@@ -176,3 +176,20 @@ def test_keep_links_existing_item_with_same_image(client, world) -> None:  # typ
     before = n_items(world)
     got = decide(client, rid, top["id"], decision="keep").json()
     assert got["item"]["id"] == twin.id and n_items(world) == before
+
+
+def test_csv_neutralises_formulas_and_round_trips(client, world) -> None:  # type: ignore[no-untyped-def]
+    import csv
+    import io
+
+    rid, top = setup(client, world)
+    notes = ['=HYPERLINK("x")', "+1", "-2", "@cmd", "\tTab", "line1\nline2", 'say "hi", ok']
+    for n in notes:
+        assert decide(client, rid, top["id"], decision="reject", note=n).status_code == 201
+    r = client.get(f"/api/boards/{world['watch']}/decisions.csv")
+    rows = list(csv.reader(io.StringIO(r.text, newline="")))
+    got = [row[6] for row in rows[1:]][::-1]  # oldest first
+    assert got == [
+        "'=HYPERLINK(\"x\")", "'+1", "'-2", "'@cmd", "'\tTab", "line1\nline2", 'say "hi", ok',
+    ]
+    assert all(len(row) == 8 for row in rows)
