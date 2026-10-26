@@ -139,6 +139,8 @@ def test_proposed_lens_validates_with_origin_proposed(
     seen: list[dict[str, Any]] = []
     sub = events.subscribe(board.id)
     spec = lens_service.propose_lens(session, board.id)
+    assert sub.get(timeout=0.01) is None  # nothing before commit
+    session.commit()
     while (ev := sub.get(timeout=0.01)) is not None:
         seen.append(ev)
     sub.close()
@@ -222,6 +224,7 @@ def test_confirm_as_is(session: Session, reasoning: SpyReasoning) -> None:
     board, _ = make_board(session, 5)
     lens_service.propose_lens(session, board.id)
     lens_service.confirm_lens(session, board.id, None)
+    session.commit()
     row = lenses_repo.latest(session, board.id, "custom")
     assert row is not None and row.status == "confirmed" and row.version == 1
     assert board.lens_id == row.id
@@ -236,6 +239,8 @@ def test_pending_lens_items_requeued_after_confirmation(
     jobs.register("parse_item", lambda item_id: queued.append(item_id))
     lens_service.propose_lens(session, board.id)
     lens_service.confirm_lens(session, board.id, None)
+    assert queued == []  # nothing before commit
+    session.commit()
     assert sorted(queued) == sorted(i.id for i in items[1:])
     assert all(i.parse_status == "pending" for i in items[1:])
     assert items[0].parse_status == "completed"
@@ -346,3 +351,51 @@ def test_api_flow(client: TestClient, reasoning: SpyReasoning) -> None:
     assert ed.json()["origin"] == "edited" and ed.json()["version"] == 2
     assert client.get(f"/api/lenses/{lid}").json()["version"] == 1
     assert client.get(f"/api/boards/{bid}").json()["lens_id"] == ed.json()["id"]
+
+
+def test_after_commit_runs_only_after_commit(session: Session) -> None:
+    from app.db.session import after_commit
+
+    calls: list[str] = []
+    boards_repo.create(session, "B")
+    after_commit(session, lambda: calls.append("a"))
+    after_commit(session, lambda: calls.append("b"))
+    assert calls == []
+    session.commit()
+    assert calls == ["a", "b"]
+    session.commit()
+    assert calls == ["a", "b"]  # once only
+    after_commit(session, lambda: calls.append("now"))  # no active transaction
+    assert calls == ["a", "b", "now"]
+
+
+def test_after_commit_dropped_on_rollback(session: Session) -> None:
+    from app.db.session import after_commit
+
+    calls: list[str] = []
+    boards_repo.create(session, "B")
+    after_commit(session, lambda: calls.append("x"))
+    session.rollback()
+    boards_repo.create(session, "C")
+    session.commit()
+    assert calls == []
+
+
+def test_lens_side_effects_wait_for_commit_and_skip_on_rollback(
+    session: Session, reasoning: SpyReasoning, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rec: list[str] = []
+    monkeypatch.setattr(events, "publish", lambda *a, **k: rec.append("publish"))
+    monkeypatch.setattr(jobs, "enqueue", lambda *a, **k: rec.append("enqueue"))
+    board, items = make_board(session, 5, status="pending_lens")
+    session.commit()
+    lens_service.propose_lens(session, board.id)
+    lens_service.confirm_lens(session, board.id, None)
+    assert rec == []
+    session.rollback()
+    assert rec == []
+    lens_service.propose_lens(session, board.id)
+    lens_service.confirm_lens(session, board.id, None)
+    assert rec == []
+    session.commit()
+    assert rec.count("publish") == 1 and rec.count("enqueue") == len(items)

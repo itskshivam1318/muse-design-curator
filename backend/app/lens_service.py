@@ -1,6 +1,7 @@
 """Board-driven lens selection: curated when the domain is known, else proposed then confirmed."""
 
 import logging
+from functools import partial
 from typing import Any
 
 import numpy as np
@@ -15,6 +16,7 @@ from app.db.models import Board, BoardItem, Lens
 from app.db.repos import boards as boards_repo
 from app.db.repos import items as items_repo
 from app.db.repos import lenses as lenses_repo
+from app.db.session import after_commit
 from app.domain.lens import LensSpec, load_curated_lens, validate_lens
 from app.errors import AppError
 from app.providers import get_reasoning, get_segmentation
@@ -180,7 +182,8 @@ def propose_lens_row(session: Session, board_id: str) -> Lens:
     row = lenses_repo.save(
         session, board.id, domain, "proposed", spec.model_dump(mode="json"), status="proposed"
     )
-    events.publish(board.id, "lens.proposed", {"lens_id": row.id, "version": row.version})
+    payload = {"lens_id": row.id, "version": row.version}
+    after_commit(session, lambda: events.publish(board.id, "lens.proposed", payload))
     return row
 
 
@@ -189,7 +192,7 @@ def _release_pending(session: Session, board_id: str) -> None:
         if item.parse_status == "pending_lens":
             item.parse_status = "pending"
             session.flush()
-            jobs.enqueue("parse_item", item_id=item.id)
+            after_commit(session, partial(jobs.enqueue, "parse_item", item_id=item.id))
 
 
 def confirm_lens(session: Session, board_id: str, spec: LensSpec | None) -> Lens:

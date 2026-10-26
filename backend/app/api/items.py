@@ -12,6 +12,7 @@ from app.api.deps import SessionDep
 from app.api.schemas import ItemPatch, JsonIngest, item_to_dict
 from app.db.models import BoardItem
 from app.db.repos import items as items_repo
+from app.db.session import after_commit
 from app.errors import AppError
 from app.ingest.capture import ingest_capture_frames, ingest_capture_image
 from app.ingest.common import GAP, IngestResult, ItemMeta
@@ -137,8 +138,8 @@ async def add_items(board_id: str, request: Request, session: SessionDep) -> Any
         res = await run_in_threadpool(_json_ingest, session, board_id, parsed)
         done = [res]
         body, status = {"item": item_to_dict(res.item), "deduped": res.deduped}, 201
+    after_commit(session, lambda: _announce(session, done))
     await run_in_threadpool(session.commit)
-    _announce(session, done)
     return JSONResponse(body, status_code=status)
 
 

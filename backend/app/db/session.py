@@ -1,3 +1,5 @@
+import logging
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from alembic import command
 from app.config import Settings, resolve_repo_path
 
+log = logging.getLogger(__name__)
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 
 
@@ -50,3 +53,35 @@ def run_migrations(engine: Engine, revision: str = "head") -> None:
     with engine.begin() as conn:
         cfg.attributes["connection"] = conn
         command.upgrade(cfg, revision)
+
+
+_PENDING = "_after_commit_callbacks"
+
+
+def after_commit(session: Session, fn: Callable[[], None]) -> None:
+    """Run fn once after the current transaction commits; drop it on rollback.
+
+    With no active transaction there is nothing to wait for, so fn runs immediately.
+    """
+    if not session.in_transaction():
+        fn()
+        return
+    pending: list[Callable[[], None]] | None = session.info.get(_PENDING)
+    if pending is None:
+        pending = session.info[_PENDING] = []
+
+        def _commit(sess: Session) -> None:
+            callbacks = sess.info.get(_PENDING, [])
+            sess.info[_PENDING] = []
+            for cb in callbacks:
+                try:
+                    cb()
+                except Exception:
+                    log.exception("after_commit callback failed")
+
+        def _rollback(sess: Session) -> None:
+            sess.info[_PENDING] = []
+
+        event.listen(session, "after_commit", _commit)
+        event.listen(session, "after_rollback", _rollback)
+    pending.append(fn)
