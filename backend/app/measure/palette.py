@@ -142,3 +142,8 @@ def mask_ratio(mask_a: np.ndarray, mask_b: np.ndarray) -> float:
     """Area of mask_a relative to mask_b (0.0 when mask_b is empty)."""
     b = int(np.count_nonzero(mask_b))
     return float(np.count_nonzero(mask_a) / b) if b else 0.0
+
+
+def color_names() -> set[str]:
+    """The named colours a colour attribute can take."""
+    return set(_NAMED_LAB)
