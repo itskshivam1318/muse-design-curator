@@ -487,3 +487,45 @@ def test_frame_changed_during_parse_requeues(session: Session, provider: Fake) -
     session.expire_all()
     assert items_repo.get(session, item.id).parse_status == "pending"  # type: ignore[union-attr]
     assert queued == [item.id]
+
+
+def test_whole_image_part_is_measured_on_the_whole_image(session: Session, provider: Fake) -> None:
+    spec = {
+        **LENS,
+        "parts": [{"id": "body", "sam_prompt": "body", "grounding": "whole_image"}],
+    }
+    item = add_item(session, lens_board(session, spec))
+    service.parse_item(session, item.id)
+    body = attr(session, item.id, "body_color")
+    assert (body.value_json, body.status, body.source) == ("blue", "extracted", "measured")
+    cov = attr(session, item.id, "coverage")
+    assert cov.value_json == 1.0 and CountingSeg.n == 0
+
+
+def test_no_write_lock_held_during_model_call(tmp_path: Path, provider: Fake) -> None:
+    from sqlalchemy import text
+    from sqlalchemy.exc import OperationalError
+
+    from app.db.session import make_engine, run_migrations
+
+    url = f"sqlite:///{tmp_path / 'lock.sqlite'}"
+    engine = make_engine(url)
+    run_migrations(engine)
+    other = make_engine(url, connect_args={"timeout": 0.5})
+    with Session(engine) as s:
+        item = add_item(s, lens_board(s))
+        outcome: list[str] = []
+
+        def concurrent_write() -> None:
+            try:
+                with other.begin() as conn:
+                    conn.execute(text("UPDATE boards SET title = 'edited'"))
+                outcome.append("ok")
+            except OperationalError as exc:  # database is locked
+                outcome.append(repr(exc))
+
+        provider.hook = concurrent_write
+        service.parse_item(s, item.id)
+    assert outcome == ["ok"]
+    engine.dispose()
+    other.dispose()

@@ -335,9 +335,9 @@ def _run(session: Session, item_id: str, board_id: str) -> None:
     for part in lens.parts:
         if part.grounding == "sam":
             grounded[part.id] = _part_mask(session, seg, image, sha, part.sam_prompt, rgb.shape[:2])
-        else:
-            grounded[part.id] = (None, None)
+    # whole-image parts are not in `grounded`: their attributes are measured on the full image
     records = measure_attributes(lens, rgb, grounded)
+    session.commit()  # release the write lock (masks) before the slow model call
 
     provider = get_reasoning(settings)
     specs = model_specs(lens.attributes)
