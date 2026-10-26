@@ -35,10 +35,24 @@ def data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return d
 
 
+@pytest.fixture(autouse=True)
+def _no_job_database(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Background jobs never reach the developer's database; `client` points them at its own."""
+    from app.api import deps
+
+    def refuse() -> None:
+        raise RuntimeError("no job database in this test")
+
+    monkeypatch.setattr(deps, "_factory", refuse)
+
+
 @pytest.fixture
-def client(data_dir: Path) -> Iterator[TestClient]:
+def client(data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+    from app import jobs
+    from app.api import deps
     from app.api.deps import get_session
     from app.db.session import make_engine, make_session_factory, run_migrations
+    from app.extraction import service
     from app.main import app
 
     engine = make_engine(
@@ -46,6 +60,7 @@ def client(data_dir: Path) -> Iterator[TestClient]:
     )
     run_migrations(engine)
     factory = make_session_factory(engine)
+    monkeypatch.setattr(deps, "_factory", lambda: factory)
 
     def override() -> Iterator[Session]:
         s = factory()
@@ -59,6 +74,7 @@ def client(data_dir: Path) -> Iterator[TestClient]:
             s.close()
 
     app.dependency_overrides[get_session] = override
+    jobs.register("parse_item", service.parse_item_job)  # other tests may have cleared the registry
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

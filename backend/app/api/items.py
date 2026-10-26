@@ -14,6 +14,7 @@ from app.db.models import BoardItem
 from app.db.repos import items as items_repo
 from app.db.session import after_commit
 from app.errors import AppError
+from app.extraction import service as extraction
 from app.ingest.capture import ingest_capture_frames, ingest_capture_image
 from app.ingest.common import GAP, IngestResult, ItemMeta
 from app.ingest.images import ingest_image
@@ -157,6 +158,7 @@ def patch_item(item_id: str, body: ItemPatch, session: SessionDep) -> dict[str, 
     frame_id = fields.pop("chosen_frame_id", None)
     if frame_id is not None:
         choose_frame(session, item_id, frame_id)
+        extraction.request_parse(session, item_id)
     if fields:
         items_repo.update(session, item_id, **fields)
     session.refresh(item)

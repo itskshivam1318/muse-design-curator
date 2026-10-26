@@ -72,7 +72,7 @@ def _coerce_number(value: Value) -> float | None:
     return None
 
 
-def _validate_value(raw: Value, spec: AttributeSpec) -> Value:
+def validate_value(raw: Value, spec: AttributeSpec) -> Value:
     """Return the cleaned value, or None when it does not fit the spec."""
     if raw is None:
         return None
@@ -101,7 +101,7 @@ def _validate_value(raw: Value, spec: AttributeSpec) -> Value:
 def normalize_model_attribute(
     raw: ModelAttribute, spec: AttributeSpec, source: str, source_detail: str
 ) -> AttributeRecord:
-    value = _validate_value(raw.value, spec)
+    value = validate_value(raw.value, spec)
     if raw.evidence.kind == "none" or raw.confidence < MIN_CONFIDENCE or value is None:
         value, status = None, "missing"
     elif raw.confidence < RELIABLE_CONFIDENCE:
