@@ -2,7 +2,8 @@
 
 Prints PASS/FAIL/SKIP plus latency per check and never raises. Without
 MODEL_API_KEY every Meta check prints SKIP (Baseten needs BASETEN_API_KEY).
-Passing checks save raw responses under backend/tests/fixtures/meta/.
+Passing checks save raw responses under backend/tests/fixtures/meta/live/, never over the
+hand-written fixtures one level up.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.config import get_settings
 
-FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "meta"
+FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "meta" / "live"
 BASETEN_URL = "https://inference.baseten.co/v1"
 BASETEN_MODELS = ("meta-models/muse-spark-open", "meta-models/muse-spark-open-1026")
 
