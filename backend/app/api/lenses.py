@@ -19,6 +19,16 @@ def propose(board_id: str, session: SessionDep) -> dict[str, Any]:
     return lens_service.lens_to_dict(lens_service.propose_lens_row(session, board_id))
 
 
+@router.get("/boards/{board_id}/lens")
+def get_board_lens(board_id: str, session: SessionDep) -> dict[str, Any]:
+    """The lens the board uses now, or its newest proposal awaiting confirmation."""
+    board = require_board(session, board_id)
+    row = lens_service.board_lens_row(session, board)
+    if row is None:
+        raise AppError(404, "LENS_NOT_FOUND", "This board has no lens yet")
+    return lens_service.lens_to_dict(row)
+
+
 @router.put("/boards/{board_id}/lens")
 def put_lens(
     board_id: str, session: SessionDep, body: Annotated[dict[str, Any] | None, Body()] = None

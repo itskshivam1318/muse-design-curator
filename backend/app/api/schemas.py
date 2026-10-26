@@ -64,5 +64,5 @@ def item_to_dict(i: BoardItem) -> dict[str, Any]:
         "parse_error_code": i.parse_error_code, "role": i.role,
         "x": i.x, "y": i.y, "w": i.w, "h": i.h, "z": i.z,
         "storage_path": i.storage_path, "thumb_path": i.thumb_path,
-        "created_at": i.created_at,
+        "parent_item_id": i.parent_item_id, "created_at": i.created_at,
     }  # fmt: skip

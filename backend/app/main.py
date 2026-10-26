@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import attributes, boards, decisions, extension, items, lenses, runs
+from app.api import attributes, boards, decisions, extension, items, lenses, media, runs
 from app.config import get_settings
 from app.errors import register_error_handlers
 from app.extraction import service as _extraction  # noqa: F401  (registers the parse_item job)
@@ -27,6 +27,7 @@ register_error_handlers(app)
 app.include_router(boards.router)
 app.include_router(extension.router)
 app.include_router(items.router)
+app.include_router(media.router)
 app.include_router(lenses.router)
 app.include_router(attributes.router)
 app.include_router(runs.router)
