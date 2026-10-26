@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import re
@@ -197,11 +198,37 @@ class MuseSparkOpenProvider:
         return self._run(prompt, images, schema)
 
 
+GENERIC_LENS: dict[str, Any] = {
+    "label": "Custom",
+    "notes": [],
+    "parts": [
+        {"id": "object", "sam_prompt": "object", "grounding": "sam"},
+        {"id": "background", "sam_prompt": "background", "grounding": "whole_image"},
+    ],
+    "attributes": [
+        {"key": "primary_color", "label": "Primary color", "category": "color",
+         "kind": "color", "part": "object"},
+        {"key": "material", "label": "Material", "category": "material", "kind": "enum",
+         "part": "object", "open_vocabulary": True},
+        {"key": "form", "label": "Form", "category": "form", "kind": "enum",
+         "part": "object", "open_vocabulary": True},
+        {"key": "finish", "label": "Finish", "category": "surface", "kind": "ordinal",
+         "part": "object", "scale": ["matte", "satin", "gloss"]},
+        {"key": "density", "label": "Density", "category": "composition", "kind": "ordinal",
+         "part": "background", "scale": ["sparse", "balanced", "dense"]},
+        {"key": "has_pattern", "label": "Has pattern", "category": "surface",
+         "kind": "boolean", "part": "object"},
+        {"key": "style", "label": "Style", "category": "style", "kind": "text"},
+    ],
+}  # fmt: skip
+
+
 class MockReasoningProvider:
     """Deterministic output derived from SHA-256 of inputs and schema.
 
     `truth` maps a property name to a ground-truth value; when the property is an object that
     has a `value` field (and `confidence`), the value is filled in with confidence 0.9.
+    Without `truth`, `propose_lens` returns a fixed, valid generic lens.
     """
 
     id = "mock"
@@ -219,6 +246,8 @@ class MockReasoningProvider:
         self, images: list[bytes], context: str, schema: dict[str, Any]
     ) -> dict[str, Any]:
         _limit(images, MAX_PROPOSE_IMAGES)
+        if not self.truth:
+            return copy.deepcopy(GENERIC_LENS)
         return self._make(images, schema, context)
 
     def verify(self, images: list[bytes], schema: dict[str, Any], prompt: str) -> dict[str, Any]:

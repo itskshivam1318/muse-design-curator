@@ -156,9 +156,26 @@ def test_custom_domain_when_board_has_none(session: Session, reasoning: SpyReaso
     assert lens_service.propose_lens(session, board.id).id == "custom@1"
 
 
-def test_invalid_proposal_is_502_and_stores_nothing(session: Session) -> None:
+def test_default_mock_proposal_is_stored(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(lens_service, "get_reasoning", lambda _s: MockReasoningProvider())
     board, _ = make_board(session, 5)
-    # default mock output (no truth) is not a valid LensSpec
+    spec = lens_service.propose_lens(session, board.id)
+    assert spec.origin == "proposed" and spec.domain == "custom"
+    assert lenses_repo.latest(session, board.id, "custom").status == "proposed"  # type: ignore[union-attr]
+
+
+class GarbageReasoning(MockReasoningProvider):
+    def propose_lens(self, images, context, schema):  # type: ignore[no-untyped-def]
+        return {"nonsense": True}
+
+
+def test_invalid_proposal_is_502_and_stores_nothing(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(lens_service, "get_reasoning", lambda _s: GarbageReasoning())
+    board, _ = make_board(session, 5)
     with pytest.raises(AppError) as e:
         lens_service.propose_lens(session, board.id)
     assert e.value.status == 502 and e.value.code == "LENS_PROPOSAL_INVALID"
