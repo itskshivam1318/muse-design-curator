@@ -115,29 +115,44 @@ def test_append_only_repos_expose_no_update_or_delete() -> None:
 def test_attribute_events_append_and_list(session: Session) -> None:
     b = _board(session)
     it = items.create(session, board_id=b, kind="image", origin="upload")
-    attributes.append_event(
-        session, item_id=it.id, key="k", actor="model", action="extracted",
-        before_json=None, after_json={"v": 1},
-    )  # fmt: skip
-    attributes.append_event(
-        session, item_id=it.id, key="k", actor="user", action="edited",
-        before_json={"v": 1}, after_json={"v": 2},
-    )  # fmt: skip
-    assert [e.action for e in attributes.events(session, it.id, "k")] == ["extracted", "edited"]
+    seq = ["extracted", "edited", "disabled", "enabled", "confirmed", "edited", "extracted"]
+    for action in seq:
+        attributes.append_event(
+            session, item_id=it.id, key="k", actor="user", action=action,
+            before_json=None, after_json=None,
+        )  # fmt: skip
+    session.expire_all()
+    assert [e.action for e in attributes.events(session, it.id, "k")] == seq
 
 
 def test_decision_history_newest_first(session: Session) -> None:
     b = _board(session)
-    for d in ("reject", "keep", "reject"):
+    seq = ["keep", "reject", "reject", "keep", "keep", "reject", "keep"]
+    for d in seq:
         decisions.append(
             session, board_id=b, run_id="run_1", run_candidate_id="cand_1",
             corpus_item_id="cx_1", decision=d,
         )  # fmt: skip
     session.expire_all()
     hist = decisions.history(session, "cand_1")
-    assert [h.decision for h in hist] == ["reject", "keep", "reject"]
-    assert [h.id for h in hist] == sorted((h.id for h in hist), reverse=True)
+    assert [h.decision for h in hist] == list(reversed(seq))
     assert decisions.history(session, "cand_other") == []
+
+
+def test_ids_strictly_increase_in_creation_order() -> None:
+    from app.db.ids import new_id
+
+    ids = [new_id("x_") for _ in range(2000)]
+    assert ids == sorted(ids) and len(set(ids)) == len(ids)
+
+
+def test_curated_lens_domain_version_unique_with_null_board(session: Session) -> None:
+    from app.db.models import Lens
+
+    lenses.save(session, board_id=None, domain="d", origin="curated", spec={})
+    with pytest.raises(IntegrityError), session.begin_nested():
+        session.add(Lens(board_id=None, domain="d", version=1, origin="curated", spec_json={}))
+        session.flush()
 
 
 def test_board_profiles_keeps_history_latest_returns_highest_version(session: Session) -> None:

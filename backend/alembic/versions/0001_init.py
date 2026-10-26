@@ -228,6 +228,13 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("board_id", "domain", "version"),
     )
+    op.create_index(
+        "uq_lenses_curated_domain_version",
+        "lenses",
+        ["domain", "version"],
+        unique=True,
+        sqlite_where=sa.text("board_id IS NULL"),
+    )
     op.create_table(
         "attribute_events",
         sa.Column("id", sa.String(), nullable=False),

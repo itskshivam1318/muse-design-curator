@@ -216,6 +216,13 @@ class Lens(Base):
     created_at: Mapped[str] = _created()
     __table_args__ = (
         UniqueConstraint("board_id", "domain", "version"),
+        Index(
+            "uq_lenses_curated_domain_version",
+            "domain",
+            "version",
+            unique=True,
+            sqlite_where=text("board_id IS NULL"),
+        ),
         CheckConstraint(_in("status", ("proposed", "confirmed"))),
     )
 
