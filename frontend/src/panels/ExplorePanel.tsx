@@ -7,11 +7,11 @@ import {
   type ExploreOption,
   exploreItem,
   keys,
-  patchOption,
   visualizeOption,
 } from '../api'
 import { setHoveredOption, hoverStore, useHoveredOption } from '../explore/hover'
 import { canFindReal, findRealRequest, optionTree, withExploration, withOption } from '../explore/logic'
+import { dismissOption } from '../explore/optionActions'
 import { itemTitle } from '../format'
 import { useAttributes, useExplorations, useItems, useProfile } from '../queries'
 import { isTension, numberBounds, sortTargets } from '../vary/logic'
@@ -150,7 +150,7 @@ function Dimension({
   const explore = (body: { mode?: 'initial' | 'more' | 'further'; parent_option_id?: string }) =>
     act(async () => {
       const s = steer.trim()
-      const e = await exploreItem(itemId, { key: spec.key, ...body, ...(s && !body.parent_option_id ? { steer: s } : {}) })
+      const e = await exploreItem(itemId, { key: spec.key, ...body, ...(s ? { steer: s } : {}) })
       qc.setQueryData<Exploration[]>(keys.explorations(boardId), (old) => withExploration(old, e))
       setSteer('')
     }, 'Could not explore')
@@ -174,11 +174,7 @@ function Dimension({
     }, 'Could not visualize')
 
   const dismiss = (o: ExploreOption) =>
-    act(async () => {
-      const next = await patchOption(o.id, { status: 'dismissed' })
-      qc.setQueryData<Exploration[]>(keys.explorations(boardId), (old) => withOption(old, next))
-      if (hoverStore.get() === o.id) setHoveredOption(null)
-    }, 'Could not dismiss')
+    act(() => dismissOption(qc, boardId, o), 'Could not dismiss')
 
   const findReal = (o: ExploreOption) =>
     act(async () => {

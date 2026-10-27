@@ -10,11 +10,14 @@ export interface CanvasPalette {
   ok: string
   warn: string
   bad: string
+  /** Explore option notes: card fill and edge (the edge also draws their lines). */
+  note: string
+  noteEdge: string
 }
 
 const FALLBACK: CanvasPalette = {
   accent: '#2a4aae', ink: '#14181e', paper: '#eceff2', panel: '#f8f9fb', muted: '#566170',
-  rule: '#c8ced7', ok: '#2c7a4b', warn: '#9a6110', bad: '#ad3636',
+  rule: '#c8ced7', ok: '#2c7a4b', warn: '#9a6110', bad: '#ad3636', note: '#ffffff', noteEdge: '#9aa4b2',
 }
 
 function read(): CanvasPalette {
@@ -31,6 +34,8 @@ function read(): CanvasPalette {
     ok: v('--ok', FALLBACK.ok),
     warn: v('--warn', FALLBACK.warn),
     bad: v('--bad', FALLBACK.bad),
+    note: v('--note', FALLBACK.note),
+    noteEdge: v('--note-edge', FALLBACK.noteEdge),
   }
 }
 

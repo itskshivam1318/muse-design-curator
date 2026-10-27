@@ -13,7 +13,7 @@ afterEach(() => {
 
 const palette: CanvasPalette = {
   accent: '#00f', ink: '#000', paper: '#eee', panel: '#fff', muted: '#666', rule: '#ccc',
-  ok: '#0a0', warn: '#a60', bad: '#a00',
+  ok: '#0a0', warn: '#a60', bad: '#a00', note: '#ffe', noteEdge: '#bba',
 }
 const handlers = {
   onPointerDown: vi.fn(), onDragStart: vi.fn(), onDragMove: vi.fn(), onDragEnd: vi.fn(),

@@ -207,6 +207,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
       <h1 className="sr-only">{board.data?.title ?? 'Board'}</h1>
       <Canvas
         ref={canvas}
+        boardId={boardId}
         items={list}
         actions={actions}
         onFiles={uploadAt}

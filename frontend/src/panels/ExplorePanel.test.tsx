@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, keys, type Exploration, type ExploreOption, type ItemAttributes } from '../api'
+import { undoHistory } from '../canvas/history'
 import { hoverStore, setHoveredOption } from '../explore/hover'
 import { makeAttrs } from '../test/attrs'
 import { makeItem, makeProfile } from '../test/fixtures'
@@ -40,6 +41,7 @@ afterEach(() => {
   cleanup()
   runStore.clear()
   setHoveredOption(null)
+  undoHistory.clear()
 })
 
 function setup({ params, explorations = [], locked = false, attrs = makeAttrs() }: {
@@ -92,6 +94,16 @@ describe('ExplorePanel', () => {
     expect(child.closest('li')?.getAttribute('data-depth')).toBe('1')
   })
 
+  it('branch sends the steer text when there is one', async () => {
+    vi.mocked(exploreItem).mockResolvedValue(exploration([opt({ id: 'o1' }), opt({ id: 'o2', parent_option_id: 'o1', batch: 2 })]))
+    setup({ params: { key: 'case_finish' }, explorations: [exploration([opt({ id: 'o1' })])] })
+    fireEvent.change(screen.getByRole('textbox', { name: /steer/i }), { target: { value: 'warmer' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Branch Option o1' }))
+    await waitFor(() =>
+      expect(exploreItem).toHaveBeenCalledWith('i1', { key: 'case_finish', parent_option_id: 'o1', steer: 'warmer' }),
+    )
+  })
+
   it('visualize calls visualizeOption and shows spinner from status', async () => {
     vi.mocked(visualizeOption).mockResolvedValue(undefined)
     const { qc } = setup({ params: { key: 'case_finish' }, explorations: [exploration([opt({ id: 'o1' })])] })
@@ -120,6 +132,14 @@ describe('ExplorePanel', () => {
     await waitFor(() => expect(patchOption).toHaveBeenCalledWith('o1', { status: 'dismissed' }))
     await waitFor(() => expect(screen.queryByText('Option o1')).toBeNull())
     expect(screen.getByText('Option o2')).toBeTruthy()
+    // ⌘Z reopens it: the dismiss is on the board's undo stack
+    vi.mocked(patchOption).mockResolvedValue(opt({ id: 'o1' }))
+    const entry = undoHistory.pop()
+    act(() => {
+      if (entry?.kind === 'revert') entry.revert()
+    })
+    await waitFor(() => expect(patchOption).toHaveBeenLastCalledWith('o1', { status: 'open' }))
+    expect(await screen.findByText('Option o1')).toBeTruthy()
   })
 
   it('error message shown on 502', async () => {

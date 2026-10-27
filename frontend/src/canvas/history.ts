@@ -1,4 +1,4 @@
-/** Undo stack for position changes only (⌘Z). */
+/** Undo stack (⌘Z) for position changes and explore-option edits (note moves, dismisses). */
 import type { Point } from '../api'
 
 export interface Move {
@@ -7,19 +7,27 @@ export interface Move {
   to: Point
 }
 
+/** Item moves are reverted by the item actions; anything else carries its own revert. */
+export type UndoEntry = { kind: 'moves'; moves: Move[] } | { kind: 'revert'; revert: () => void }
+
 const LIMIT = 50
 
-export function createMoveHistory() {
-  const stack: Move[][] = []
+export function createUndoHistory() {
+  const stack: UndoEntry[] = []
+  const add = (entry: UndoEntry) => {
+    stack.push(entry)
+    if (stack.length > LIMIT) stack.shift()
+  }
   return {
     push(moves: Move[]) {
       const real = moves.filter((m) => m.from.x !== m.to.x || m.from.y !== m.to.y)
-      if (real.length === 0) return
-      stack.push(real)
-      if (stack.length > LIMIT) stack.shift()
+      if (real.length > 0) add({ kind: 'moves', moves: real })
     },
-    /** The moves to revert, newest first; null when there is nothing to undo. */
-    pop(): Move[] | null {
+    pushRevert(revert: () => void) {
+      add({ kind: 'revert', revert })
+    },
+    /** The newest entry to undo; null when there is nothing to undo. */
+    pop(): UndoEntry | null {
       return stack.pop() ?? null
     },
     get size() {
@@ -31,4 +39,10 @@ export function createMoveHistory() {
   }
 }
 
-export type MoveHistory = ReturnType<typeof createMoveHistory>
+export type UndoHistory = ReturnType<typeof createUndoHistory>
+
+/**
+ * The open board's undo stack, shared by the canvas and the drawer so ⌘Z undoes the newest
+ * change wherever it was made. useItemActions clears it when the board changes.
+ */
+export const undoHistory = createUndoHistory()

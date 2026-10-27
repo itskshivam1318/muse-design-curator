@@ -11,8 +11,9 @@ import {
   useState,
 } from 'react'
 import { Layer, Line, Rect, Stage } from 'react-konva'
-import type { Item, Point, UploadOrigin } from '../api'
+import type { Exploration, Item, Point, UploadOrigin } from '../api'
 import { useDemo } from '../demo'
+import { useExplorations } from '../queries'
 import type { ItemActions } from './actions'
 import { handleDrop } from './drop'
 import { FramesStrip } from './FramesStrip'
@@ -34,6 +35,8 @@ import { CreditCaption } from './CreditCaption'
 import { creditTargets } from './credit'
 import { ItemToolbar } from './ItemToolbar'
 import { itemBounds, lineagePoints, statusLabel } from './nodeProps'
+import { noteLines, placedNotes, type PlacedNote } from './notes'
+import { OptionNote } from './OptionNote'
 import { useCanvasPalette, usePrefersReducedMotion } from './palette'
 import { selection, useSelection } from './selection'
 
@@ -46,6 +49,7 @@ export interface CanvasHandle {
 }
 
 interface Props {
+  boardId: string
   items: Item[]
   actions: ItemActions
   onFiles: (files: File[], at: Point, origin: UploadOrigin) => void
@@ -78,7 +82,7 @@ function useSize(el: HTMLElement | null) {
   return size
 }
 
-export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref, readOnly = false }: Props) {
+export function Canvas({ boardId, items, actions, onFiles, onOpenPanel, spaceDown, ref, readOnly = false }: Props) {
   const { exploreEnabled } = useDemo()
   const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const size = useSize(container)
@@ -93,6 +97,9 @@ export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref, r
   const stripTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const overStrip = useRef(false)
   const [overrides, setOverrides] = useState<Record<string, Point>>({})
+  const explorations = useExplorations(boardId).data
+  // a note being dragged: its lines follow the pointer until the drop saves the spot
+  const [noteDrag, setNoteDrag] = useState<({ id: string } & Point) | null>(null)
   const dragStart = useRef<Map<string, Point> | null>(null)
   const [marquee, setMarquee] = useState<{ a: Point; b: Point; additive: boolean } | null>(null)
   const [dropActive, setDropActive] = useState(false)
@@ -339,6 +346,11 @@ export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref, r
     if (!parent || !(selected.includes(child.id) || selected.includes(parent.id))) return []
     return [{ id: child.id, points: lineagePoints(itemBounds(positioned(parent)), itemBounds(positioned(child))) }]
   })
+  const shownItems = ordered.map(positioned)
+  const notes = placedNotes(explorations ?? [], shownItems)
+  const noteLinks = noteLines(withDraggedNote(explorations ?? [], noteDrag), shownItems)
+  const openNote = (n: PlacedNote) =>
+    onOpenPanel('explore', n.exploration.item_id, { key: n.exploration.key, optionId: n.option.id })
   const gridStep = GRID * view.scale * (view.scale < 0.5 ? 4 : view.scale < 1 ? 2 : 1)
 
   return (
@@ -358,7 +370,7 @@ export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref, r
     >
       <p id="canvas-help" className="sr-only">
         Space and drag or two-finger scroll to pan; control and scroll or pinch to zoom. F fits the board to the screen. With
-        items selected: V {exploreEnabled ? 'explore' : 'vary'}, I inspect (or double-click), X mark not this, Delete remove, Command Z undo a move.
+        items selected: V {exploreEnabled ? 'explore' : 'vary'}, I inspect (or double-click), X mark not this, Delete remove, Command Z undo a move or a dismissed option. Explore notes sit beside their source and are listed after the items.
       </p>
       {size.width > 0 && (
         <Stage
@@ -379,6 +391,16 @@ export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref, r
           onTouchEnd={() => (pinch.current = null)}
         >
           <Layer>
+            {noteLinks.map((l) => (
+              <Line
+                key={l.id}
+                points={l.points}
+                bezier
+                stroke={palette.noteEdge}
+                strokeWidth={1.25 / view.scale}
+                listening={false}
+              />
+            ))}
             {lineage.map((l) => (
               <Line
                 key={l.id}
@@ -398,6 +420,25 @@ export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref, r
                 draggable={!spaceDown}
                 palette={palette}
                 handlers={handlers}
+              />
+            ))}
+            {notes.map((n) => (
+              <OptionNote
+                key={n.option.id}
+                option={n.option}
+                x={n.x}
+                y={n.y}
+                scale={view.scale}
+                palette={palette}
+                editable={!readOnly}
+                panning={spaceDown}
+                onOpen={() => openNote(n)}
+                onDragMove={(o, at) => setNoteDrag({ id: o.id, ...at })}
+                onMove={(o, from, to) => {
+                  setNoteDrag(null)
+                  if (from.x !== to.x || from.y !== to.y) actions.moveOption(o.id, from, to)
+                }}
+                onDismiss={(o) => actions.dismissOption(o)}
               />
             ))}
           </Layer>
@@ -472,6 +513,7 @@ export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref, r
       )}
       {dropActive && <div className="drop-hint">Drop to add here</div>}
       <ItemList items={ordered} selected={selected} />
+      <NoteList notes={notes} onOpen={openNote} />
     </div>
   )
 }
@@ -482,6 +524,31 @@ function StatusTip({ item, view }: { item: Item; view: View }) {
     <div className="status-tip" role="status" style={{ left: b.x - 20, top: b.y - 9 }}>
       {statusLabel(item)}
     </div>
+  )
+}
+
+/** The board's explorations as the canvas draws them while one note is dragged. */
+function withDraggedNote(list: Exploration[], drag: ({ id: string } & Point) | null): Exploration[] {
+  if (!drag) return list
+  return list.map((e) => ({
+    ...e,
+    options: e.options.map((o) => (o.id === drag.id ? { ...o, x: drag.x, y: drag.y } : o)),
+  }))
+}
+
+/** Keyboard and screen-reader access to the explore notes (one entry per note drawn). */
+function NoteList({ notes, onOpen }: { notes: PlacedNote[]; onOpen: (n: PlacedNote) => void }) {
+  if (notes.length === 0) return null
+  return (
+    <ul className="sr-only" aria-label="Explore notes on this board">
+      {notes.map((n) => (
+        <li key={n.option.id} data-testid="option-note" data-option-id={n.option.id}>
+          <button type="button" onClick={() => onOpen(n)}>
+            {n.option.name} · {n.option.distance}
+          </button>
+        </li>
+      ))}
+    </ul>
   )
 }
 

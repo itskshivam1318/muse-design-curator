@@ -1,26 +1,32 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useCallback, useMemo, useState } from 'react'
-import { deleteItem, type Item, keys, patchItem } from '../api'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { deleteItem, type ExploreOption, type Item, keys, patchItem, type Point } from '../api'
 import { upsertItems } from '../events'
-import { createMoveHistory, type Move } from './history'
+import { dismissOption, moveOption } from '../explore/optionActions'
+import { type Move, undoHistory as history } from './history'
 import { selection } from './selection'
 
 /** Item mutations with optimistic cache updates; the server's SSE echo confirms them. */
 export function useItemActions(boardId: string) {
   const qc = useQueryClient()
-  const [history] = useState(createMoveHistory)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => history.clear(), [boardId])
 
   const resync = useCallback(() => {
     void qc.invalidateQueries({ queryKey: keys.items(boardId) })
   }, [qc, boardId])
 
+  const report = useCallback(
+    (msg: string) => (e: unknown) => setError(e instanceof Error ? `${msg}: ${e.message}` : msg),
+    [],
+  )
   const fail = useCallback(
     (msg: string) => (e: unknown) => {
-      setError(e instanceof Error ? `${msg}: ${e.message}` : msg)
+      report(msg)(e)
       resync()
     },
-    [resync],
+    [report, resync],
   )
 
   const applyPositions = useCallback(
@@ -46,8 +52,17 @@ export function useItemActions(boardId: string) {
       undo(): boolean {
         const last = history.pop()
         if (!last) return false
-        applyPositions(last, 'from')
+        if (last.kind === 'moves') applyPositions(last.moves, 'from')
+        else last.revert()
         return true
+      },
+      /** Drop an explore note at a new spot; a refused save puts it back. Undoable. */
+      moveOption(optionId: string, from: Point, to: Point) {
+        moveOption(qc, boardId, optionId, from, to).catch(report('Could not save note position'))
+      },
+      /** The note's ×: same as Dismiss in the drawer. Undoable. */
+      dismissOption(option: ExploreOption) {
+        dismissOption(qc, boardId, option).catch(report('Could not dismiss'))
       },
       remove(ids: readonly string[]) {
         if (ids.length === 0) return
@@ -74,7 +89,7 @@ export function useItemActions(boardId: string) {
         }
       },
     }),
-    [error, history, applyPositions, qc, boardId, fail],
+    [error, applyPositions, qc, boardId, fail, report],
   )
 }
 
