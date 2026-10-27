@@ -26,7 +26,7 @@ from app import jobs
 from app.config import get_settings
 from app.corpus import hashing
 from app.corpus.embedding_lock import EMBEDDINGS_LOCK
-from app.corpus.indexer import EmbeddingStore, _store_attributes, embeddings_path
+from app.corpus.indexer import EmbeddingStore, embeddings_path, store_attributes
 from app.corpus.provenance import check_provenance
 from app.corpus.sources.base import ManifestItem, user_agent
 from app.db.models import CorpusItem
@@ -219,7 +219,7 @@ def deepen(session: Session, corpus_item_id: str) -> bool:
     if not path.is_file():
         return False
     with session.begin_nested():
-        _store_attributes(session, row.id, row.domain, path.read_bytes(), row.sha256)
+        store_attributes(session, row.id, row.domain, path.read_bytes(), row.sha256)
     corpus_repo.update(session, row.id, index_depth="full")
     session.commit()
     return True

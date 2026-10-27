@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.config import data_dir, get_settings
 from app.corpus import hashing
+from app.corpus.embedding_lock import EMBEDDINGS_LOCK
 from app.corpus.provenance import check_provenance
 from app.corpus.sources.base import ManifestItem, user_agent
 from app.db.models import CorpusItem
@@ -136,7 +137,7 @@ def _metadata(item: ManifestItem) -> dict[str, object]:
     }  # fmt: skip
 
 
-def _store_attributes(session: Session, corpus_id: str, domain: str, data: bytes, sha: str) -> None:
+def store_attributes(session: Session, corpus_id: str, domain: str, data: bytes, sha: str) -> None:
     lens = load_curated_lens(domain, get_settings().SHAPE_KIND_ENABLED)
     if lens is None:
         return
@@ -177,8 +178,7 @@ def index_corpus(
     embedder = get_embedder(get_settings())
 
     def checkpoint() -> None:
-        store.flush()  # rows on disk before the commit that points at them
-        session.commit()
+        session.commit()  # embedding rows are flushed and committed per item, under the lock
 
     done = 0
     todo = [i for i in read_manifest(manifest_path) if i.domain == domain]
@@ -223,12 +223,19 @@ def index_corpus(
             files.save_thumb(thumb_src, sha)
             vector = embedder.embed_images([data])[0]
             with session.begin_nested():
-                _store_attributes(session, item.id, domain, data, sha)
-            erow = store.put(row.embedding_row, vector)
-            corpus_repo.update(
-                session, item.id, sha256=sha, dhash=dh, width=width, height=height,
-                local_path=local, embedding_row=erow, indexing_status="indexed",
-            )  # fmt: skip
+                store_attributes(session, item.id, domain, data, sha)
+            with EMBEDDINGS_LOCK:  # live quick-indexing hands out rows from the same matrix
+                top_now = session.scalar(select(func.max(CorpusItem.embedding_row)))
+                live_store = EmbeddingStore(
+                    embeddings_path(), keep_rows=0 if top_now is None else top_now + 1
+                )
+                erow = live_store.put(row.embedding_row, vector)
+                corpus_repo.update(
+                    session, item.id, sha256=sha, dhash=dh, width=width, height=height,
+                    local_path=local, embedding_row=erow, indexing_status="indexed",
+                )  # fmt: skip
+                live_store.flush()  # row on disk before the commit that points at it
+                session.commit()
             report.indexed += 1
         except Exception as exc:  # noqa: BLE001 - one bad item must not stop the run
             log.warning("indexing %s failed: %s", item.id, exc)

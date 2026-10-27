@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 
 from app import jobs
 from app.corpus import hashing
+from app.config import get_settings
+from app.corpus import indexer as indexer_module
 from app.corpus.indexer import embeddings_path, index_corpus
 from app.db.models import Board, BoardItem, CorpusAttribute, CorpusItem
 
@@ -220,3 +222,42 @@ def test_limit_indexes_an_evenly_spaced_subset(session: Session, data_dir: Path)
     report = index_corpus(session, "watch", MANIFEST, limit=3)
     assert n_watch > 3
     assert report.indexed + report.invalid + report.failed == 3
+
+
+def test_batch_index_and_quick_index_never_share_an_embedding_row(
+    session: Session, data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A live quick-index landing mid-batch must not be handed the same matrix row."""
+    import httpx
+
+    from app.corpus.sources.base import ManifestItem, item_id
+    from app.live import quick_index as qi
+    from tests.media import image_bytes
+
+    real = indexer_module.get_embedder
+    fired: list[bool] = []
+
+    class Interleaving:
+        def __init__(self) -> None:
+            self.inner = real(get_settings())
+
+        def embed_images(self, images: list[bytes]) -> Any:
+            if not fired:  # first batch item: a live run indexes one image before it writes
+                fired.append(True)
+                live = ManifestItem(
+                    id=item_id("commons", "live1"), domain="watch", source="commons",
+                    source_id="live1", landing_url="https://c/live1",
+                    image_url="https://img.test/live1.png", creator_name="A",
+                    license_code="CC0-1.0", attribution_text="credit",
+                )  # fmt: skip
+                body = image_bytes("PNG", (300, 200), 77)
+                client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, content=body)))
+                qi.quick_index(session, [live], "watch", client=client)
+            return self.inner.embed_images(images)
+
+    monkeypatch.setattr(indexer_module, "get_embedder", lambda _s: Interleaving())
+    index_corpus(session, "watch", MANIFEST, limit=3)
+    rows = [r for r in session.scalars(select(CorpusItem.embedding_row)) if r is not None]
+    assert fired and len(rows) == len(set(rows)) >= 2
+    matrix = np.load(embeddings_path())
+    assert matrix.shape[0] == len(rows)
