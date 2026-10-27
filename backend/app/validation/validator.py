@@ -3,8 +3,9 @@
 Order: provenance, duplicate, then the target change and each protected attribute through the
 comparators. Checks still uncertain (and every `text` check) go to one batched verify call per
 <= 8 candidates, with source and candidate part crops. A segmentation mask never upgrades a
-check; it can only downgrade one (the part is not visible). Reasons are deterministic templates;
-model text lives in `evidence`.
+check: when SAM cannot find the part (in the candidate or the source) the check is judged by verify
+on the whole images instead, and only a confident verify answer can pass it. Reasons are
+deterministic templates; model text lives in `evidence`.
 """
 
 from __future__ import annotations
@@ -178,6 +179,37 @@ class _Check:
     result: CheckResult
     ask: bool = False  # goes to the verify call
     crops: dict[str, bytes] = field(default_factory=dict)  # "source" / "candidate" -> PNG
+    unfound: list[str] = field(default_factory=list)  # sides where SAM could not find the part
+
+    @property
+    def whole(self) -> bool:
+        """Judged on the whole images (the part was not localised)."""
+        return bool(self.unfound)
+
+    def image_key(self) -> str:
+        """The verify image a check reads: its part, or '' for the whole image."""
+        return "" if self.whole else (self.spec.part or "")
+
+
+def _unlocalised_note(c: _Check) -> str:
+    return f"{_part_label(c.spec.part or '')} not localised; judged on the whole image"
+
+
+def _localisation(c: _Check) -> dict[str, Any]:
+    return {"part": c.spec.part, "not_found_in": list(c.unfound), "judged_on": "whole_image"}
+
+
+def _unlocalise(c: _Check, side: str) -> None:
+    """The part was not found on `side`: ask verify about the whole images; uncertain until then."""
+    if side not in c.unfound:
+        c.unfound.append(side)
+    c.ask = True
+    c.result = CheckResult(
+        c.kind, "uncertain", f"{_unlocalised_note(c)}; the visual check could not tell",
+        {"source": "segmentation", "values": {"part": c.spec.part},
+         "localisation": _localisation(c)},
+        c.spec.key,
+    )  # fmt: skip
 
 
 def _unknown_reason(spec: AttributeSpec, cand: AttrValue | None, mode: str) -> str:
@@ -522,13 +554,13 @@ def _verify_batch(
         for c in checks:
             if c.mode in ("prefer", "avoid") or "source" not in c.crops:
                 continue
-            part = c.spec.part or ""
+            part = c.image_key()
             if part not in src_index:
                 src_index[part] = add(c.crops["source"], f"source, {_part_text(part)}")
     for cid, checks in batch:
         cand_index: dict[str, int] = {}
         for c in checks:
-            part = c.spec.part or ""
+            part = c.image_key()
             if part not in cand_index:
                 cand_index[part] = add(c.crops["candidate"], f"candidate {cid}, {_part_text(part)}")
             si = None if c.mode in ("prefer", "avoid") else src_index.get(part)
@@ -545,10 +577,7 @@ def _verify_batch(
         out = reasoning.verify(pngs, VERIFY_SCHEMA, prompt)
     except ModelError as e:
         for c in asked.values():
-            c.result = CheckResult(
-                c.kind, "uncertain", f"verification unavailable ({e.code})",
-                {"source": "verify", "values": {"error": e.code}}, c.spec.key,
-            )  # fmt: skip
+            _unavailable(c, e.code)
         return
     rows = out.get("checks") if isinstance(out, dict) else None
     for row in rows if isinstance(rows, list) else []:
@@ -567,14 +596,27 @@ def _verify_batch(
         verdict = _answer_verdict(c, vspec, str(row.get("answer")), row.get("steps"))
         if verdict is None:
             continue
-        c.result = CheckResult(
-            c.kind, verdict, _verify_reason(c, vspec, verdict),
-            {"source": "verify", "confidence": conf,
-             "values": {"answer": row.get("answer"), "steps": row.get("steps"),
-                        "note": str(row.get("evidence", ""))}},
-            c.spec.key,
-        )  # fmt: skip
+        ev: dict[str, Any] = {
+            "source": "verify", "confidence": conf,
+            "values": {"answer": row.get("answer"), "steps": row.get("steps"),
+                       "note": str(row.get("evidence", ""))},
+        }  # fmt: skip
+        reason = _verify_reason(c, vspec, verdict)
+        if c.whole:
+            reason = f"{reason}. {_unlocalised_note(c)}"
+            ev["localisation"] = _localisation(c)
+        c.result = CheckResult(c.kind, verdict, reason, ev, c.spec.key)
         c.ask = False
+
+
+def _unavailable(c: _Check, code: str) -> None:
+    reason = f"verification unavailable ({code})"
+    ev: dict[str, Any] = {"source": "verify", "values": {"error": code}}
+    if c.whole:
+        reason = f"{_unlocalised_note(c)}; {reason}"
+        ev["localisation"] = _localisation(c)
+    c.result = CheckResult(c.kind, "uncertain", reason, ev, c.spec.key)
+    c.ask = False
 
 
 def _part_text(part: str) -> str:
@@ -590,8 +632,8 @@ def _batches(
     used = 0
 
     def cost(cid: str, checks: list[_Check]) -> tuple[int, set[str]]:
-        return len({c.spec.part or "" for c in checks}), {
-            c.spec.part or "" for c in checks if c.mode not in ("prefer", "avoid")
+        return len({c.image_key() for c in checks}), {
+            c.image_key() for c in checks if c.mode not in ("prefer", "avoid")
         }
 
     src_parts: set[str] = set()
@@ -699,7 +741,7 @@ def validate_shortlist(
                            CheckResult(kind, verdict, reason, ev, aspec.key))  # fmt: skip
             check.ask = verdict == "uncertain" or aspec.kind == "text"
             plan.append(check)
-        # segmentation: the part must be visible in the candidate; a mask never upgrades
+        # segmentation: a part SAM cannot find is judged on the whole image; a mask never upgrades
         for ck in plan:
             part_id = ck.spec.part
             part = images.part(part_id)
@@ -709,11 +751,7 @@ def validate_shortlist(
                 c.pool.item.local_path, c.pool.item.sha256, part_id
             )  # fmt: skip
             if status == "not_visible":
-                ck.result = CheckResult(
-                    ck.kind, "uncertain", f"{_part_label(part_id or '')} not visible",
-                    {"source": "segmentation", "values": {"part": part_id}}, ck.spec.key,
-                )  # fmt: skip
-                ck.ask = False
+                _unlocalise(ck, "candidate")
             elif png is None:
                 code = status.split(":", 1)[1]
                 ck.result = CheckResult(
@@ -730,7 +768,8 @@ def validate_shortlist(
         asking = [ck for ck in plans[cid] if ck.ask]
         ready: list[_Check] = []
         for ck in asking:
-            png, status = images.crop(c.pool.item.local_path, c.pool.item.sha256, ck.spec.part)
+            part_id = None if ck.whole else ck.spec.part
+            png, status = images.crop(c.pool.item.local_path, c.pool.item.sha256, part_id)
             if png is None:
                 ck.result = CheckResult(
                     ck.kind, "uncertain", f"verification unavailable ({status.split(':')[-1]})",
@@ -740,11 +779,14 @@ def validate_shortlist(
                 continue
             ck.crops["candidate"] = png
             if ck.mode not in ("prefer", "avoid"):
-                spng, sstatus = images.crop(
-                    source_item.storage_path, source_item.sha256, ck.spec.part
-                )  # fmt: skip
+                spng, sstatus = images.crop(source_item.storage_path, source_item.sha256, part_id)
                 if spng is None and sstatus == "not_visible":
-                    spng, _ = images.crop(source_item.storage_path, source_item.sha256, None)
+                    # not found in the source: both sides are judged on the whole image
+                    _unlocalise(ck, "source")
+                    cpng, _ = images.crop(c.pool.item.local_path, c.pool.item.sha256, None)
+                    spng, sstatus = images.crop(source_item.storage_path, source_item.sha256, None)
+                    if cpng is not None:
+                        ck.crops["candidate"] = cpng
                 if spng is None:
                     ck.result = CheckResult(
                         ck.kind, "uncertain",
@@ -765,10 +807,7 @@ def validate_shortlist(
             reasoning = None
             for _, cks in work:
                 for ck in cks:
-                    ck.result = CheckResult(
-                        ck.kind, "uncertain", f"verification unavailable ({e.code})",
-                        {"source": "verify", "values": {"error": e.code}}, ck.spec.key,
-                    )  # fmt: skip
+                    _unavailable(ck, e.code)
         if reasoning is not None:
             for batch in _batches(work, spec):
                 _verify_batch(reasoning, images, spec, source_item, batch, cfg)

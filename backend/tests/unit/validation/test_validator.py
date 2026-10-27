@@ -156,19 +156,64 @@ def test_mask_found_does_not_upgrade_uncertain(session, data_dir):
     assert pc.verdict == "uncertain"
 
 
-def test_part_not_found_is_uncertain(session, data_dir):
+NOTE = "Case not localised; judged on the whole image"
+
+
+def _part_unfound(session, *, source_found=True, cand_found=False):
     sp = spec(protected=[(PROT_PART, "x")])
     src = source({"t": av("a"), "pp": av("x")})
     c = cand("c1", {"t": av("b"), "pp": av("x")})  # comparator alone would pass
-    put_mask(session, "sha-src")
-    put_mask(session, "sha-c1", found=False)
+    put_mask(session, "sha-src", found=source_found)
+    put_mask(session, "sha-c1", found=cand_found)
+    return sp, src, c
+
+
+def test_part_not_found_is_judged_on_the_whole_image_by_verify(session, data_dir):
+    sp, src, c = _part_unfound(session)
     rs = FakeReasoning([ans("c1", "pp", "same")])
     out = run(session, sp, src, [c], rs)
     pc = next(x for x in out["c1"].checks if x.check == "protected")
-    assert pc.verdict == "uncertain" and pc.reason == "Case not visible"
-    assert pc.evidence["source"] == "segmentation"
-    assert out["c1"].overall == "uncertain"
-    assert rs.calls == []
+    assert pc.verdict == "pass" and out["c1"].overall == "validated"
+    assert pc.evidence["source"] == "verify" and pc.evidence["confidence"] == 0.9
+    assert NOTE in pc.reason and pc.reason.startswith("Bezel kept (visual check)")
+    assert pc.evidence["localisation"] == {
+        "part": "case", "not_found_in": ["candidate"], "judged_on": "whole_image",
+    }  # fmt: skip
+    assert len(rs.calls) == 1
+    n_images, prompt = rs.calls[0]
+    assert n_images == 2  # the whole source and the whole candidate
+    assert "source, whole image" in prompt and "candidate c1, whole image" in prompt
+
+
+def test_part_not_found_stays_uncertain_without_a_confident_answer(session, data_dir):
+    for answers, error in [([ans("c1", "pp", "cannot_tell")], None),
+                           ([ans("c1", "pp", "same", 0.6)], None),
+                           ([], ModelError("MODEL_TIMEOUT"))]:  # fmt: skip
+        sp, src, c = _part_unfound(session)
+        out = run(session, sp, src, [c], FakeReasoning(answers, error))
+        pc = next(x for x in out["c1"].checks if x.check == "protected")
+        assert pc.verdict == "uncertain" and out["c1"].overall == "uncertain", answers
+        assert NOTE in pc.reason
+    assert "verification unavailable (MODEL_TIMEOUT)" in pc.reason
+
+
+def test_part_not_found_and_a_confident_change_rejects(session, data_dir):
+    sp, src, c = _part_unfound(session)
+    out = run(session, sp, src, [c], FakeReasoning([ans("c1", "pp", "different")]))
+    pc = next(x for x in out["c1"].checks if x.check == "protected")
+    assert pc.verdict == "fail" and out["c1"].overall == "rejected"
+    assert NOTE in pc.reason
+
+
+def test_source_part_not_found_judges_both_on_the_whole_image(session, data_dir):
+    sp, src, _ = _part_unfound(session, source_found=False, cand_found=True)
+    c = cand("c1", {"t": av("b"), "pp": av("x", 0.3)})  # unreliable: goes to verify
+    rs = FakeReasoning([ans("c1", "pp", "same")])
+    out = run(session, sp, src, [c], rs)
+    pc = next(x for x in out["c1"].checks if x.check == "protected")
+    assert pc.verdict == "pass" and NOTE in pc.reason
+    assert pc.evidence["localisation"]["not_found_in"] == ["source"]
+    assert "candidate c1, whole image" in rs.calls[0][1]
 
 
 def test_text_resolved_only_via_verify(session, data_dir):
