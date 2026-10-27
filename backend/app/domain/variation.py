@@ -214,19 +214,56 @@ def validate_variation(
     )
 
 
+SIGNAL_MIN_CONSISTENCY = 0.6
+SIGNAL_MIN_KNOWN = 3
+PRESELECT_MIN = 3  # same-part attributes top the default protections up to this many
+
+
 def propose_protected(
     attrs: Sequence[AttributeRecord], target_key: str, profile: BoardProfile | None
 ) -> list[dict[str, Any]]:
-    strength = {s.key: s.consistency for s in profile.signals} if profile else {}
-    rows: list[dict[str, Any]] = [
-        {
-            "key": a.key,
-            "is_board_signal": a.key in strength,
-            "strength": float(strength.get(a.key, 0.0)),
-        }
-        for a in attrs
-        if a.enabled and a.value is not None and a.key != target_key
-    ]
+    """Every enabled, known, non-target attribute as a protection chip, with its default state.
+
+    Pre-selected: board signals (consistency >= 0.6, n_known >= 3), values the user edited or
+    confirmed, and, while that gives fewer than 3, the next same-part attributes in lens order.
+    The frontend mirrors this (`vary/logic.ts`); the shared fixture keeps them in step.
+    """
+    strength = {
+        s.key: s.consistency
+        for s in (profile.signals if profile else [])
+        if s.consistency >= SIGNAL_MIN_CONSISTENCY and s.n_known >= SIGNAL_MIN_KNOWN
+    }
+    target = next((a for a in attrs if a.key == target_key), None)
+    part = target.part if target else None
+    rows: list[dict[str, Any]] = []
+    for a in attrs:
+        if not a.enabled or a.value is None or a.key == target_key:
+            continue
+        reason = (
+            "board_signal"
+            if a.key in strength
+            else "user_confirmed" if a.status in ("edited", "confirmed") else "suggested"
+        )
+        rows.append(
+            {
+                "key": a.key,
+                "is_board_signal": a.key in strength,
+                "strength": float(strength.get(a.key, 0.0)),
+                "preselected": reason != "suggested",
+                "reason": reason,
+                "_part": a.part,
+            }
+        )
+    chosen = sum(1 for r in rows if r["preselected"])
+    if part is not None:
+        for r in rows:
+            if chosen >= PRESELECT_MIN:
+                break
+            if not r["preselected"] and r["_part"] == part:
+                r["preselected"], r["reason"] = True, "same_part"
+                chosen += 1
+    for r in rows:
+        del r["_part"]
     rows.sort(
         key=lambda r: (not r["is_board_signal"], -float(r["strength"]))
     )  # stable: keeps lens order

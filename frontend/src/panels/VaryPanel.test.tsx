@@ -57,18 +57,27 @@ describe('VaryPanel', () => {
     expect((screen.getByRole('radio', { name: '2 steps' }) as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it('preflight sentence lists target, mode and protected', () => {
+  it('pre-selects only the board signal; the other known attributes are chips to switch on', () => {
     setup({ targetKey: 'dial_color', mode: 'prefer', values: ['navy'] })
-    // protected chips: board signal (legibility) first, then lens order; the target is never protected
-    const chips = screen.getAllByRole('button', { name: /^Unprotect/ })
-    expect(chips.map((c) => c.getAttribute('aria-label'))).toEqual([
-      'Unprotect Legibility', 'Unprotect Case finish', 'Unprotect Case diameter', 'Unprotect Date window',
+    // board signal (legibility) first, then lens order; the target is never proposed
+    expect(screen.getAllByRole('button', { name: /^(Unprotect|Protect) (?!all)/ }).map((c) => c.getAttribute('aria-label'))).toEqual([
+      'Unprotect Legibility', 'Protect Case finish', 'Protect Case diameter', 'Protect Date window',
     ])
+    expect(screen.getByText('Prefer Dial colour navy, keeping Legibility unchanged.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Protect Case finish' }))
+    expect(screen.getByText('Prefer Dial colour navy, keeping Legibility and Case finish unchanged.')).toBeTruthy()
+  })
+
+  it('Protect all selects every chip and Clear releases them', () => {
+    setup({ targetKey: 'dial_color', mode: 'prefer', values: ['navy'] })
+    fireEvent.click(screen.getByRole('button', { name: 'Protect all' }))
+    expect(screen.getAllByRole('button', { name: /^Unprotect / })).toHaveLength(4)
     expect(screen.getByText(
       'Prefer Dial colour navy, keeping Legibility, Case finish, Case diameter and Date window unchanged.',
     )).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Unprotect Case finish' }))
-    expect(screen.getByText('Prefer Dial colour navy, keeping Legibility, Case diameter and Date window unchanged.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(screen.queryAllByRole('button', { name: /^Unprotect / })).toHaveLength(0)
+    expect(screen.getByText('Prefer Dial colour navy, with nothing protected.')).toBeTruthy()
   })
 
   it('posts the request with a fresh Idempotency-Key and shows a 422 message verbatim', async () => {

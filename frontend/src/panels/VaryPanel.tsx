@@ -9,7 +9,9 @@ import {
   modesFor,
   numberBounds,
   nudgeTarget,
+  defaultSelection,
   orderProtected,
+  protectAll,
   preflightSentence,
   scaleOf,
   sortTargets,
@@ -58,7 +60,8 @@ export function VaryPanel({ boardId, itemId, params, onClose }: DrawerPanelProps
   const [choice, setChoice] = useState<Choice>(preset.mode ?? 'explore')
   const [values, setValues] = useState<string[]>(preset.values ?? [])
   const [steps, setSteps] = useState<1 | 2>(1)
-  const [unprotected, setUnprotected] = useState<Set<string>>(new Set())
+  // null = the defaults for the current target; a Set once the user has touched a chip
+  const [chosen, setChosen] = useState<Set<string> | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -70,10 +73,12 @@ export function VaryPanel({ boardId, itemId, params, onClose }: DrawerPanelProps
     () => (targetKey ? orderProtected(records, targetKey, profile) : []),
     [records, targetKey, profile],
   )
-  const protectedOn = protectedRows.filter((r) => !unprotected.has(r.key))
+  const selected = chosen ?? defaultSelection(protectedRows)
+  const protectedOn = protectedRows.filter((r) => selected.has(r.key))
 
   const pickTarget = (key: string) => {
     setTargetKey(key)
+    setChosen(null)
     setValues([])
     setError(null)
     const kind = targets.find((a) => a.key === key)?.kind ?? ''
@@ -223,9 +228,18 @@ export function VaryPanel({ boardId, itemId, params, onClose }: DrawerPanelProps
               {protectedRows.length === 0 ? (
                 <p className="muted small">Nothing else is known about this item, so nothing is protected.</p>
               ) : (
+                <>
+                <div className="row-end">
+                  <button type="button" className="link-btn" onClick={() => setChosen(protectAll(protectedRows))}>
+                    Protect all
+                  </button>
+                  <button type="button" className="link-btn" onClick={() => setChosen(new Set())}>
+                    Clear
+                  </button>
+                </div>
                 <ul className="protected-chips">
                   {protectedRows.map((r) => {
-                    const on = !unprotected.has(r.key)
+                    const on = selected.has(r.key)
                     return (
                       <li key={r.key}>
                         <button
@@ -234,8 +248,8 @@ export function VaryPanel({ boardId, itemId, params, onClose }: DrawerPanelProps
                           aria-pressed={on}
                           aria-label={`${on ? 'Unprotect' : 'Protect'} ${r.label}`}
                           onClick={() =>
-                            setUnprotected((s) => {
-                              const next = new Set(s)
+                            setChosen(() => {
+                              const next = new Set(selected)
                               if (next.has(r.key)) next.delete(r.key)
                               else next.add(r.key)
                               return next
@@ -249,6 +263,7 @@ export function VaryPanel({ boardId, itemId, params, onClose }: DrawerPanelProps
                     )
                   })}
                 </ul>
+                </>
               )}
             </section>
           )}

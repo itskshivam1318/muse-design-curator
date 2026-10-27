@@ -148,6 +148,8 @@ export function preflightSentence(p: PreflightInput): string {
 
 // ---- protected & targets ----
 
+export type ProtectReason = 'board_signal' | 'user_confirmed' | 'same_part' | 'suggested'
+
 export interface ProtectedRow {
   key: string
   label: string
@@ -155,28 +157,77 @@ export interface ProtectedRow {
   kind: AttrKind
   isBoardSignal: boolean
   strength: number
+  /** Switched on by default (see `reason`). */
+  preselected: boolean
+  reason: ProtectReason
 }
 
-/** Mirror of backend propose_protected: enabled known values, board signals first by strength, else lens order. */
+const SIGNAL_MIN_CONSISTENCY = 0.6
+const SIGNAL_MIN_KNOWN = 3
+const PRESELECT_MIN = 3
+
+/**
+ * Mirror of backend `propose_protected`: every enabled, known, non-target attribute as a chip.
+ * Pre-selected: board signals (consistency >= 0.6, n_known >= 3), edited or confirmed values, and,
+ * while that gives fewer than 3, the next same-part attributes in lens order. The shared fixture
+ * `backend/tests/fixtures/protected_defaults.json` keeps both implementations in step.
+ */
 export function orderProtected(
   attrs: readonly ItemAttribute[],
   targetKey: string,
   profile: BoardProfile | null | undefined,
 ): ProtectedRow[] {
-  const strength = new Map((profile?.signals ?? []).map((s) => [s.key, s.consistency]))
+  const strength = new Map(
+    (profile?.signals ?? [])
+      .filter((s) => s.consistency >= SIGNAL_MIN_CONSISTENCY && s.n_known >= SIGNAL_MIN_KNOWN)
+      .map((s) => [s.key, s.consistency]),
+  )
+  const part = attrs.find((a) => a.key === targetKey)?.part ?? null
   const rows = attrs
     .filter((a) => a.enabled && a.value !== null && a.key !== targetKey)
-    .map((a) => ({
-      key: a.key,
-      label: a.label,
-      value: a.value,
-      kind: a.kind,
-      isBoardSignal: strength.has(a.key),
-      strength: strength.get(a.key) ?? 0,
-    }))
+    .map((a) => {
+      const reason: ProtectReason = strength.has(a.key)
+        ? 'board_signal'
+        : a.status === 'edited' || a.status === 'confirmed'
+          ? 'user_confirmed'
+          : 'suggested'
+      return {
+        row: {
+          key: a.key,
+          label: a.label,
+          value: a.value,
+          kind: a.kind,
+          isBoardSignal: strength.has(a.key),
+          strength: strength.get(a.key) ?? 0,
+          preselected: reason !== 'suggested',
+          reason,
+        } as ProtectedRow,
+        part: a.part,
+      }
+    })
+  let chosen = rows.filter((r) => r.row.preselected).length
+  if (part !== null) {
+    for (const r of rows) {
+      if (chosen >= PRESELECT_MIN) break
+      if (!r.row.preselected && r.part === part) {
+        r.row.preselected = true
+        r.row.reason = 'same_part'
+        chosen++
+      }
+    }
+  }
   // Array.prototype.sort is stable, so ties keep lens order
-  return rows.sort((a, b) => Number(b.isBoardSignal) - Number(a.isBoardSignal) || b.strength - a.strength)
+  return rows
+    .map((r) => r.row)
+    .sort((a, b) => Number(b.isBoardSignal) - Number(a.isBoardSignal) || b.strength - a.strength)
 }
+
+/** The keys switched on by default. */
+export const defaultSelection = (rows: readonly ProtectedRow[]): Set<string> =>
+  new Set(rows.filter((r) => r.preselected).map((r) => r.key))
+
+/** "Protect all": every proposed chip. */
+export const protectAll = (rows: readonly ProtectedRow[]): Set<string> => new Set(rows.map((r) => r.key))
 
 /** Target candidates: the board's tensions first (in tension order), then the lens order. */
 export function sortTargets<T extends { key: string }>(lensAttrs: readonly T[], profile: BoardProfile | null | undefined): T[] {

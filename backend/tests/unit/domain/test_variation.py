@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -193,16 +195,37 @@ def test_nudge() -> None:
     )
 
 
-def test_propose_protected_orders_signals_first_and_excludes() -> None:
-    a = attrs(note=None)
-    a[4] = a[4].model_copy(update={"enabled": False})  # flag disabled
-    sig = lambda k, c: Signal(key=k, label=k, kind="x", modal_value="v", consistency=c, n_known=3)
-    profile = BoardProfile(signals=[sig("tone", 0.7), sig("size", 0.9), sig("style", 1.0)])
-    out = propose_protected(a, "style", profile)
-    assert [r["key"] for r in out] == ["size", "tone", "weight"]
-    assert out[0] == {"key": "size", "is_board_signal": True, "strength": 0.9}
-    assert out[2] == {"key": "weight", "is_board_signal": False, "strength": 0.0}
-    assert [r["key"] for r in propose_protected(a, "style", None)] == ["weight", "size", "tone"]
+def _cases() -> list[dict[str, Any]]:
+    path = Path(__file__).resolve().parents[2] / "fixtures" / "protected_defaults.json"
+    return json.loads(path.read_text())["cases"]
+
+
+@pytest.mark.parametrize("case", _cases(), ids=lambda c: c["name"])
+def test_propose_protected_matches_shared_fixture(case: dict[str, Any]) -> None:
+    records = [
+        AttributeRecord(
+            key=a["key"], label=a["key"], category="c", kind="enum", part=a.get("part"),
+            value=a.get("value", "x"), confidence=0.9,
+            status=a.get("status", "extracted"), source="model", enabled=a.get("enabled", True),
+        )
+        for a in case["attrs"]
+    ]  # fmt: skip
+    signals = [
+        Signal(key=s["key"], label=s["key"], kind="x", modal_value="v",
+               consistency=s["consistency"], n_known=s["n_known"])
+        for s in case["signals"]
+    ]  # fmt: skip
+    out = propose_protected(records, case["target"], BoardProfile(signals=signals) if signals else None)
+    assert [
+        {k: r[k] for k in ("key", "is_board_signal", "preselected", "reason")} for r in out
+    ] == case["expected"]
+
+
+def test_propose_protected_reports_signal_strength_and_never_the_target() -> None:
+    sig = Signal(key="size", label="size", kind="x", modal_value="v", consistency=0.9, n_known=3)
+    out = propose_protected(attrs(note=None), "style", BoardProfile(signals=[sig]))
+    assert out[0]["key"] == "size" and out[0]["strength"] == 0.9
+    assert "style" not in [r["key"] for r in out] and "note" not in [r["key"] for r in out]
 
 
 def test_ordinal_nudge_edges() -> None:

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AttributeSpec, ItemAttribute, RunSummary } from '../api'
+import fixtureJson from '../../../backend/tests/fixtures/protected_defaults.json'
 import { makeProfile } from '../test/fixtures'
 import {
   barState,
@@ -8,13 +9,18 @@ import {
   modesFor,
   nudgeTarget,
   orderProtected,
+  defaultSelection,
   originLabel,
   preflightSentence,
+  protectAll,
   progressText,
   shortfallText,
   sourceStatusLines,
   sortTargets,
 } from './logic'
+
+interface FixtureAttr { key: string; part?: string; value?: unknown; status?: ItemAttribute['status']; enabled?: boolean }
+const fixture = fixtureJson as { cases: any[] }
 
 function attr(key: string, value: ItemAttribute['value'], over: Partial<ItemAttribute> = {}): ItemAttribute {
   return {
@@ -71,23 +77,35 @@ describe('preflight sentence', () => {
   })
 })
 
-describe('protected ordering', () => {
-  it('mirrors propose_protected: enabled known values, board signals first by strength, then lens order', () => {
-    const attrs = [
-      attr('a', 'x'), attr('target', 'y'), attr('b', null), attr('c', 'z', { enabled: false }),
-      attr('d', 'w'), attr('e', 'v'),
-    ]
-    const profile = makeProfile({
-      signals: [
-        { key: 'e', label: 'e', kind: 'enum', modal_value: 'v', consistency: 0.6, n_known: 5 },
-        { key: 'd', label: 'd', kind: 'enum', modal_value: 'w', consistency: 0.9, n_known: 5 },
-      ],
-    })
-    const out = orderProtected(attrs, 'target', profile)
-    expect(out.map((r) => r.key)).toEqual(['d', 'e', 'a'])
-    expect(out[0].isBoardSignal).toBe(true)
-    expect(out[2].isBoardSignal).toBe(false)
-    expect(orderProtected(attrs, 'target', null).map((r) => r.key)).toEqual(['a', 'd', 'e'])
+describe('default protections', () => {
+  it('matches the backend for every case in the shared fixture', () => {
+    for (const c of fixture.cases) {
+      const attrs = c.attrs.map((a: FixtureAttr) =>
+        attr(a.key, 'value' in a ? (a.value as ItemAttribute['value']) : 'x', {
+          part: a.part ?? null, status: a.status ?? 'extracted', enabled: a.enabled ?? true,
+        }),
+      )
+      const signals = c.signals.map((s: { key: string; consistency: number; n_known: number }) => ({
+        label: s.key, kind: 'enum', modal_value: 'v', ...s,
+      }))
+      const rows = orderProtected(attrs, c.target, signals.length ? makeProfile({ signals }) : null)
+      expect(
+        rows.map((r) => ({ key: r.key, is_board_signal: r.isBoardSignal, preselected: r.preselected, reason: r.reason })),
+        c.name,
+      ).toEqual(c.expected)
+    }
+  })
+
+  it('pre-selects exactly the preselected rows, and Protect all selects every chip', () => {
+    const attrs = [attr('t', 'y', { part: 'p' }), attr('a', 'x', { part: 'p' }), attr('b', 'x'), attr('c', 'x')]
+    const rows = orderProtected(attrs, 't', null)
+    expect([...defaultSelection(rows)]).toEqual(['a'])
+    expect([...protectAll(rows)]).toEqual(['a', 'b', 'c'])
+  })
+
+  it('never proposes the target or unknown values', () => {
+    const rows = orderProtected([attr('t', 'y'), attr('u', null), attr('k', 'x')], 't', null)
+    expect(rows.map((r) => r.key)).toEqual(['k'])
   })
 })
 

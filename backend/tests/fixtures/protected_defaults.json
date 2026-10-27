@@ -1,0 +1,66 @@
+{
+  "_doc": "Shared by backend test_variation.py and frontend vary/logic.test.ts: both must pick the same default protections.",
+  "cases": [
+    {
+      "name": "signals and user-confirmed attributes are pre-selected; no fill once there are 3",
+      "target": "t",
+      "attrs": [
+        {"key": "a", "part": "body"}, {"key": "t", "part": "body"}, {"key": "b", "part": "dial"},
+        {"key": "c", "part": "dial", "status": "confirmed"}, {"key": "d", "part": "dial"}, {"key": "e", "part": "body"}
+      ],
+      "signals": [{"key": "b", "consistency": 0.6, "n_known": 3}, {"key": "d", "consistency": 0.9, "n_known": 4}],
+      "expected": [
+        {"key": "d", "is_board_signal": true, "preselected": true, "reason": "board_signal"},
+        {"key": "b", "is_board_signal": true, "preselected": true, "reason": "board_signal"},
+        {"key": "a", "is_board_signal": false, "preselected": false, "reason": "suggested"},
+        {"key": "c", "is_board_signal": false, "preselected": true, "reason": "user_confirmed"},
+        {"key": "e", "is_board_signal": false, "preselected": false, "reason": "suggested"}
+      ]
+    },
+    {
+      "name": "the same-part fill stops at 3",
+      "target": "t",
+      "attrs": [
+        {"key": "a", "part": "dial"}, {"key": "t", "part": "body"}, {"key": "b", "part": "body"},
+        {"key": "c", "part": "body"}, {"key": "d", "part": "body"}, {"key": "e", "part": "body"}, {"key": "f", "part": "dial"}
+      ],
+      "signals": [{"key": "f", "consistency": 0.8, "n_known": 5}],
+      "expected": [
+        {"key": "f", "is_board_signal": true, "preselected": true, "reason": "board_signal"},
+        {"key": "a", "is_board_signal": false, "preselected": false, "reason": "suggested"},
+        {"key": "b", "is_board_signal": false, "preselected": true, "reason": "same_part"},
+        {"key": "c", "is_board_signal": false, "preselected": true, "reason": "same_part"},
+        {"key": "d", "is_board_signal": false, "preselected": false, "reason": "suggested"},
+        {"key": "e", "is_board_signal": false, "preselected": false, "reason": "suggested"}
+      ]
+    },
+    {
+      "name": "unknown and disabled are never proposed; weak signals do not count",
+      "target": "t",
+      "attrs": [
+        {"key": "a", "part": "body", "value": null}, {"key": "t", "part": "body"},
+        {"key": "b", "part": "body", "enabled": false}, {"key": "c", "part": "body"},
+        {"key": "d", "part": "dial"}, {"key": "e", "part": "dial"}
+      ],
+      "signals": [{"key": "d", "consistency": 0.5, "n_known": 5}, {"key": "e", "consistency": 0.9, "n_known": 2}],
+      "expected": [
+        {"key": "c", "is_board_signal": false, "preselected": true, "reason": "same_part"},
+        {"key": "d", "is_board_signal": false, "preselected": false, "reason": "suggested"},
+        {"key": "e", "is_board_signal": false, "preselected": false, "reason": "suggested"}
+      ]
+    },
+    {
+      "name": "a target without a part gets no same-part fill; an edited value counts as confirmed",
+      "target": "t",
+      "attrs": [
+        {"key": "a"}, {"key": "t"}, {"key": "b", "part": "dial", "status": "edited"}, {"key": "c"}
+      ],
+      "signals": [],
+      "expected": [
+        {"key": "a", "is_board_signal": false, "preselected": false, "reason": "suggested"},
+        {"key": "b", "is_board_signal": false, "preselected": true, "reason": "user_confirmed"},
+        {"key": "c", "is_board_signal": false, "preselected": false, "reason": "suggested"}
+      ]
+    }
+  ]
+}

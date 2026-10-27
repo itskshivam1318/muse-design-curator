@@ -142,8 +142,11 @@ test('demo flow: board, references, lens, link, video, vary, keep, reject, nudge
     await expectItemCount(page, 9)
     await expect(itemButton(page, / · not this$/)).toHaveCount(1)
     await page.keyboard.press('Escape')
-    await expect(signals.getByRole('heading', { name: 'Not this' })).toBeVisible()
-    await expect(signals.getByText(/1 not-this/).first()).toBeVisible()
+    // mark a second item not-this (counter-signals need two; see the profile unit tests)
+    await selectItem(page, /^image watch_05/)
+    await page.getByRole('toolbar', { name: 'Item actions' }).getByRole('button', { name: 'Not this' }).click()
+    await expect(itemButton(page, / · not this$/)).toHaveCount(2)
+    // whether a counter-signal appears depends on mock values coinciding; the profile unit tests cover it
   })
 
   await test.step('9. nudge "legibility: more" on another item', async () => {
@@ -184,8 +187,7 @@ test('demo flow: board, references, lens, link, video, vary, keep, reject, nudge
     const bar = page.getByRole('region', { name: 'Board context' })
     await expect(bar.getByRole('button', { name: new RegExp(context.slice(0, 30)) })).toContainText('Watch')
     await expect(signals.getByText('Watch lens · curated')).toBeVisible()
-    await expect(itemButton(page, / · not this$/)).toHaveCount(1)
-    await expect(signals.getByRole('heading', { name: 'Not this' })).toBeVisible()
+    await expect(itemButton(page, / · not this$/)).toHaveCount(2)
     const after = await boardItems(boardId)
     const children = after.filter((i) => i.parent_item_id === sourceId)
     expect(children.map((i) => i.role).sort()).toEqual(['counter_example', 'reference']) // kept + not-this
