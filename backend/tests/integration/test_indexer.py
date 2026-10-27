@@ -261,3 +261,82 @@ def test_batch_index_and_quick_index_never_share_an_embedding_row(
     assert fired and len(rows) == len(set(rows)) >= 2
     matrix = np.load(embeddings_path())
     assert matrix.shape[0] == len(rows)
+
+
+def test_two_threads_two_sessions_do_not_deadlock_on_the_lock_and_the_database(
+    tmp_path: Path, data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Batch index (thread 1) and a live quick index (thread 2) on separate connections.
+
+    The batch indexer must not hold a database write transaction while it is slow or waiting for the
+    embeddings lock; otherwise the live thread (lock held, waiting for the write lock) and the batch
+    thread (write lock held, waiting for the lock) stall until SQLite gives up.
+    """
+    import threading
+
+    import httpx
+    from sqlalchemy.orm import Session as SqlSession
+
+    from app.corpus.sources.base import ManifestItem, item_id
+    from app.db.session import make_engine, run_migrations
+    from app.live import quick_index as qi
+    from tests.media import image_bytes
+
+    url = f"sqlite:///{tmp_path / 'two.sqlite'}"
+    engine_a = make_engine(url, connect_args={"timeout": 1.5})
+    run_migrations(engine_a)
+    engine_b = make_engine(url, connect_args={"timeout": 1.5})
+    barrier = threading.Barrier(2, timeout=20)
+    real = indexer_module.get_embedder
+    errors: list[BaseException] = []
+    first = True
+
+    class Slow:
+        def __init__(self) -> None:
+            self.inner = real(get_settings())
+
+        def embed_images(self, images: list[bytes]) -> Any:
+            nonlocal first
+            if first:  # the batch is mid-item (slow model call) while the live run lands
+                first = False
+                barrier.wait()
+                time.sleep(0.5)  # let the live thread take the embeddings lock
+            return self.inner.embed_images(images)
+
+    monkeypatch.setattr(indexer_module, "get_embedder", lambda _s: Slow())
+
+    def batch() -> None:
+        try:
+            with SqlSession(engine_a) as s:
+                index_corpus(s, "watch", MANIFEST, limit=3)
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    def live() -> None:
+        try:
+            item = ManifestItem(
+                id=item_id("commons", "live2"), domain="watch", source="commons",
+                source_id="live2", landing_url="https://c/live2",
+                image_url="https://img.test/live2.png", creator_name="A",
+                license_code="CC0-1.0", attribution_text="credit",
+            )  # fmt: skip
+            body = image_bytes("PNG", (300, 200), 91)
+            client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, content=body)))
+            barrier.wait()
+            with SqlSession(engine_b) as s:
+                assert len(qi.quick_index(s, [item], "watch", client=client)) == 1
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [threading.Thread(target=batch), threading.Thread(target=live)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(60)
+    assert not errors, errors
+    with SqlSession(engine_a) as s:
+        rows = [r for r in s.scalars(select(CorpusItem.embedding_row)) if r is not None]
+    assert len(rows) >= 2 and len(rows) == len(set(rows))
+    assert np.load(embeddings_path()).shape[0] == len(rows)
+    engine_a.dispose()
+    engine_b.dispose()

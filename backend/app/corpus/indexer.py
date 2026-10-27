@@ -209,6 +209,9 @@ def index_corpus(
         ):
             report.skipped += 1
             continue
+        # no write transaction stays open across slow work (download, models) or while waiting for
+        # the embeddings lock: a live run holds that lock and then needs the database write lock
+        session.commit()
         try:
             data = _fetch(item, base_dir, http)
             if sniff_image(data) is None:
@@ -224,18 +227,23 @@ def index_corpus(
             vector = embedder.embed_images([data])[0]
             with session.begin_nested():
                 store_attributes(session, item.id, domain, data, sha)
+            session.commit()  # attributes are saved; nothing is pending when the lock is taken
             with EMBEDDINGS_LOCK:  # live quick-indexing hands out rows from the same matrix
-                top_now = session.scalar(select(func.max(CorpusItem.embedding_row)))
-                live_store = EmbeddingStore(
-                    embeddings_path(), keep_rows=0 if top_now is None else top_now + 1
-                )
-                erow = live_store.put(row.embedding_row, vector)
-                corpus_repo.update(
-                    session, item.id, sha256=sha, dhash=dh, width=width, height=height,
-                    local_path=local, embedding_row=erow, indexing_status="indexed",
-                )  # fmt: skip
-                live_store.flush()  # row on disk before the commit that points at it
-                session.commit()
+                try:
+                    top_now = session.scalar(select(func.max(CorpusItem.embedding_row)))
+                    live_store = EmbeddingStore(
+                        embeddings_path(), keep_rows=0 if top_now is None else top_now + 1
+                    )
+                    erow = live_store.put(row.embedding_row, vector)
+                    corpus_repo.update(
+                        session, item.id, sha256=sha, dhash=dh, width=width, height=height,
+                        local_path=local, embedding_row=erow, indexing_status="indexed",
+                    )  # fmt: skip
+                    live_store.flush()  # row on disk before the commit that points at it
+                    session.commit()
+                except Exception:
+                    session.rollback()  # no dangling embedding_row for the next item to read
+                    raise
             report.indexed += 1
         except Exception as exc:  # noqa: BLE001 - one bad item must not stop the run
             log.warning("indexing %s failed: %s", item.id, exc)

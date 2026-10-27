@@ -36,10 +36,12 @@ def test_indexer_commits_every_batch(session: Session, data_dir: Path, monkeypat
     real = session.commit
     monkeypatch.setattr(session, "commit", lambda: (commits.append(1), real())[1])
     report = indexer.index_corpus(session, "watch", FIXTURE_MANIFEST, batch_size=2)
+    assert report.indexed >= 3 and report.failed >= 1
     processed = report.indexed + report.failed
-    assert processed >= 4
-    # every indexed item commits under the embeddings lock (at least one per batch), plus the final
-    assert len(commits) >= processed // 2 + 1
+    # an indexed item commits three times (before slow work, attributes, row + embedding under the
+    # lock); a failed one once (before slow work); every 2nd processed item adds a batch checkpoint,
+    # plus the final one. Skipped and invalid items commit only through those checkpoints.
+    assert len(commits) == 3 * report.indexed + report.failed + processed // 2 + 1
 
 
 def test_client_uses_the_hard_timeout(session: Session, data_dir: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
