@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import events, jobs
+from app.api.schemas import board_to_dict
 from app.board.votes import ambiguous_candidates, domain_votes
 from app.config import get_settings
 from app.db.models import Board, BoardItem, Lens
@@ -101,6 +102,34 @@ def ensure_board_lens(session: Session, board_id: str) -> LensSpec | None:
             )
     propose_lens(session, board.id)
     return None
+
+
+AUTO_MIN_EMBEDDED = 3
+
+
+def auto_attach_domain(session: Session, board_id: str) -> str | None:
+    """Give an Auto board (no domain) the curated domain its items clearly vote for.
+
+    A clear winner: not ambiguous, at least AUTO_MIN_EMBEDDED embedded items, and a curated lens.
+    A domain the user set is never overridden. Returns the new domain, else None.
+    """
+    board = _require_board(session, board_id)
+    if board.domain:
+        return None
+    embedded = [i for i in items_repo.list_active(session, board.id) if i.embedding_json]
+    if len(embedded) < AUTO_MIN_EMBEDDED:
+        return None
+    votes = domain_votes(session, embedded)
+    if not votes or ambiguous_candidates(votes):
+        return None
+    winner = max(votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
+    if curated_lens(winner) is None:
+        return None
+    boards_repo.update(session, board.id, domain=winner)
+    ensure_board_lens(session, board.id)  # attaches the curated lens, queues pending_lens items
+    data = {"board": board_to_dict(board)}
+    after_commit(session, lambda: events.publish(board.id, "board.updated", data))
+    return winner
 
 
 def sample_diverse(items: list[BoardItem], k: int = MAX_SAMPLE) -> list[BoardItem]:

@@ -1,6 +1,6 @@
 /** Board server-sent events: keeps the React Query cache in step with the server. */
 import type { QueryClient } from '@tanstack/react-query'
-import { API_ORIGIN, type Item, keys, type ProfileSnapshot } from './api'
+import { API_ORIGIN, type Board, type Item, keys, type ProfileSnapshot } from './api'
 
 export const EVENT_TYPES = [
   'item.added',
@@ -9,6 +9,7 @@ export const EVENT_TYPES = [
   'item.updated',
   'item.removed',
   'profile.updated',
+  'board.updated',
   'lens.proposed',
   'run.progress',
   'run.completed',
@@ -70,6 +71,14 @@ export function applyEvent(qc: QueryClient, boardId: string, type: string, data:
       qc.setQueryData<ProfileSnapshot>(keys.profile(boardId), (old) =>
         old && old.version > snap.version ? old : snap,
       )
+      return
+    }
+    case 'board.updated': {
+      // the server changed the board itself (e.g. an Auto board chose its domain and lens)
+      const board = d.board as Board | undefined
+      if (!board || board.id !== boardId) return
+      qc.setQueryData<Board>(keys.board(boardId), (old) => ({ ...old, ...board }))
+      void qc.invalidateQueries({ queryKey: keys.lens(boardId) })
       return
     }
     case 'lens.proposed':

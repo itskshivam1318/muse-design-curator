@@ -11,6 +11,16 @@ function qcWith(items: Item[]) {
 }
 
 describe('applyEvent', () => {
+  it('board.updated puts the new board (domain) in the cache and refreshes the lens', () => {
+    const qc = qcWith([])
+    const board = { id: 'b', title: 'T', context: '', domain: null, lens_id: null, created_at: 'x', updated_at: 'x' }
+    qc.setQueryData(keys.board('b'), board)
+    qc.setQueryData(keys.lens('b'), null)
+    applyEvent(qc, 'b', 'board.updated', { board: { ...board, domain: 'watch', lens_id: 'lens_1' } })
+    expect(qc.getQueryData<typeof board>(keys.board('b'))).toMatchObject({ domain: 'watch', lens_id: 'lens_1' })
+    expect(qc.getQueryState(keys.lens('b'))?.isInvalidated).toBe(true)
+  })
+
   it('item.added upserts once, item.parsed and item.failed patch status, item.removed drops', () => {
     const qc = qcWith([])
     const it1 = makeItem({ id: 'i1', board_id: 'b', parse_status: 'pending' })

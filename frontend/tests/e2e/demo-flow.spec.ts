@@ -60,13 +60,9 @@ test('demo flow: board, references, lens, link, video, vary, keep, reject, nudge
 
   await test.step('3. the lens is auto-chosen (watch); signals appear live', async () => {
     const bar = page.getByRole('region', { name: 'Board context' })
-    // the board's items vote for the watch domain; the context bar shows the inferred choice
-    await expect(bar.getByText('· Auto: watch')).toBeVisible()
-    await bar.getByRole('button', { name: /A field watch/ }).click()
-    const domain = bar.getByLabel('Domain')
-    await expect(domain.locator('option[value=""]')).toHaveText('Auto (looks like watch)')
-    await domain.selectOption('watch')
-    await bar.getByRole('button', { name: 'Save' }).click()
+    // the board's items vote for the watch domain and the server attaches the curated lens itself:
+    // no domain choice, no Save
+    await expect(bar.getByText('· Watch', { exact: true })).toBeVisible()
     await expect(signals.getByText('Watch lens · curated')).toBeVisible()
     // parsing under the watch lens streams in; the profile groups appear without a reload
     await expect(signals.locator('.sig').first()).toBeVisible()

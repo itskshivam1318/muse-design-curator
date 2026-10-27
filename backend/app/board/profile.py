@@ -367,9 +367,10 @@ def recompute(session: Session, board_id: str) -> int | None:
     Returns the new version, or None when nothing changed. `profile.updated` is published
     after the caller's transaction commits.
     """
-    from app.lens_service import ensure_board_lens
+    from app.lens_service import auto_attach_domain, ensure_board_lens
 
     with _locks[board_id]:
+        auto_attach_domain(session, board_id)
         try:
             lens = ensure_board_lens(session, board_id)
         except AppError:
