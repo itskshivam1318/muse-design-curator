@@ -391,3 +391,37 @@ def test_a_refusing_source_is_skipped_by_the_next_run(world, live) -> None:  # t
     assert block["failed"] == []  # cooling down is not a failure of this run
     assert len(live["sources"]["openverse"].queries) == asked  # not asked again
     assert not any(r["code"] == "source_failed" for r in second.summary_json.get("shortfall", []))
+
+
+def _deepen_spy(monkeypatch) -> list[str]:  # type: ignore[no-untyped-def]
+    queued: list[str] = []
+    real = jobs.enqueue
+
+    def spy(name: str, **kw: Any) -> None:
+        if name == "deepen_item":
+            queued.append(kw["corpus_item_id"])
+            return
+        real(name, **kw)
+
+    monkeypatch.setattr(jobs, "enqueue", spy)
+    return queued
+
+
+def test_demo_mode_does_not_deepen_by_default(world, live, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("DEMO_MODE", "1")
+    two_sources(live)
+    queued = _deepen_spy(monkeypatch)
+    run = make_run(world, world["watch"])
+    assert run.status == "completed", run.error_code
+    assert any(c.origin == "live" for c in runs_repo.candidates(world["session"], run.id))
+    assert queued == []  # no paid background indexing for anonymous visitors
+
+
+def test_demo_deepen_opt_in(world, live, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("DEMO_MODE", "1")
+    monkeypatch.setenv("DEMO_DEEPEN", "1")
+    two_sources(live)
+    queued = _deepen_spy(monkeypatch)
+    run = make_run(world, world["watch"])
+    assert run.status == "completed", run.error_code
+    assert queued

@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     DEMO_SECRET: str | None = None
     DEMO_RUNS_PER_IP_PER_HOUR: int = 10
     DEMO_RUNS_PER_DAY: int = 150
+    # Deepening shortlisted live items (full indexing: a Spark call plus SAM per part) is paid
+    # background work; in DEMO_MODE it is off unless this is set
+    DEMO_DEEPEN: bool = False
     # Behind a proxy: take the client IP from X-Forwarded-For, DEMO_PROXY_HOPS entries from the right
     # (the entries trusted proxies appended; the leftmost ones are client-controlled)
     DEMO_TRUST_PROXY: bool = False

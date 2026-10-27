@@ -232,14 +232,27 @@ For a public instance, set `DEMO_MODE=1`. Visitors can then look but not add:
 | `DEMO_SECRET` | secret | random, e.g. `python3 -c "import secrets; print(secrets.token_hex(32))"` |
 | `DEMO_TRUST_PROXY` | variable | `1` on a Space: the client address comes from `X-Forwarded-For`; leave `0` when nothing proxies the app (the connection address is used and the header ignored) |
 | `DEMO_PROXY_HOPS` | variable | `1` on a Space: how many entries from the right of `X-Forwarded-For` the client address is (those are appended by trusted proxies; leftmost entries are client-supplied and never used) |
+| `DEMO_DEEPEN` | variable | `0` (default): runs never queue background deepening of live items; `1` allows it (paid Spark and SAM calls, see Cost) |
 
 The API refuses to start with `DEMO_MODE=1` and no `DEMO_PASSCODE` or `DEMO_SECRET`.
 
-**Cost.** In live mode, every unlocked upload or link (Spark extraction plus a SAM call per lens part)
-and every Vary run that is not a replay (Spark verify calls, one per up to 8 shortlisted candidates)
-is billed to the Meta key behind `MODEL_API_KEY`. Uploads are limited to people with the passcode,
-and the Vary limits above cap what anonymous visitors can spend. Meta applies no spending cap of its
-own, so usage beyond the hackathon credit is charged to the card on file.
+**Cost.** In live mode these calls are billed to the Meta key behind `MODEL_API_KEY` (embeddings
+run locally and cost nothing):
+
+- every unlocked upload or link: one Spark extraction plus one SAM call per lens part;
+- every Vary run that is not a replay:
+  - **query writing**: one small Spark call that turns the request into live searches (only when
+    live search is on);
+  - **SAM localisation**: one call per lens part the checks need, for the source and each
+    shortlisted candidate (at most 16), unless that mask is already cached. Live items found at run
+    time are quick-indexed (embedding and palette only), so their parts are always new;
+  - **verify batches**: one Spark verify call per up to 8 shortlisted candidates (at most 2);
+  - **deepen** (off in `DEMO_MODE` unless `DEMO_DEEPEN=1`): up to 16 shortlisted live items per run
+    are fully indexed in the background, each one Spark extraction plus one SAM call per part.
+
+Uploads are limited to people with the passcode, and the Vary limits above bound how many runs
+anonymous visitors can start; with `DEMO_DEEPEN` left off, a run's spend ends when the run does. Meta
+applies no spending cap of its own, so usage beyond the hackathon credit is charged to the card on file.
 
 ## Deploy
 

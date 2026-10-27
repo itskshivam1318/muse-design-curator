@@ -427,8 +427,11 @@ def _run(session: Session, run: VariationRun) -> None:
         row.rank = c.rank
         row.scores_json = _scores(c)
     session.flush()
-    for c in [c for c in top if c.pool.item.id in live_ids][:MAX_DEEPEN_PER_RUN]:
-        after_commit(session, partial(jobs.enqueue, DEEPEN_JOB, corpus_item_id=c.pool.item.id))
+    if not settings.DEMO_MODE or settings.DEMO_DEEPEN:  # no paid background work for visitors
+        for c in [c for c in top if c.pool.item.id in live_ids][:MAX_DEEPEN_PER_RUN]:
+            after_commit(
+                session, partial(jobs.enqueue, DEEPEN_JOB, corpus_item_id=c.pool.item.id)
+            )
     run.summary_json = summarize_run(session, run, lens)
     _advance(session, run, "completed", completed_at=_now_iso())
     _progress(session, run, "completed")
