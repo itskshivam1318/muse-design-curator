@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app import demo
-from app.api import attributes, boards, decisions, extension, items, lenses, media, runs
+from app.api import attributes, boards, decisions, explore, extension, items, lenses, media, runs
 from app.api import demo as demo_api
 from app.config import get_settings, resolve_repo_path
 from app.errors import register_error_handlers
@@ -64,6 +64,7 @@ app.include_router(lenses.router)
 app.include_router(attributes.router)
 app.include_router(runs.router)
 app.include_router(decisions.router)
+app.include_router(explore.router)
 app.include_router(demo_api.router)
 
 

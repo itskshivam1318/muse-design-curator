@@ -13,7 +13,7 @@ def _show(value: Value) -> str:
 def _value_rule(spec: AttributeSpec) -> str:
     if isinstance(spec, EnumSpec):
         listed = ", ".join(spec.vocabulary or [])
-        rule = "`value` is a short snake_case token naming the option (for example devanagari)."
+        rule = "`value` is a short snake_case token naming the option (for example contrasting_accent)."
         if listed:
             rule += (
                 f" Known values for this attribute: {listed}. They are inspiration, not a limit:"
@@ -33,7 +33,7 @@ def _value_rule(spec: AttributeSpec) -> str:
     if spec.kind == "boolean":
         return (
             '`value` is "true" or "false" and stays the current state. Options are about'
-            " how the feature is done (for example a date window at 6, framed)."
+            " how the feature is done (for example where it sits, its size, how it is framed)."
         )
     if spec.kind == "color":
         return "`value` is a plain colour name (for example burnt orange)."
@@ -65,9 +65,9 @@ def build_explore_prompt(
         f"Current {spec.label}: {_show(current)}.",
         (
             "Each option is a specific, nameable design move grounded in THIS image and this"
-            ' board, something a designer could say in a few words (for example "Devanagari'
-            ' script", "Only the first one", "Two-tone split"). Never answer with generic'
-            " vocabulary words."
+            ' board, something a designer could say in a few words (for example "a contrasting'
+            ' accent", "a single-material version", "pared back to one element"). Never answer'
+            " with generic vocabulary words."
         ),
         (
             "Fields: `name` is short and human; `description` is one line on what it looks like"
