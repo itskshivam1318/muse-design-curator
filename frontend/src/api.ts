@@ -22,7 +22,7 @@ export interface Item {
   page_title: string | null
   creator_handle: string | null
   captured_at: string
-  rights_status: 'user_supplied' | 'licensed'
+  rights_status: 'user_supplied' | 'licensed' | 'generated'
   parse_status: ParseStatus
   parse_error_code: string | null
   role: ItemRole
@@ -37,6 +37,55 @@ export interface Item {
   created_at: string
   /** Stored provenance of a licensed (corpus) image; null for the user's own items. */
   licence?: ItemLicence | null
+  /** Set on an image generated from an explore option. */
+  explore_option_id: string | null
+  generation: { model: string; prompt: string; option_id: string } | null
+  check: GeneratedCheck | null
+}
+
+/** The comparator's verdict on a generated image: did the target land, what was kept. */
+export interface GeneratedCheck {
+  target?: {
+    answer: 'yes' | 'no' | 'unclear'
+    confidence: number
+    box?: number[] | null
+    note: string
+  }
+  kept?: number
+  of?: number
+  drifted?: string[]
+  unknown?: number
+  error?: string
+}
+
+export type Distance = 'near' | 'bold' | 'wild'
+
+export interface ExploreOption {
+  id: string
+  exploration_id: string
+  parent_option_id: string | null
+  batch: number
+  steer: string | null
+  name: string
+  description: string
+  distance: Distance
+  value: string | number | boolean | null
+  keeps: string[]
+  edit_prompt?: string
+  status: 'open' | 'dismissed' | 'visualizing' | 'visualized'
+  last_error: string | null
+  x: number | null
+  y: number | null
+  created_at?: string
+}
+
+export interface Exploration {
+  id: string
+  board_id: string
+  item_id: string
+  key: string
+  created_at?: string
+  options: ExploreOption[]
 }
 
 export interface ItemLicence {
@@ -370,6 +419,8 @@ export class ApiError extends Error {
 export interface DemoStatus {
   demo_mode: boolean
   unlocked: boolean
+  /** Absent on the unlock response. */
+  explore_enabled?: boolean
 }
 
 export const keys = {
@@ -381,6 +432,7 @@ export const keys = {
   lens: (id: string) => ['lens', id] as const,
   frames: (itemId: string) => ['frames', itemId] as const,
   run: (runId: string) => ['run', runId] as const,
+  explorations: (boardId: string) => ['explorations', boardId] as const,
   attributes: (itemId: string) => ['attributes', itemId] as const,
   attributeHistory: (itemId: string, key: string) => ['attributeHistory', itemId, key] as const,
 }
@@ -462,6 +514,19 @@ export const getDemoStatus = () => request<DemoStatus>('/demo/status')
 /** Sets the HttpOnly unlock cookie on success; 401 for a wrong passcode, 429 after too many. */
 export const unlockDemo = (passcode: string) =>
   request<DemoStatus>('/demo/unlock', { method: 'POST', json: { passcode } })
+
+export const exploreItem = (
+  itemId: string,
+  body: { key: string; steer?: string; parent_option_id?: string; mode?: 'initial' | 'more' | 'further' },
+) => request<Exploration>(`/items/${enc(itemId)}/explore`, { method: 'POST', json: body })
+export const listExplorations = (boardId: string) =>
+  request<{ explorations: Exploration[] }>(`/boards/${enc(boardId)}/explorations`).then((r) => r.explorations)
+export const patchOption = (
+  optionId: string,
+  body: { status?: 'dismissed' | 'open'; x?: number; y?: number },
+) => request<ExploreOption>(`/options/${enc(optionId)}`, { method: 'PATCH', json: body })
+export const visualizeOption = (optionId: string) =>
+  request<void>(`/options/${enc(optionId)}/visualize`, { method: 'POST' })
 
 export const pairCode = () =>
   request<{ code: string; expires_at: string }>('/extension/pair-code', { method: 'POST' })

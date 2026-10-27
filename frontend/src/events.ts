@@ -1,6 +1,6 @@
 /** Board server-sent events: keeps the React Query cache in step with the server. */
 import type { QueryClient } from '@tanstack/react-query'
-import { API_ORIGIN, type Board, type Item, keys, type ProfileSnapshot } from './api'
+import { API_ORIGIN, type Board, type Exploration, type Item, keys, type ProfileSnapshot } from './api'
 
 export const EVENT_TYPES = [
   'item.added',
@@ -11,6 +11,7 @@ export const EVENT_TYPES = [
   'profile.updated',
   'board.updated',
   'lens.proposed',
+  'explore.updated',
   'run.progress',
   'run.completed',
 ] as const
@@ -79,6 +80,21 @@ export function applyEvent(qc: QueryClient, boardId: string, type: string, data:
       if (!board || board.id !== boardId) return
       qc.setQueryData<Board>(keys.board(boardId), (old) => ({ ...old, ...board }))
       void qc.invalidateQueries({ queryKey: keys.lens(boardId) })
+      // a grown vocabulary changes every item's attribute options
+      void qc.invalidateQueries({ queryKey: ['attributes'] })
+      return
+    }
+    case 'explore.updated': {
+      const e = d as unknown as Exploration
+      if (!e.id || e.board_id !== boardId) return
+      qc.setQueryData<Exploration[]>(keys.explorations(boardId), (old) => {
+        const list = old ?? []
+        const at = list.findIndex((x) => x.id === e.id)
+        if (at === -1) return [...list, e]
+        const next = list.slice()
+        next[at] = e
+        return next
+      })
       return
     }
     case 'lens.proposed':

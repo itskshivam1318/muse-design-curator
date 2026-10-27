@@ -9,6 +9,7 @@ export function makeItem(over: Partial<Item> = {}): Item {
     role: 'reference', x: 10, y: 20, w: 200, h: 150, z: 0,
     storage_path: 'uploads/abc.png', thumb_path: 'thumbs/abc.webp', parent_item_id: null,
     created_at: '2026-10-26T00:00:00Z',
+    explore_option_id: null, generation: null, check: null,
     ...over,
   }
 }

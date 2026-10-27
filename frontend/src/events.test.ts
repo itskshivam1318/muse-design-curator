@@ -1,6 +1,6 @@
 import { QueryClient } from '@tanstack/react-query'
 import { describe, expect, it } from 'vitest'
-import { type Item, keys } from './api'
+import { type Exploration, type Item, keys } from './api'
 import { applyEvent } from './events'
 import { makeItem } from './test/fixtures'
 
@@ -10,7 +10,41 @@ function qcWith(items: Item[]) {
   return qc
 }
 
+const exploration = (over: Partial<Exploration> = {}): Exploration => ({
+  id: 'x1',
+  board_id: 'b',
+  item_id: 'i1',
+  key: 'colour',
+  options: [],
+  ...over,
+})
+
 describe('applyEvent', () => {
+  it('explore.updated upserts the exploration by id', () => {
+    const qc = new QueryClient()
+    applyEvent(qc, 'b', 'explore.updated', exploration())
+    applyEvent(qc, 'b', 'explore.updated', exploration({ id: 'x2' }))
+    applyEvent(qc, 'b', 'explore.updated', exploration({ key: 'shape' }))
+    const list = qc.getQueryData<Exploration[]>(keys.explorations('b'))!
+    expect(list.map((e) => [e.id, e.key])).toEqual([
+      ['x1', 'shape'],
+      ['x2', 'colour'],
+    ])
+  })
+
+  it('explore.updated for another board is ignored', () => {
+    const qc = new QueryClient()
+    applyEvent(qc, 'b', 'explore.updated', exploration({ board_id: 'other' }))
+    expect(qc.getQueryData(keys.explorations('b'))).toBeUndefined()
+  })
+
+  it('board.updated also refreshes item attributes (the lens vocabulary may have grown)', () => {
+    const qc = new QueryClient()
+    qc.setQueryData(keys.attributes('i1'), {})
+    applyEvent(qc, 'b', 'board.updated', { board: { id: 'b' } })
+    expect(qc.getQueryState(keys.attributes('i1'))?.isInvalidated).toBe(true)
+  })
+
   it('board.updated puts the new board (domain) in the cache and refreshes the lens', () => {
     const qc = qcWith([])
     const board = { id: 'b', title: 'T', context: '', domain: null, lens_id: null, created_at: 'x', updated_at: 'x' }
