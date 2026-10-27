@@ -77,6 +77,10 @@ def downgrade() -> None:
     gen = "SELECT id FROM board_items WHERE origin = 'generated'"
     for table in ("item_frames", "item_attributes", "attribute_events"):
         op.execute(f"DELETE FROM {table} WHERE item_id IN ({gen})")
+    runs = f"SELECT id FROM variation_runs WHERE source_item_id IN ({gen})"
+    cands = f"SELECT id FROM run_candidates WHERE run_id IN ({runs})"
+    op.execute(f"DELETE FROM validation_results WHERE run_candidate_id IN ({cands})")
+    op.execute(f"DELETE FROM run_candidates WHERE run_id IN ({runs})")
     op.execute(f"DELETE FROM variation_runs WHERE source_item_id IN ({gen})")
     op.execute("UPDATE board_items SET parent_item_id = NULL WHERE parent_item_id IN (" + gen + ")")
     op.execute("DELETE FROM board_items WHERE origin = 'generated'")

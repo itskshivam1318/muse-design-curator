@@ -7,7 +7,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from alembic import command
-from app.db.models import BoardItem
+from app.db.models import (
+    BoardItem,
+    CorpusItem,
+    Lens,
+    RunCandidate,
+    ValidationResult,
+    VariationRun,
+)
 from app.db.repos import boards, explore, items
 from app.db.session import BACKEND_DIR, run_migrations
 
@@ -19,8 +26,15 @@ def _setup(session: Session) -> tuple[str, str]:
 
 
 def _row(name: str) -> dict[str, object]:
-    return {"name": name, "description": "d", "distance": "near", "value_json": {"v": 1},
-            "keeps_json": ["k"], "edit_prompt": "p", "batch": 1}  # fmt: skip
+    return {
+        "name": name,
+        "description": "d",
+        "distance": "near",
+        "value_json": {"v": 1},
+        "keeps_json": ["k"],
+        "edit_prompt": "p",
+        "batch": 1,
+    }
 
 
 def test_get_or_create_is_unique_per_item_key(session: Session) -> None:
@@ -59,10 +73,24 @@ def test_generated_item_allowed(session: Session) -> None:
 
 
 def _insert(c, **kw) -> None:  # type: ignore[no-untyped-def]
-    row = {"id": "itm_x", "board_id": "brd_x", "kind": "image", "origin": "generated",
-           "rights_status": "generated", "captured_at": "t", "parse_status": "pending",
-           "role": "reference", "x": 0, "y": 0, "w": 0, "h": 0, "z": 0, "parse_attempts": 0,
-           "created_at": "t", **kw}  # fmt: skip
+    row = {
+        "id": "itm_x",
+        "board_id": "brd_x",
+        "kind": "image",
+        "origin": "generated",
+        "rights_status": "generated",
+        "captured_at": "t",
+        "parse_status": "pending",
+        "role": "reference",
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0,
+        "z": 0,
+        "parse_attempts": 0,
+        "created_at": "t",
+        **kw,
+    }
     cols = ", ".join(row)
     c.execute(
         text(f"INSERT INTO board_items ({cols}) VALUES ({', '.join(':' + k for k in row)})"), row
@@ -119,6 +147,53 @@ def test_migration_downgrade_is_clean(tmp_path: Path) -> None:
                 "VALUES ('exp_x', 'brd_x', 'itm_x', 'k', 't')"
             )
         )
+    with Session(engine) as s:
+        s.add(
+            CorpusItem(
+                id="cx_x",
+                domain="d",
+                source="t",
+                source_id="1",
+                landing_url="u",
+                image_url="u",
+                license_code="cc0",
+                attribution_text="a",
+            )
+        )
+        s.add(Lens(id="lens_x", domain="d", version=1, origin="o", spec_json={}))
+        s.flush()
+        s.add(
+            VariationRun(
+                id="run_x",
+                board_id="brd_x",
+                source_item_id="itm_x",
+                lens_id="lens_x",
+                target_key="k",
+                mode="m",
+                target_values_json={},
+                protected_keys_json=[],
+                source_snapshot_json={},
+                board_profile_version=1,
+                ranking_version="r",
+                ranking_config_json={},
+                validator_version="v",
+                providers_json={},
+                idempotency_key="idem",
+            )
+        )
+        s.flush()
+        s.add(RunCandidate(id="cand_x", run_id="run_x", corpus_item_id="cx_x"))
+        s.flush()
+        s.add(
+            ValidationResult(
+                run_candidate_id="cand_x",
+                check="c",
+                verdict="pass",
+                reason="r",
+                validator_version="v",
+            )
+        )
+        s.commit()
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
     with engine.begin() as conn:
