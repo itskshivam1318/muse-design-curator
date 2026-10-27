@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+
 from app.config import Settings
 from app.providers.embedding import Embedder, MockEmbedder, PECoreEmbedder, SigLIP2Embedder
 from app.providers.meta_client import check_model_id, get_client
@@ -59,8 +61,12 @@ def get_segmentation(settings: Settings) -> SegmentationProvider:
     raise ModelError("PROVIDER_MISCONFIGURED", message=f"unknown SEGMENTATION_PROVIDER {name!r}")
 
 
-def get_embedder(settings: Settings) -> Embedder:
-    name = settings.EMBEDDER.replace("_", "-").replace("pe-core", "pe-core")
+# One loaded embedder per process and name: loading SigLIP 2 takes seconds and ~1.5 GB.
+_embedders: dict[str, Embedder] = {}
+_embedders_lock = threading.Lock()
+
+
+def _load_embedder(name: str) -> Embedder:
     if name == "mock":
         return MockEmbedder()
     if name == "siglip2":
@@ -68,6 +74,19 @@ def get_embedder(settings: Settings) -> Embedder:
     if name == "pe-core":
         return PECoreEmbedder()
     raise ModelError("PROVIDER_MISCONFIGURED", message=f"unknown EMBEDDER {name!r}")
+
+
+def get_embedder(settings: Settings) -> Embedder:
+    """The process-wide embedder for settings.EMBEDDER, loaded once (thread-safe, lazy). A failed
+    load is not cached, so fixing the environment and retrying works."""
+    name = settings.EMBEDDER.replace("_", "-")
+    cached = _embedders.get(name)
+    if cached is not None:
+        return cached
+    with _embedders_lock:
+        if name not in _embedders:
+            _embedders[name] = _load_embedder(name)
+        return _embedders[name]
 
 
 def embedder_id(settings: Settings) -> str:

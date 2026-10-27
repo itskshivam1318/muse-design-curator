@@ -197,3 +197,41 @@ def test_sam_input_is_shrunk_and_instances_map_back() -> None:
     out = _rescale(SegInstance((200, 100, 400, 200), mask, 0.9), (1024, 512), (2048, 1024))
     assert out.mask.shape == (1024, 2048) and out.bbox == (400, 200, 800, 400)
     assert out.mask[300, 600] and not out.mask[10, 10] and out.score == 0.9
+
+
+def test_embedder_is_loaded_once_per_process(monkeypatch: pytest.MonkeyPatch) -> None:
+    import threading
+    import time
+
+    from app import providers
+
+    loads: list[int] = []
+
+    class Fake:
+        id = "siglip2"
+
+        def __init__(self) -> None:
+            loads.append(1)
+            time.sleep(0.05)  # a slow load: concurrent callers must wait, not load again
+
+    monkeypatch.setattr(providers, "SigLIP2Embedder", Fake)
+    monkeypatch.setattr(providers, "_embedders", {})
+    s = Settings(EMBEDDER="siglip2")
+    got: list[object] = []
+    threads = [threading.Thread(target=lambda: got.append(get_embedder(s))) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert get_embedder(s) is got[0] and all(g is got[0] for g in got)
+    assert len(loads) == 1
+
+
+def test_a_failed_embedder_load_is_not_cached(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import providers
+
+    monkeypatch.setattr(providers, "_embedders", {})
+    monkeypatch.setitem(sys.modules, "torch", None)
+    with pytest.raises(ModelError):
+        get_embedder(Settings(EMBEDDER="siglip2"))
+    assert providers._embedders == {}
