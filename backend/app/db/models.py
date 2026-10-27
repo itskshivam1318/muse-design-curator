@@ -274,6 +274,10 @@ class VariationRun(Base):
     idempotency_key: Mapped[str] = mapped_column(String, unique=True)
     created_at: Mapped[str] = _created()
     completed_at: Mapped[str | None] = mapped_column(String)
+    # heartbeat: stamped by every progress write; NULL while the run has never started
+    updated_at: Mapped[str | None] = mapped_column(String)
+    # the demo visitor charged for this run (refunded if it is interrupted)
+    client_ip: Mapped[str | None] = mapped_column(String)
     __table_args__ = (
         CheckConstraint(
             _in("status", ("queued", "retrieving", "validating", "completed", "failed"))

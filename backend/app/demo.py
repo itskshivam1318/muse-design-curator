@@ -143,6 +143,15 @@ class _Windows:
         with self._lock:
             self._hits.setdefault(key, deque()).append(now())
 
+    def remove_last(self, key: str) -> None:
+        """Give back the most recent hit (a refund)."""
+        with self._lock:
+            q = self._hits.get(key)
+            if q:
+                q.pop()
+                if not q:
+                    self._hits.pop(key, None)
+
     def clear(self, key: str | None = None) -> None:
         with self._lock:
             if key is None:
@@ -210,6 +219,11 @@ def check_run_limits(ip: str, settings: Settings | None = None) -> None:
 def record_run(ip: str) -> None:
     windows.add(f"run:{ip}")
     windows.add("run:*")
+
+
+def refund_run(ip: str) -> None:
+    """An interrupted run does not count against the visitor's hourly limit."""
+    windows.remove_last(f"run:{ip}")
 
 
 def _canonical(

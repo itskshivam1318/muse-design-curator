@@ -13,8 +13,10 @@ from datetime import UTC, datetime, timedelta
 from functools import partial
 from typing import Any
 
+from sqlalchemy import update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app import events, jobs, lens_service
 from app.config import get_settings
@@ -54,7 +56,8 @@ log = logging.getLogger(__name__)
 
 QUERY_TIMEOUT_S = 10.0  # the live query-writing call; fallback queries after that
 LIVE_EXTRA_S = 20.0  # downloads and indexing get this much beyond LIVE_TIMEOUT_S
-STALE_AFTER = timedelta(minutes=5)
+STALE_AFTER = timedelta(minutes=5)  # a started run with no heartbeat for this long lost its worker
+QUEUED_STALE_AFTER = timedelta(minutes=15)  # a run that never started (counted from created_at)
 TERMINAL = ("completed", "failed")
 JOB = "run_variation"
 
@@ -111,7 +114,11 @@ def _hash(req: VariationRequest) -> str:
 
 
 def create_run(
-    session: Session, board_id: str, req: VariationRequest, idempotency_key: str | None
+    session: Session,
+    board_id: str,
+    req: VariationRequest,
+    idempotency_key: str | None,
+    client_ip: str | None = None,
 ) -> VariationRun:
     board = boards_repo.get(session, board_id)
     if board is None:
@@ -151,6 +158,7 @@ def create_run(
         ranking_version=RANKING_CONFIG.version, ranking_config_json=RANKING_CONFIG.model_dump(),
         validator_version=VALIDATOR_VERSION, providers_json=_provider_snapshot(),
         status="queued", progress_json={"stage": "queued", "validated_n": 0, "shortlist_n": 0},
+        client_ip=client_ip,
         idempotency_key=idempotency_key or f"auto_{hashlib.sha256(digest.encode()).hexdigest()[:8]}"
         f"_{datetime.now(UTC).timestamp()}",
     )  # fmt: skip
@@ -167,9 +175,35 @@ def create_run(
 # ---- execute ----
 
 
+def _now_iso() -> str:
+    return datetime.now(UTC).isoformat(timespec="milliseconds")
+
+
+class RunInterrupted(Exception):
+    """The run was marked failed elsewhere (stale); the worker must not overwrite that."""
+
+
+def _advance(session: Session, run: VariationRun, status: str, **values: Any) -> None:
+    """Move the run to `status` only while it is not terminal (a conditional UPDATE), so a run
+    already failed as interrupted is never revived. Raises RunInterrupted otherwise."""
+    session.flush()
+    res = session.execute(
+        update(VariationRun)
+        .where(VariationRun.id == run.id, VariationRun.status.not_in(TERMINAL))
+        .values(status=status, updated_at=_now_iso(), **values)
+        .execution_options(synchronize_session=False)
+    )
+    if res.rowcount != 1:  # type: ignore[attr-defined]
+        raise RunInterrupted(run.id)
+    set_committed_value(run, "status", status)
+    for k, v in values.items():
+        set_committed_value(run, k, v)
+
+
 def _progress(session: Session, run: VariationRun, stage: str, **extra: Any) -> None:
     prog = {**(run.progress_json or {}), "stage": stage, **extra}
     run.progress_json = prog
+    run.updated_at = _now_iso()  # the heartbeat stale detection reads
     session.flush()
     payload = {
         "run_id": run.id, "stage": stage, "validated_n": prog.get("validated_n", 0),
@@ -262,7 +296,8 @@ def _run(session: Session, run: VariationRun) -> None:
     providers = _providers()
     live_sources = _live_enabled(board)
     domain = board.domain or ""
-    run.status = "retrieving"
+    _advance(session, run, "retrieving")
+    session.commit()
     if live_sources:
         _report(
             session, run, "searching",
@@ -358,7 +393,7 @@ def _run(session: Session, run: VariationRun) -> None:
     for c in top:
         rows[c.pool.item.id].state = "validating"
         rows[c.pool.item.id].scores_json = _scores(c)
-    run.status = "validating"
+    _advance(session, run, "validating")
     _progress(
         session, run, "validating", validated_n=0, shortlist_n=len(top),
         invalid_unindexed=pool.meta.invalid_unindexed,
@@ -395,8 +430,7 @@ def _run(session: Session, run: VariationRun) -> None:
     for c in [c for c in top if c.pool.item.id in live_ids][:MAX_DEEPEN_PER_RUN]:
         after_commit(session, partial(jobs.enqueue, DEEPEN_JOB, corpus_item_id=c.pool.item.id))
     run.summary_json = summarize_run(session, run, lens)
-    run.status = "completed"
-    run.completed_at = datetime.now(UTC).isoformat(timespec="milliseconds")
+    _advance(session, run, "completed", completed_at=_now_iso())
     _progress(session, run, "completed")
     session.commit()
 
@@ -409,12 +443,17 @@ def execute_run(session_factory: sessionmaker[Session], run_id: str) -> None:
         board_id = run.board_id
         try:
             _run(session, run)
+        except RunInterrupted:
+            session.rollback()
+            log.warning("run %s was marked interrupted while running; result dropped", run_id)
         except Exception as exc:
             code = exc.code if isinstance(exc, AppError | ModelError) else "RUN_ERROR"
             if code == "RUN_ERROR":
                 log.exception("run %s failed", run_id)
             session.rollback()
             run = runs_repo.get(session, run_id)
+            if run is not None and run.status in TERMINAL:
+                return  # already failed as interrupted: keep that verdict
             if run is not None:
                 run.status = "failed"
                 run.error_code = str(code)
@@ -436,15 +475,30 @@ jobs.register(JOB, run_variation_job)
 # ---- reads ----
 
 
-def mark_stale(session: Session, run: VariationRun, now: datetime | None = None) -> bool:
-    """A run still going after STALE_AFTER lost its worker: fail it as interrupted."""
+def _is_stale(run: VariationRun, now: datetime) -> bool:
     if run.status in TERMINAL:
         return False
-    created = datetime.fromisoformat(run.created_at)
-    if (now or datetime.now(UTC)) - created <= STALE_AFTER:
+    if run.updated_at:  # started: judged by its heartbeat
+        return now - datetime.fromisoformat(run.updated_at) > STALE_AFTER
+    # never started: waiting for a worker (or lost from the in-process queue by a restart)
+    return now - datetime.fromisoformat(run.created_at) > QUEUED_STALE_AFTER
+
+
+def mark_stale(session: Session, run: VariationRun, now: datetime | None = None) -> bool:
+    """Fail a run whose worker went quiet (no heartbeat for STALE_AFTER, or never started within
+    QUEUED_STALE_AFTER) as RUN_INTERRUPTED, and refund the demo visitor it was charged to."""
+    if not _is_stale(run, now or datetime.now(UTC)):
         return False
-    run.status = "failed"
-    run.error_code = "RUN_INTERRUPTED"
+    try:
+        _advance(session, run, "failed", error_code="RUN_INTERRUPTED")
+    except RunInterrupted:  # it finished (or failed) meanwhile
+        session.rollback()
+        session.refresh(run)
+        return False
     _progress(session, run, "failed")
     session.commit()
+    if run.client_ip:
+        from app import demo
+
+        demo.refund_run(run.client_ip)
     return True

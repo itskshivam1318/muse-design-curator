@@ -45,7 +45,9 @@ def create_run(
             return JSONResponse({"run_id": done.id, "replayed": True}, status_code=200)
         ip = demo.client_ip(request, settings)
         demo.check_run_limits(ip, settings)
-    run = orchestrator.create_run(session, board_id, body, idempotency_key or None)
+    run = orchestrator.create_run(
+        session, board_id, body, idempotency_key or None, client_ip=ip if counted else None
+    )
     if counted:
         demo.record_run(ip)
     return JSONResponse({"run_id": run.id}, status_code=202)

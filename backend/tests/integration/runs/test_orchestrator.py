@@ -241,14 +241,68 @@ def test_failure_marks_run_failed_and_keeps_rows(world, monkeypatch) -> None:  #
     assert cands(world, run)  # retrieval rows stay
 
 
+def _iso(t: datetime) -> str:
+    return t.isoformat(timespec="milliseconds")
+
+
 def test_stale_run_marked_interrupted(world) -> None:  # type: ignore[no-untyped-def]
     s = world["session"]
     fresh = make_run(world, world["watch"])
     fresh.status = "retrieving"
+    fresh.updated_at = _iso(datetime.now(UTC))
     assert not orchestrator.mark_stale(s, fresh)
     later = datetime.now(UTC) + timedelta(minutes=6)
     assert orchestrator.mark_stale(s, fresh, later)
     assert (fresh.status, fresh.error_code) == ("failed", "RUN_INTERRUPTED")
+
+
+def test_progress_writes_stamp_a_heartbeat(world) -> None:  # type: ignore[no-untyped-def]
+    run = make_run(world, world["watch"])
+    assert run.status == "completed" and run.updated_at is not None
+    assert run.updated_at >= run.created_at
+
+
+def test_running_run_with_recent_heartbeat_is_not_stale(world) -> None:  # type: ignore[no-untyped-def]
+    s = world["session"]
+    run = make_run(world, world["watch"])
+    now = datetime.now(UTC)
+    run.status = "validating"
+    run.created_at = _iso(now - timedelta(minutes=20))
+    run.updated_at = _iso(now - timedelta(minutes=1))
+    s.commit()
+    assert not orchestrator.mark_stale(s, run, now)
+    assert orchestrator.mark_stale(s, run, now + timedelta(minutes=5, seconds=1))
+
+
+def test_queued_run_waits_fifteen_minutes_before_stale(world) -> None:  # type: ignore[no-untyped-def]
+    s = world["session"]
+    run = make_run(world, world["watch"])
+    now = datetime.now(UTC)
+    run.status, run.updated_at = "queued", None
+    run.created_at = _iso(now - timedelta(minutes=6))
+    s.commit()
+    assert not orchestrator.mark_stale(s, run, now)  # still waiting for a worker
+    assert not orchestrator.mark_stale(s, run, now + timedelta(minutes=8))
+    assert orchestrator.mark_stale(s, run, now + timedelta(minutes=10))
+    assert (run.status, run.error_code) == ("failed", "RUN_INTERRUPTED")
+
+
+def test_worker_does_not_overwrite_a_run_marked_interrupted(world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from app.api import deps
+
+    real = orchestrator.validate_shortlist
+
+    def interrupted_meanwhile(session, *a: Any, **k: Any) -> Any:  # type: ignore[no-untyped-def]
+        out = real(session, *a, **k)
+        with deps._factory()() as other:  # a GET poll in another session marks it stale
+            row = other.scalars(select(VariationRun)).all()[-1]
+            orchestrator.mark_stale(other, row, datetime.now(UTC) + timedelta(hours=1))
+        return out
+
+    monkeypatch.setattr(orchestrator, "validate_shortlist", interrupted_meanwhile)
+    run = make_run(world, world["watch"])
+    assert (run.status, run.error_code) == ("failed", "RUN_INTERRUPTED")
+    assert run.completed_at is None
 
 
 def _active_board(world: dict[str, Any], board: str) -> list[BoardItem]:

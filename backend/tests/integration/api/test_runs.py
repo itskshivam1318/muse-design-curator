@@ -96,6 +96,13 @@ def test_stale_run_fails_on_read(client: TestClient, world) -> None:  # type: ig
     run = s.get(VariationRun, rid)
     run.status = "validating"
     run.created_at = (datetime.now(UTC) - timedelta(minutes=6)).isoformat(timespec="milliseconds")
+    run.updated_at = (datetime.now(UTC) - timedelta(minutes=1)).isoformat(timespec="milliseconds")
+    s.commit()
+    still = client.get(f"/api/runs/{rid}").json()  # a recent heartbeat: still running
+    assert still["run"]["status"] == "validating"
+    s.expire_all()
+    run = s.get(VariationRun, rid)
+    run.updated_at = (datetime.now(UTC) - timedelta(minutes=6)).isoformat(timespec="milliseconds")
     s.commit()
     got = client.get(f"/api/runs/{rid}").json()
     assert got["run"]["status"] == "failed" and got["run"]["error_code"] == "RUN_INTERRUPTED"

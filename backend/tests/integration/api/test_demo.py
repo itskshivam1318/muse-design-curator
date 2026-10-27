@@ -279,3 +279,29 @@ def test_expired_window_keys_are_pruned(clock: Clock) -> None:
     # a probe of a key that never had hits leaves nothing behind
     demo.windows.retry_after("run:9.9.9.9", 3600, 5)
     assert "run:9.9.9.9" not in demo.windows._hits
+
+
+def test_interrupted_run_is_refunded_to_the_visitor(
+    client: TestClient, world: dict[str, Any], clock: Clock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from app.db.models import VariationRun
+
+    monkeypatch.setenv("DEMO_RUNS_PER_IP_PER_HOUR", "1")
+    url = f"/api/boards/{world['watch']}/runs"
+    first = client.post(url, json=_run_body(world))
+    assert first.status_code == 202
+    blocked = client.post(url, json=_run_body(world, mode="avoid", target_values=["red"]))
+    assert blocked.status_code == 429
+    s = world["session"]
+    s.expire_all()
+    run = s.get(VariationRun, first.json()["run_id"])
+    assert run.client_ip == "testclient"
+    run.status = "retrieving"  # as if its worker died mid-flight
+    run.updated_at = (datetime.now(UTC) - timedelta(minutes=10)).isoformat()
+    s.commit()
+    got = client.get(f"/api/runs/{run.id}").json()["run"]
+    assert (got["status"], got["error_code"]) == ("failed", "RUN_INTERRUPTED")
+    again = client.post(url, json=_run_body(world, mode="avoid", target_values=["red"]))
+    assert again.status_code == 202
