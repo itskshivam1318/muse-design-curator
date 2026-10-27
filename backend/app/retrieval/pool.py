@@ -67,16 +67,27 @@ def build_pool(
     matrix = np.asarray(np.load(path, allow_pickle=False), dtype=np.float64)
     if matrix.ndim != 2 or matrix.shape[0] == 0:
         return Pool(meta=meta)
-    src = _unit(source_vec)
-    cen = _unit(centroid_vec) if centroid_vec is not None else None
-    mix = cfg.relevance_mix
-    scored: list[PoolItem] = []
     q = select(CorpusItem).where(
         CorpusItem.domain == domain,
         CorpusItem.indexing_status == "indexed",
         CorpusItem.embedding_row.is_not(None),
     )
-    for item in session.scalars(q):
+    scored = _score_rows(list(session.scalars(q)), matrix, source_vec, centroid_vec, cfg)
+    top = scored[: cfg.pool_size]
+    _attach_attrs(session, top)
+    return Pool(top, meta)
+
+
+def _score_rows(
+    rows: list[CorpusItem], matrix: np.ndarray, source_vec: Any, centroid_vec: Any | None,
+    cfg: RankingConfig,
+) -> list[PoolItem]:  # fmt: skip
+    """Rows with a usable embedding row, scored by relevance, best first."""
+    src = _unit(source_vec)
+    cen = _unit(centroid_vec) if centroid_vec is not None else None
+    mix = cfg.relevance_mix
+    scored: list[PoolItem] = []
+    for item in rows:
         row = item.embedding_row
         if row is None or not 0 <= row < matrix.shape[0] or matrix.shape[1] != src.shape[0]:
             continue
@@ -88,14 +99,35 @@ def build_pool(
             rel = mix.source_item * cos_src + mix.board_centroid * float(vec @ cen)
         scored.append(PoolItem(item, rel, embedding=vec))
     scored.sort(key=lambda p: (-p.relevance, p.item.id))
-    top = scored[: cfg.pool_size]
-    if top:
-        rows = session.scalars(
-            select(CorpusAttribute).where(CorpusAttribute.item_id.in_([p.item.id for p in top]))
-        )
-        by_item: dict[str, dict[str, AttrValue]] = {}
-        for r in rows:
-            by_item.setdefault(r.item_id, {})[r.key] = AttrValue.from_row(r)
-        for p in top:
-            p.attrs = by_item.get(p.item.id, {})
-    return Pool(top, meta)
+    return scored
+
+
+def _attach_attrs(session: Session, top: list[PoolItem]) -> None:
+    if not top:
+        return
+    rows = session.scalars(
+        select(CorpusAttribute).where(CorpusAttribute.item_id.in_([p.item.id for p in top]))
+    )
+    by_item: dict[str, dict[str, AttrValue]] = {}
+    for r in rows:
+        by_item.setdefault(r.item_id, {})[r.key] = AttrValue.from_row(r)
+    for p in top:
+        p.attrs = by_item.get(p.item.id, {})
+
+
+def live_pool_items(
+    session: Session, rows: list[CorpusItem], source_vec: Any, centroid_vec: Any | None,
+    cfg: RankingConfig,
+) -> list[PoolItem]:  # fmt: skip
+    """Pool entries for freshly quick-indexed rows, scored exactly like corpus rows."""
+    path = embeddings_path()
+    if not rows or not path.is_file():
+        return []
+    matrix = np.asarray(np.load(path, allow_pickle=False), dtype=np.float64)
+    if matrix.ndim != 2 or matrix.shape[0] == 0:
+        return []
+    out = _score_rows(
+        [r for r in rows if r.indexing_status == "indexed"], matrix, source_vec, centroid_vec, cfg
+    )  # fmt: skip
+    _attach_attrs(session, out)
+    return out

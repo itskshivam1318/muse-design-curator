@@ -20,11 +20,13 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.corpus.hashing import hamming
+from app.db.repos import corpus as corpus_repo
 from app.db.repos import masks as masks_repo
 from app.domain.kinds import AttributeSpec
 from app.domain.lens import LensSpec, PartSpec
 from app.domain.variation import VariationSpec
-from app.extraction.service import _part_mask
+from app.extraction.schema import is_measured
+from app.extraction.service import _part_mask, measure_attributes
 from app.measure.crops import crop_part
 from app.measure.palette import delta_e, to_rgb_array
 from app.providers import get_reasoning, get_segmentation
@@ -382,6 +384,56 @@ class _LazySeg:
         return self._images.seg().localize(image, sha, noun)
 
 
+# ---- quick-indexed (live) candidates ----
+
+
+def _measure_quick(
+    session: Session, images: _Images, c: Candidate, specs: Sequence[AttributeSpec], lens: LensSpec
+) -> None:  # fmt: skip
+    """Fill only the measurable attributes this run checks on a quick-indexed item.
+
+    SAM runs for the parts of those attributes alone (masks are cached); colour, number and shape
+    are measured in code and stored. Everything else (enum, ordinal, boolean, text) stays unknown
+    here and is resolved by the verify call, which compares against the source image.
+    """
+    item = c.pool.item
+    if getattr(item, "index_depth", None) != "quick" or not item.local_path or not item.sha256:
+        return
+    todo = [s for s in specs if s.key not in c.pool.attrs and is_measured(s)]
+    if not todo:
+        return
+    rgb = images.rgb(item.local_path)
+    if rgb is None:
+        return
+    data = files.abs_path(item.local_path).read_bytes()
+    grounded: dict[str, Any] = {}
+    usable: list[AttributeSpec] = []
+    for spec in todo:
+        part = images.part(spec.part)
+        if part is not None and part.grounding == "sam":
+            if part.id not in grounded:
+                try:
+                    grounded[part.id] = _part_mask(
+                        session, _LazySeg(images), data, item.sha256, part.sam_prompt, rgb.shape[:2]
+                    )  # fmt: skip
+                except ModelError:
+                    continue  # unknown stays unknown; verify reports the failure
+            if grounded[part.id][0] is None:
+                continue  # the part is not visible: never measure the wrong region
+        usable.append(spec)
+    if not usable:
+        return
+    for rec in measure_attributes(lens.model_copy(update={"attributes": usable}), rgb, grounded):
+        if rec.value is None:
+            continue
+        row = corpus_repo.set_attribute(
+            session, item.id, rec.key, value_json=rec.value, confidence=rec.confidence,
+            source=rec.source, evidence_json=rec.evidence.model_dump(mode="json"),
+            measured_json=rec.measured,
+        )  # fmt: skip
+        c.pool.attrs[rec.key] = AttrValue.from_row(row)
+
+
 # ---- verify ----
 
 
@@ -634,6 +686,8 @@ def validate_shortlist(
             ("target", tspec, mode, spec.target_value)
         ]
         specs += [("protected", p.spec, "protected", p.value) for p in spec.protected]
+        _measure_quick(session, images, c, [t[1] for t in specs], lens)
+        observed[cid] = (c.pool.attrs.get(tspec.key) or AttrValue(None, 0, "missing")).value
         for kind, aspec, amode, fallback in specs:
             cand_attr = c.pool.attrs.get(aspec.key)
             src_attr = source_item.attrs.get(aspec.key)

@@ -77,6 +77,9 @@ class CorpusItem(Base):
     indexing_status: Mapped[str] = mapped_column(String, default="pending")
     provenance_status: Mapped[str] = mapped_column(String, default="valid")
     provenance_issue: Mapped[str | None] = mapped_column(String)
+    # 'quick' = embedding and palette only (live search); 'full' or NULL = fully indexed
+    index_depth: Mapped[str | None] = mapped_column(String)
+    palette_json: Mapped[Any] = _json()
     __table_args__ = (
         UniqueConstraint("source", "source_id"),
         CheckConstraint(_in("indexing_status", ("pending", "indexed", "failed"))),
