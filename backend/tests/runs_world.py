@@ -20,9 +20,8 @@ MANIFEST = Path(__file__).resolve().parent / "fixtures" / "corpus" / "manifest.j
 def world(client: TestClient) -> Iterator[dict[str, Any]]:
     """{'session', 'watch': board_id, 'fashion': board_id, 'items': {board_id: [item_id]}}."""
     from app import jobs
-    from app.runs import orchestrator
-
     from app.live import quick_index
+    from app.runs import orchestrator
 
     jobs.register("run_variation", orchestrator.run_variation_job)
     jobs.register("deepen_item", quick_index.deepen_item)

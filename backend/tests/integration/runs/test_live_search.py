@@ -18,7 +18,6 @@ from app.retrieval.pool import Pool
 from app.runs import orchestrator
 from tests.integration.runs.test_orchestrator import make_run
 
-
 PALETTE = [
     (200, 30, 30),
     (30, 60, 200),
