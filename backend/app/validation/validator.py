@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import io
 import logging
+import math
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -647,11 +648,13 @@ def _verify_batch(
         if found is None:
             continue
         c = found
+        if not c.ask:
+            continue  # already answered: the first valid row wins, a later one cannot flip it
         try:
             conf = float(row.get("confidence", 0))
         except (TypeError, ValueError):
             continue
-        if conf < cfg.reliable_confidence:
+        if not math.isfinite(conf) or conf < cfg.reliable_confidence:
             continue
         verdict = _answer_verdict(c, vspec, str(row.get("answer")), row.get("steps"))
         if verdict is None:

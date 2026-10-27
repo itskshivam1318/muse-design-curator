@@ -397,3 +397,25 @@ def test_a_text_check_already_failed_is_never_sent_to_verify(session, data_dir, 
     assert pc.verdict == "fail" and out["c1"].overall == "rejected"
     assert rs.calls == []  # fail stays fail: not asked
 
+
+def test_duplicate_verify_rows_first_valid_answer_wins(session, data_dir):
+    sp = spec(protected=[(TEXT, "calm")])
+    src = source({"t": av("a"), "tx": av("calm")})
+    c = cand("c1", {"t": av("b"), "tx": av("calm")})
+    rows = [ans("c1", "tx", "different", 0.9), ans("c1", "tx", "same", 0.95)]
+    assert run(session, sp, src, [c], FakeReasoning(rows))["c1"].overall == "rejected"
+    # an invalid row (unreliable, NaN or unparseable) does not count as the first answer
+    rows = [
+        ans("c1", "tx", "different", 0.2), ans("c1", "tx", "different", float("nan")),
+        ans("c1", "tx", "maybe", 0.9), ans("c1", "tx", "same", 0.9),
+        ans("c1", "tx", "different", 0.9),
+    ]  # fmt: skip
+    assert run(session, sp, src, [c], FakeReasoning(rows))["c1"].overall == "validated"
+
+
+def test_nan_confidence_is_not_reliable(session, data_dir):
+    sp = spec(protected=[(TEXT, "calm")])
+    src = source({"t": av("a"), "tx": av("calm")})
+    c = cand("c1", {"t": av("b"), "tx": av("calm")})
+    rows = [ans("c1", "tx", "same", float("nan"))]
+    assert run(session, sp, src, [c], FakeReasoning(rows))["c1"].overall == "uncertain"
