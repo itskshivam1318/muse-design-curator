@@ -44,7 +44,6 @@ from app.retrieval.select import select_diverse, shortlist
 from app.runs.summary import summarize_run
 from app.validation.comparators import AttrValue
 from app.validation.validator import (
-    MAX_CANDIDATES_PER_CALL,
     VALIDATOR_VERSION,
     CandidateValidation,
     Providers,
@@ -362,25 +361,25 @@ def _run(session: Session, run: VariationRun) -> None:
     )  # fmt: skip
     session.commit()
 
-    # validating, a batch at a time
-    done: dict[str, CandidateValidation] = {}
-    for i in range(0, len(top), MAX_CANDIDATES_PER_CALL):
-        batch = top[i : i + MAX_CANDIDATES_PER_CALL]
-        res = validate_shortlist(session, spec, source, batch, lens, cfg, providers)
-        for c in batch:
-            cid = c.pool.item.id
-            v = res[cid]
-            done[cid] = v
-            row = rows[cid]
-            row.state = v.overall
-            row.observed_target_json = v.observed_target_value
-            for ck in v.checks:
-                runs_repo.add_validation(
-                    session, run_candidate_id=row.id, check=ck.check,
-                    attribute_key=ck.attribute_key, verdict=ck.verdict, reason=ck.reason,
-                    evidence_json=ck.evidence, validator_version=run.validator_version,
-                )  # fmt: skip
-        _report(session, run, "validating", validated_n=len(done))
+    # validating: the whole shortlist in one pass (verify batches and SAM calls run concurrently;
+    # source crops are made once); progress is reported as verify batches finish
+    done: dict[str, CandidateValidation] = validate_shortlist(
+        session, spec, source, top, lens, cfg, providers,
+        on_progress=lambda n: _report(session, run, "validating", validated_n=n),
+    )  # fmt: skip
+    for c in top:
+        cid = c.pool.item.id
+        v = done[cid]
+        row = rows[cid]
+        row.state = v.overall
+        row.observed_target_json = v.observed_target_value
+        for ck in v.checks:
+            runs_repo.add_validation(
+                session, run_candidate_id=row.id, check=ck.check,
+                attribute_key=ck.attribute_key, verdict=ck.verdict, reason=ck.reason,
+                evidence_json=ck.evidence, validator_version=run.validator_version,
+            )  # fmt: skip
+    _report(session, run, "validating", validated_n=len(done))
 
     # selecting
     ok = [c for c in top if done[c.pool.item.id].overall == "validated"]

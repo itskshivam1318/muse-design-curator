@@ -11,7 +11,8 @@ deterministic templates; model text lives in `evidence`.
 from __future__ import annotations
 
 import io
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -43,6 +44,8 @@ VALIDATOR_VERSION = "val-3"
 
 MAX_CANDIDATES_PER_CALL = 8
 MAX_IMAGES_PER_CALL = 50
+VERIFY_CONCURRENCY = 2  # verify calls in flight at once
+SAM_CONCURRENCY = 4  # SAM localize calls in flight at once
 WHOLE_IMAGE_MAX_SIDE = 768
 
 Verdict = Literal["pass", "fail", "uncertain"]
@@ -330,13 +333,53 @@ def _evaluate(spec: AttributeSpec, mode: str, vspec: VariationSpec | None, src: 
 
 
 class _Images:
-    """Decoded originals, masks and crops for one validate call."""
+    """Decoded originals, masks and crops for one validate call (one per run)."""
 
     def __init__(self, session: Session, providers: Providers, lens: LensSpec) -> None:
         self.session, self.providers, self.lens = session, providers, lens
         self._rgb: dict[str, np.ndarray | None] = {}
         self._crops: dict[tuple[str, str], tuple[bytes | None, str]] = {}
         self._seg: Any = None
+        self._prefetched: dict[tuple[str, str], Any] = {}  # (sha, prompt) -> SegResult | ModelError
+
+    def prefetch(self, wanted: list[tuple[str, str, str]]) -> None:
+        """Run SAM for the uncached (path, sha, prompt) triples, at most SAM_CONCURRENCY at once.
+
+        Nothing touches the database here: the results wait in memory and the normal sequential
+        path (`_part_mask` through `_LazySeg`) saves each one, in order, when it asks for it, so
+        call counts and stored rows are what they would be without prefetching.
+        """
+        todo: list[tuple[str, str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for path, sha, prompt in wanted:
+            if (sha, prompt) in seen or (sha, prompt) in self._prefetched:
+                continue
+            seen.add((sha, prompt))
+            if masks_repo.get(self.session, sha, prompt) is None:
+                todo.append((path, sha, prompt))
+        if not todo:
+            return
+        try:
+            seg = self.seg()
+        except ModelError:
+            return  # the sequential path reports it
+
+        def one(t: tuple[str, str, str]) -> Any:
+            path, sha, prompt = t
+            try:
+                return seg.localize(files.abs_path(path).read_bytes(), sha, prompt)
+            except ModelError as e:
+                return e
+
+        with ThreadPoolExecutor(
+            max_workers=max(1, min(SAM_CONCURRENCY, len(todo))), thread_name_prefix="sam"
+        ) as ex:
+            for t, res in zip(todo, ex.map(one, todo), strict=True):
+                self._prefetched[(t[1], t[2])] = res
+
+    def take(self, sha: str, prompt: str) -> Any:
+        """A prefetched SAM result (once), else None."""
+        return self._prefetched.pop((sha, prompt), None)
 
     def seg(self) -> Any:
         if self._seg is None:
@@ -413,7 +456,12 @@ class _LazySeg:
         return str(self._images.seg().id)
 
     def localize(self, image: bytes, sha: str, noun: str) -> Any:
-        return self._images.seg().localize(image, sha, noun)
+        pre = self._images.take(sha, noun)
+        if pre is None:
+            return self._images.seg().localize(image, sha, noun)
+        if isinstance(pre, ModelError):
+            raise pre
+        return pre
 
 
 # ---- quick-indexed (live) candidates ----
@@ -697,6 +745,25 @@ def _overall(checks: list[CheckResult]) -> Overall:
     return "validated"
 
 
+def _sam_wanted(
+    images: _Images, kept: list[Candidate], specs: Sequence[AttributeSpec]
+) -> list[tuple[str, str, str]]:
+    """(path, sha, prompt) for each candidate image and SAM part the checks will crop."""
+    prompts: list[str] = []
+    for s in specs:
+        part = images.part(s.part)
+        if part is not None and part.grounding == "sam" and part.sam_prompt not in prompts:
+            prompts.append(part.sam_prompt)
+    out: list[tuple[str, str, str]] = []
+    for c in kept:
+        path = c.pool.item.local_path
+        if not prompts or not path or images.rgb(path) is None:
+            continue  # an unreadable image never reaches SAM
+        sha = c.pool.item.sha256 or files.sha256_hex(files.abs_path(path).read_bytes())
+        out += [(path, sha, p) for p in prompts]
+    return out
+
+
 def validate_shortlist(
     session: Session,
     spec: VariationSpec,
@@ -705,7 +772,10 @@ def validate_shortlist(
     lens: LensSpec,
     cfg: RankingConfig,
     providers: Providers | None = None,
+    on_progress: Callable[[int], None] | None = None,
 ) -> dict[str, CandidateValidation]:
+    """Validate a run's whole shortlist. `on_progress(n)` (called on this thread) reports how many
+    candidates are final as verify batches finish."""
     providers = providers or Providers()
     images = _Images(session, providers, lens)
     tspec, mode = spec.target_spec, spec.request.mode
@@ -714,6 +784,10 @@ def validate_shortlist(
     plans: dict[str, list[_Check]] = {}
     observed: dict[str, Any] = {}
     kept: list[Candidate] = []
+    specs: list[tuple[Literal["target", "protected"], AttributeSpec, str, Any]] = [
+        ("target", tspec, mode, spec.target_value)
+    ]
+    specs += [("protected", p.spec, "protected", p.value) for p in spec.protected]
 
     for c in cands:
         cid = c.pool.item.id
@@ -721,14 +795,15 @@ def validate_shortlist(
         checks.append(_duplicate(c, source_item, kept, cfg))
         results[cid] = checks
         observed[cid] = (c.pool.attrs.get(tspec.key) or AttrValue(None, 0, "missing")).value
-        if any(x.verdict == "fail" for x in checks):
-            continue
-        kept.append(c)
+        if not any(x.verdict == "fail" for x in checks):
+            kept.append(c)
+
+    # SAM for every candidate part the checks below will crop, a few calls at a time
+    images.prefetch(_sam_wanted(images, kept, [t[1] for t in specs]))
+
+    for c in kept:
+        cid = c.pool.item.id
         plan: list[_Check] = []
-        specs: list[tuple[Literal["target", "protected"], AttributeSpec, str, Any]] = [
-            ("target", tspec, mode, spec.target_value)
-        ]
-        specs += [("protected", p.spec, "protected", p.value) for p in spec.protected]
         _measure_quick(session, images, c, [t[1] for t in specs], lens)
         observed[cid] = (c.pool.attrs.get(tspec.key) or AttrValue(None, 0, "missing")).value
         for kind, aspec, amode, fallback in specs:
@@ -809,8 +884,22 @@ def validate_shortlist(
                 for ck in cks:
                     _unavailable(ck, e.code)
         if reasoning is not None:
-            for batch in _batches(work, spec):
-                _verify_batch(reasoning, images, spec, source_item, batch, cfg)
+            batches = _batches(work, spec)
+            pending = sum(len(b) for b in batches)
+            with ThreadPoolExecutor(
+                max_workers=max(1, min(VERIFY_CONCURRENCY, len(batches))),
+                thread_name_prefix="verify",
+            ) as ex:
+                # each batch resolves only its own checks, so completion order cannot matter
+                futures = {
+                    ex.submit(_verify_batch, reasoning, images, spec, source_item, b, cfg): len(b)
+                    for b in batches
+                }  # fmt: skip
+                for fut in as_completed(futures):
+                    fut.result()
+                    pending -= futures[fut]
+                    if on_progress is not None:
+                        on_progress(len(cands) - pending)
 
     out: dict[str, CandidateValidation] = {}
     for c in cands:

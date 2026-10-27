@@ -343,3 +343,32 @@ def test_slow_query_writer_falls_back_to_deterministic_queries(world, live, monk
     assert run.status == "completed", run.error_code
     assert 3 <= len(run.summary_json["live"]["queries"]) <= 5
     assert "a" not in run.summary_json["live"]["queries"]
+
+
+def test_one_validation_pass_per_run_so_source_crops_are_made_once(
+    world, live, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    from app.validation import validator
+
+    monkeypatch.setenv("LIVE_PER_SOURCE_LIMIT", "25")
+    two_sources(live, n=25)
+    calls: list[int] = []
+    real_validate = orchestrator.validate_shortlist
+
+    def spy_validate(session, spec, source, cands, *a, **k):  # type: ignore[no-untyped-def]
+        calls.append(len(cands))
+        return real_validate(session, spec, source, cands, *a, **k)
+
+    made: list[tuple[str, str]] = []
+    real_crop = validator._Images._crop
+
+    def spy_crop(self, path, sha, part_id):  # type: ignore[no-untyped-def]
+        made.append((path or "", part_id or ""))
+        return real_crop(self, path, sha, part_id)
+
+    monkeypatch.setattr(orchestrator, "validate_shortlist", spy_validate)
+    monkeypatch.setattr(validator._Images, "_crop", spy_crop)
+    run = make_run(world, world["watch"], protected_keys=["case_shape", "strap_color"])
+    assert run.status == "completed", run.error_code
+    assert calls == [run.progress_json["shortlist_n"]] and calls[0] > 8
+    assert len(made) == len(set(made))  # each image/part crop made once per run
