@@ -60,7 +60,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
   const [live, setLive] = useState<'connecting' | 'open' | 'reconnecting'>('connecting')
   const { drawer } = useSelection()
   const reduced = usePrefersReducedMotion()
-  const { locked } = useDemo()
+  const { locked, exploreEnabled } = useDemo()
   const [flight, setFlight] = useState<{ id: string; src: string; from: Bounds; to: Bounds } | null>(null)
 
   useEffect(() => {
@@ -93,7 +93,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
   )
 
   const openPanel = useCallback(
-    (kind: 'vary' | 'inspect' | 'compare', itemId: string, params?: Record<string, unknown>) => {
+    (kind: 'explore' | 'vary' | 'inspect' | 'compare', itemId: string, params?: Record<string, unknown>) => {
       if (hasDrawerPanel(kind)) selection.openDrawer(kind, itemId, params)
     },
     [],
@@ -138,7 +138,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
           canvas.current?.fit()
           break
         case 'v':
-          if (chosen.length === 1) openPanel('vary', chosen[0].id)
+          if (chosen.length === 1) openPanel(exploreEnabled ? 'explore' : 'vary', chosen[0].id)
           break
         case 'i':
           if (chosen.length === 1) openPanel('inspect', chosen[0].id)
@@ -174,7 +174,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
       window.removeEventListener('keyup', onUp)
       window.removeEventListener('blur', onBlur)
     }
-  }, [actions, itemsData, openPanel, locked])
+  }, [actions, itemsData, openPanel, locked, exploreEnabled])
 
   const saveBoard = async (patch: Partial<Pick<Board, 'title' | 'context' | 'domain'>>) => {
     const next = await patchBoard(boardId, patch)

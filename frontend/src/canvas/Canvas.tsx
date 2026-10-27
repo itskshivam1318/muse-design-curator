@@ -12,6 +12,7 @@ import {
 } from 'react'
 import { Layer, Line, Rect, Stage } from 'react-konva'
 import type { Item, Point, UploadOrigin } from '../api'
+import { useDemo } from '../demo'
 import type { ItemActions } from './actions'
 import { handleDrop } from './drop'
 import { FramesStrip } from './FramesStrip'
@@ -48,7 +49,7 @@ interface Props {
   items: Item[]
   actions: ItemActions
   onFiles: (files: File[], at: Point, origin: UploadOrigin) => void
-  onOpenPanel: (kind: 'vary' | 'inspect' | 'compare', itemId: string, params?: Record<string, unknown>) => void
+  onOpenPanel: (kind: 'explore' | 'vary' | 'inspect' | 'compare', itemId: string, params?: Record<string, unknown>) => void
   spaceDown: boolean
   ref?: Ref<CanvasHandle>
   /** Public demo, not unlocked: no file drops, role changes, removal or frame choice. */
@@ -78,6 +79,7 @@ function useSize(el: HTMLElement | null) {
 }
 
 export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref, readOnly = false }: Props) {
+  const { exploreEnabled } = useDemo()
   const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const size = useSize(container)
   const stageRef = useRef<Konva.Stage>(null)
@@ -356,7 +358,7 @@ export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref, r
     >
       <p id="canvas-help" className="sr-only">
         Space and drag or two-finger scroll to pan; control and scroll or pinch to zoom. F fits the board to the screen. With
-        items selected: V vary, I inspect (or double-click), X mark not this, Delete remove, Command Z undo a move.
+        items selected: V {exploreEnabled ? 'explore' : 'vary'}, I inspect (or double-click), X mark not this, Delete remove, Command Z undo a move.
       </p>
       {size.width > 0 && (
         <Stage
@@ -441,7 +443,7 @@ export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref, r
         <ItemToolbar
           items={selectedItems}
           screen={toScreenBounds(selBounds, view)}
-          onVary={() => selectedItems[0] && onOpenPanel('vary', selectedItems[0].id)}
+          onExplore={() => selectedItems[0] && onOpenPanel(exploreEnabled ? 'explore' : 'vary', selectedItems[0].id)}
           onInspect={() => selectedItems[0] && onOpenPanel('inspect', selectedItems[0].id)}
           onCompare={() =>
             selectedItems[0] && onOpenPanel('compare', selectedItems[0].id, { itemIds: selectedItems.map((i) => i.id) })
@@ -449,6 +451,7 @@ export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref, r
           onNotThis={() => actions.toggleNotThis(selectedItems)}
           onRemove={() => actions.remove(selected)}
           readOnly={readOnly}
+          explore={exploreEnabled}
         />
       )}
       {stripItem && !dragging && (

@@ -975,6 +975,112 @@ button.onboarding-step:hover {
   opacity: 0.85;
 }
 
+/* explore: an attribute row expands to list its options ("in the dimension") */
+.explore-attrs {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.explore-attr + .explore-attr {
+  border-top: 1px solid var(--rule);
+}
+.explore-attr > .target {
+  width: 100%;
+}
+.explore-attr > .target[aria-expanded='true'] {
+  background: var(--accent-soft);
+}
+.explore-dimension {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px 10px;
+  background: var(--panel);
+  border-top: 1px solid var(--rule);
+}
+.explore-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.explore-option {
+  padding: 8px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--raised);
+}
+.explore-option[data-depth]:not([data-depth='0']) {
+  border-left: 2px solid var(--accent-soft);
+}
+.explore-option.is-hovered,
+.explore-option.is-focused {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.explore-option-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.explore-option-name {
+  font-weight: 600;
+}
+.explore-option-desc {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+}
+.explore-option .muted.small,
+.explore-option .error.small {
+  margin: 3px 0 0;
+}
+.mark.is-near {
+  color: var(--ok);
+  border-color: currentColor;
+}
+.mark.is-bold {
+  color: var(--warn);
+  border-color: currentColor;
+}
+.mark.is-wild {
+  color: var(--bad);
+  border-color: currentColor;
+}
+.explore-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 6px 0 0 -8px;
+}
+.explore-actions .btn-quiet:disabled,
+.explore-more .btn-quiet:disabled {
+  opacity: 0.45;
+  cursor: default;
+  background: transparent;
+}
+.explore-more .row-end,
+.explore-dimension > .row-end {
+  margin-top: 0;
+}
+.spinner {
+  width: 12px;
+  height: 12px;
+  margin-left: auto;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .seg {
   display: inline-flex;
   flex-wrap: wrap;

@@ -3,5 +3,6 @@ import { lazy } from 'react'
 import { registerDrawerPanel } from './drawerRegistry'
 
 registerDrawerPanel('inspect', lazy(() => import('./InspectPanel').then((m) => ({ default: m.InspectPanel }))))
+registerDrawerPanel('explore', lazy(() => import('./ExplorePanel').then((m) => ({ default: m.ExplorePanel }))))
 registerDrawerPanel('vary', lazy(() => import('./VaryPanel').then((m) => ({ default: m.VaryPanel }))))
 registerDrawerPanel('compare', lazy(() => import('./ComparePanel').then((m) => ({ default: m.ComparePanel }))))
