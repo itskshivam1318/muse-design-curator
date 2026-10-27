@@ -256,6 +256,7 @@ export interface LiveProgress {
   sources: Record<string, LiveSourceStatus>
   /** The source ids being searched (before they report). */
   searching?: string[]
+  downloaded?: number
   found: number
   queries?: string[]
 }

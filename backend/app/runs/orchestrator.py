@@ -6,6 +6,7 @@ Each stage commits so polling sees progress; progress events go out after the co
 import hashlib
 import json
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
@@ -51,6 +52,8 @@ from app.validation.validator import (
 
 log = logging.getLogger(__name__)
 
+QUERY_TIMEOUT_S = 10.0  # the live query-writing call; fallback queries after that
+LIVE_EXTRA_S = 20.0  # downloads and indexing get this much beyond LIVE_TIMEOUT_S
 STALE_AFTER = timedelta(minutes=5)
 TERMINAL = ("completed", "failed")
 JOB = "run_variation"
@@ -205,7 +208,8 @@ def _live_queries(
     if providers.reasoning is not None:
         try:
             return live_queries.write_queries(
-                spec, source_attrs, lens, board.context or "", providers.reasoning, session=session
+                spec, source_attrs, lens, board.context or "", providers.reasoning, session=session,
+                timeout=QUERY_TIMEOUT_S,
             )  # fmt: skip
         except Exception as exc:  # noqa: BLE001 - live search never fails the run
             log.warning("live query writing failed (%s); using fallback queries", exc)
@@ -255,6 +259,8 @@ def _run(session: Session, run: VariationRun) -> None:
     live_fut = None
     live_queries_used: list[str] = []
     live_pool: ThreadPoolExecutor | None = None
+    live_start = time.monotonic()
+    live_deadline = live_start + settings.LIVE_TIMEOUT_S + LIVE_EXTRA_S
     if live_sources:
         live_queries_used = _live_queries(session, spec, source_attrs, lens, board, providers)
         known = live_search.known_in_corpus(session)
@@ -262,18 +268,45 @@ def _run(session: Session, run: VariationRun) -> None:
         live_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="live-search")
         live_fut = live_pool.submit(
             live_search.search_live, live_queries_used, domain, live_sources,
-            settings.LIVE_PER_SOURCE_LIMIT, settings.LIVE_TIMEOUT_S, known=known,
+            settings.LIVE_PER_SOURCE_LIMIT,
+            max(1.0, min(settings.LIVE_TIMEOUT_S, live_deadline - time.monotonic() - LIVE_EXTRA_S)),
+            known=known,
             max_candidates=settings.LIVE_MAX_CANDIDATES,
         )  # fmt: skip
     pool = build_pool(session, board, item.embedding_json, centroid, cfg)
     if live_fut is not None and live_pool is not None:
         live_extra: list[Any] = []
         try:
-            found = live_fut.result(timeout=settings.LIVE_TIMEOUT_S + 10)
-            new_rows = quick_index(session, list(found), domain) if found else []
+            found = live_fut.result(timeout=max(1.0, live_deadline - time.monotonic()))
+            names_now = {n: st.status for n, st in found.sources.items()}
+            _progress(
+                session, run, "searching",
+                live={"sources": names_now, "found": len(found), "downloaded": 0,
+                      "queries": live_queries_used},
+            )  # fmt: skip
+            session.commit()
+
+            def landed(n: int) -> None:
+                _progress(
+                    session, run, "searching",
+                    live={"sources": names_now, "found": len(found), "downloaded": n,
+                          "queries": live_queries_used},
+                )  # fmt: skip
+                session.commit()
+
+            qreport: dict[str, int] = {}
+            new_rows = (
+                quick_index(
+                    session, list(found), domain, deadline=live_deadline, on_download=landed,
+                    report=qreport,
+                )
+                if found else []
+            )  # fmt: skip
             live_ids = {r.id for r in new_rows}
             live_extra = live_pool_items(session, new_rows, item.embedding_json, centroid, cfg)
             info = _live_info(found, live_queries_used, len(new_rows))
+            info["downloaded"] = len(new_rows)
+            info["dropped"] = qreport.get("dropped", 0)
         except Exception as exc:  # noqa: BLE001 - the corpus alone still answers the run
             log.warning("live search failed: %s", exc)
             session.rollback()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -121,13 +122,23 @@ def write_queries(
     provider: Any,
     *,
     session: Session,
+    timeout: float | None = None,
 ) -> list[str]:
     """3-5 queries from one `provider.extract` call, cached by prompt and provider."""
     prompt = build_prompt(spec, source_attrs, lens, board_context)
     key_parts = [provider.id, provider.model, PROMPT_VERSION, prompt]
-    raw = cached_call(
-        session, key_parts, None, lambda: provider.extract([], QUERIES_SCHEMA, prompt)
-    )  # fmt: skip
+
+    def call() -> Any:
+        if timeout is None:
+            return provider.extract([], QUERIES_SCHEMA, prompt)
+        # the session stays on this thread; only the provider call is bounded
+        ex = ThreadPoolExecutor(max_workers=1, thread_name_prefix="live-q")
+        try:
+            return ex.submit(provider.extract, [], QUERIES_SCHEMA, prompt).result(timeout=timeout)
+        finally:
+            ex.shutdown(wait=False, cancel_futures=True)
+
+    raw = cached_call(session, key_parts, None, call)
     if isinstance(raw, dict) and isinstance(raw.get("queries"), list):
         qs = [q for q in raw["queries"] if isinstance(q, str)]
         if len(qs) > MAX_QUERIES:  # a model that over-delivers is trimmed, not rejected

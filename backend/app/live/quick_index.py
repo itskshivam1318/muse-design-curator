@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import io
 import logging
-from concurrent.futures import ThreadPoolExecutor
+import time
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeout
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
@@ -22,6 +25,7 @@ from sqlalchemy.orm import Session
 from app import jobs
 from app.config import get_settings
 from app.corpus import hashing
+from app.corpus.embedding_lock import EMBEDDINGS_LOCK
 from app.corpus.indexer import EmbeddingStore, _store_attributes, embeddings_path
 from app.corpus.provenance import check_provenance
 from app.corpus.sources.base import ManifestItem, user_agent
@@ -98,11 +102,16 @@ def quick_index(
     providers: QuickProviders | None = None,
     *,
     client: httpx.Client | None = None,
+    deadline: float | None = None,
+    on_download: Callable[[int], None] | None = None,
+    report: dict[str, int] | None = None,
 ) -> list[CorpusItem]:
     """Persist each new item as an indexed, quick-depth corpus row; returns the rows added.
 
     Items that fail to download or decode are skipped (nothing is stored for them). An image
-    whose sha256 already belongs to another corpus row is not added again.
+    whose sha256 already belongs to another corpus row is not added again. `deadline` is a
+    `time.monotonic()` instant: downloads still running then are dropped (counted in
+    `report['dropped']`). `on_download(n)` is called as each download lands.
     """
     settings = get_settings()
     providers = providers or QuickProviders()
@@ -122,11 +131,24 @@ def quick_index(
             log.info("live image %s skipped: %s", item.id, exc)
             return None
 
-    with ThreadPoolExecutor(max_workers=DOWNLOAD_CONCURRENCY, thread_name_prefix="quick") as ex:
-        fetched = list(ex.map(get, valid))
+    ex = ThreadPoolExecutor(max_workers=DOWNLOAD_CONCURRENCY, thread_name_prefix="quick")
+    futures = {ex.submit(get, item): i for i, item in enumerate(valid)}
+    fetched: list[tuple[bytes, str, int, int] | None] = [None] * len(valid)
+    landed = 0
+    try:
+        remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+        for fut in as_completed(futures, timeout=remaining):
+            fetched[futures[fut]] = fut.result()
+            landed += 1
+            if on_download is not None:
+                on_download(landed)
+    except FuturesTimeout:
+        log.info("live downloads hit the deadline; %d of %d landed", landed, len(valid))
+    finally:
+        ex.shutdown(wait=False, cancel_futures=True)  # stragglers are abandoned
+    if report is not None:
+        report["dropped"] = sum(1 for f in futures if f.cancelled() or not f.done())
 
-    top = session.scalar(select(func.max(CorpusItem.embedding_row)))
-    store = EmbeddingStore(embeddings_path(), keep_rows=0 if top is None else top + 1)
     embedder = providers.embedder or get_embedder(settings)
 
     seen_sha: set[str] = set()
@@ -153,26 +175,33 @@ def quick_index(
 
     vectors = embedder.embed_images([p[1] for p in prepared])
     added: list[CorpusItem] = []
-    for (item, data, ext, w, h, sha, dh), vec in zip(prepared, vectors, strict=True):
+    prepared_files = []
+    for item, data, ext, w, h, sha, dh in prepared:
         with Image.open(io.BytesIO(data)) as im:
             files.save_thumb(im, sha)
         local = files.save_original(data, sha, ext)
-        palette = masked_palette(to_rgb_array(data), None)
-        row = corpus_repo.get(session, item.id)
-        fields = {**_metadata(item), "provenance_status": "valid", "provenance_issue": None}
-        if row is None:
-            row = corpus_repo.create(session, id=item.id, indexing_status="pending", **fields)
-        else:
-            corpus_repo.update(session, item.id, **fields)
-        erow = store.put(row.embedding_row, vec)
-        corpus_repo.update(
-            session, item.id, sha256=sha, dhash=dh, width=w, height=h, local_path=local,
-            embedding_row=erow, indexing_status="indexed", index_depth="quick",
-            palette_json=palette,
-        )  # fmt: skip
-        added.append(row)
-    store.flush()  # rows on disk before the commit that points at them
-    session.commit()
+        prepared_files.append((local, masked_palette(to_rgb_array(data), None)))
+    with EMBEDDINGS_LOCK:  # row numbers and the matrix file are shared by concurrent runs
+        top = session.scalar(select(func.max(CorpusItem.embedding_row)))
+        store = EmbeddingStore(embeddings_path(), keep_rows=0 if top is None else top + 1)
+        for (item, _data, _ext, w, h, sha, dh), vec, (local, palette) in zip(
+            prepared, vectors, prepared_files, strict=True
+        ):
+            row = corpus_repo.get(session, item.id)
+            fields = {**_metadata(item), "provenance_status": "valid", "provenance_issue": None}
+            if row is None:
+                row = corpus_repo.create(session, id=item.id, indexing_status="pending", **fields)
+            else:
+                corpus_repo.update(session, item.id, **fields)
+            erow = store.put(row.embedding_row, vec)
+            corpus_repo.update(
+                session, item.id, sha256=sha, dhash=dh, width=w, height=h, local_path=local,
+                embedding_row=erow, indexing_status="indexed", index_depth="quick",
+                palette_json=palette,
+            )  # fmt: skip
+            added.append(row)
+        store.flush()  # rows on disk (atomic replace) before the commit that points at them
+        session.commit()
     return added
 
 
@@ -208,4 +237,4 @@ def deepen_item(corpus_item_id: str) -> None:
             log.exception("deepening %s failed", corpus_item_id)
 
 
-jobs.register(DEEPEN_JOB, deepen_item)
+jobs.register(DEEPEN_JOB, deepen_item, queue="background")

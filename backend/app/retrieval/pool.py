@@ -7,6 +7,7 @@ import numpy as np
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.corpus.embedding_lock import load_matrix
 from app.corpus.indexer import embeddings_path
 from app.db.models import CorpusAttribute, CorpusItem
 from app.retrieval.config import RankingConfig
@@ -64,7 +65,7 @@ def build_pool(
     path = embeddings_path()
     if domain is None or not path.is_file():
         return Pool(meta=meta)
-    matrix = np.asarray(np.load(path, allow_pickle=False), dtype=np.float64)
+    matrix = load_matrix(path)
     if matrix.ndim != 2 or matrix.shape[0] == 0:
         return Pool(meta=meta)
     q = select(CorpusItem).where(
@@ -123,7 +124,7 @@ def live_pool_items(
     path = embeddings_path()
     if not rows or not path.is_file():
         return []
-    matrix = np.asarray(np.load(path, allow_pickle=False), dtype=np.float64)
+    matrix = load_matrix(path)
     if matrix.ndim != 2 or matrix.shape[0] == 0:
         return []
     out = _score_rows(

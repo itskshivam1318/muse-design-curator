@@ -288,3 +288,58 @@ def test_run_api_exposes_candidate_origin(world, live, client) -> None:  # type:
     assert seen <= {"corpus", "live"} and "live" in seen
     assert all("source" in c for c in body["results"])
     assert "live" in body["summary"]
+
+
+def test_live_stage_is_bounded_end_to_end(world, live, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import time
+
+    two_sources(live)
+    real = qi._download
+
+    def slow(client: Any, url: str, limit: int) -> bytes:
+        if url.endswith("/3.png"):
+            time.sleep(6)
+        return real(client, url, limit)
+
+    monkeypatch.setattr(qi, "_download", slow)
+    monkeypatch.setattr(orchestrator, "LIVE_EXTRA_S", 1.0)
+    monkeypatch.setenv("LIVE_TIMEOUT_S", "1")
+    with events.subscribe(world["watch"]) as sub:
+        t0 = time.monotonic()
+        run = make_run(world, world["watch"])
+        elapsed = time.monotonic() - t0
+        got = []
+        while (ev := sub.get(timeout=0.2)) is not None:
+            if ev["type"] == "run.progress":
+                got.append(ev["data"])
+    assert run.status == "completed", run.error_code
+    assert elapsed < 5.5  # the two stalled downloads were dropped, not awaited
+    info = run.progress_json["live"]
+    assert info["found"] == 8 and info["dropped"] == 2 and info["downloaded"] <= 6
+    counts = [
+        d["live"]["downloaded"] for d in got if d["stage"] == "searching" and "downloaded" in d["live"]
+    ]
+    assert counts == sorted(counts) and counts[-1] >= 1
+
+
+def test_slow_query_writer_falls_back_to_deterministic_queries(world, live, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import time
+
+    two_sources(live)
+    monkeypatch.setattr(orchestrator, "QUERY_TIMEOUT_S", 0.2)
+
+    class Slow:
+        id, model, is_mock = "slow", "m", True
+
+        def extract(self, *a: Any, **k: Any) -> Any:
+            time.sleep(2)
+            return {"queries": ["a", "b", "c"]}
+
+        def verify(self, *a: Any, **k: Any) -> Any:
+            return {"checks": []}
+
+    monkeypatch.setattr(orchestrator, "get_reasoning", lambda _s: Slow())
+    run = make_run(world, world["watch"])
+    assert run.status == "completed", run.error_code
+    assert 3 <= len(run.summary_json["live"]["queries"]) <= 5
+    assert "a" not in run.summary_json["live"]["queries"]
