@@ -375,3 +375,25 @@ def test_a_reliable_comparator_fail_stays_fail_when_the_part_is_not_localised(se
     assert pc.verdict == "fail" and out["c1"].overall == "rejected"
     assert pc.evidence["source"] == "corpus_index" and NOTE not in pc.reason
     assert rs.calls == []  # not re-asked
+
+
+def test_a_text_check_already_failed_is_never_sent_to_verify(session, data_dir, monkeypatch):
+    from app.validation import validator
+
+    real = validator._evaluate
+
+    def text_fails(aspec, *a, **k):  # type: ignore[no-untyped-def]
+        if aspec.kind == "text":
+            return "fail", "Mood changed", {"source": "corpus_index"}
+        return real(aspec, *a, **k)
+
+    monkeypatch.setattr(validator, "_evaluate", text_fails)
+    sp = spec(protected=[(TEXT, "calm")])
+    src = source({"t": av("a"), "tx": av("calm")})
+    c = cand("c1", {"t": av("b"), "tx": av("calm")})
+    rs = FakeReasoning([ans("c1", "tx", "same", 0.95)])
+    out = run(session, sp, src, [c], rs)
+    pc = next(x for x in out["c1"].checks if x.check == "protected")
+    assert pc.verdict == "fail" and out["c1"].overall == "rejected"
+    assert rs.calls == []  # fail stays fail: not asked
+

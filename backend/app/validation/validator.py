@@ -826,7 +826,8 @@ def validate_shortlist(
             )  # fmt: skip
             check = _Check(kind, aspec, amode, src_attr, cand_attr,
                            CheckResult(kind, verdict, reason, ev, aspec.key))  # fmt: skip
-            check.ask = verdict == "uncertain" or aspec.kind == "text"
+            # a decided fail is never re-asked (fail stays fail, even for text)
+            check.ask = verdict == "uncertain" or (aspec.kind == "text" and verdict != "fail")
             plan.append(check)
         # segmentation: a part SAM cannot find is judged on the whole image; a mask never upgrades
         for ck in plan:
