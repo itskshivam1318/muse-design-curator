@@ -38,5 +38,10 @@ export function itemVerdict(
       return { ...verdictText(item.check, labels.get(e.key) ?? e.key, option.name, labels), optionName: option.name }
     }
   }
-  return { ...verdictText(item.check, '', ''), optionName: '' }
+  // exploration still loading or gone: a neutral, label-free verdict
+  const c = item.check
+  if (!c) return { text: 'Checking…', tone: 'pending', optionName: '' }
+  if (c.error) return { text: 'Check failed', tone: 'error', optionName: '' }
+  const drifted = (c.drifted ?? []).length > 0
+  return { text: `Checked · ${c.kept ?? 0} of ${c.of ?? 0} kept`, tone: drifted ? 'warn' : 'ok', optionName: '' }
 }

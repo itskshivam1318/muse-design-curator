@@ -24,9 +24,10 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-function setup(locked = false, item: Partial<Item> = {}) {
+function setup(locked = false, item: Partial<Item> = {}, explorations?: unknown[]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   qc.setQueryData(keys.items('b1'), [makeItem({ id: 'i1', board_id: 'b1', ...item })])
+  if (explorations) qc.setQueryData(keys.explorations('b1'), explorations)
   qc.setQueryData(keys.attributes('i1'), makeAttrs({ case_finish: { status: 'edited', source: 'user' } }))
   qc.setQueryData(keys.profile('b1'), {
     version: 1,
@@ -41,6 +42,28 @@ function setup(locked = false, item: Partial<Item> = {}) {
 }
 
 describe('InspectPanel', () => {
+  const generated = {
+    generation: { model: 'img-1', prompt: 'a navy dial', option_id: 'o1' },
+    explore_option_id: 'o1',
+    check: { target: { answer: 'yes' as const, confidence: 1, note: '' }, kept: 3, of: 4 },
+  }
+
+  it('a generated item shows where it came from, its verdict, model and prompt, and no credit', () => {
+    setup(false, { ...generated, rights_status: 'licensed', licence: { credit: 'c', license_code: 'X', license_url: null, creator_name: null, landing_url: null, source: 's' } },
+      [{ id: 'e1', board_id: 'b1', item_id: 'i1', key: 'case_finish', options: [{ id: 'o1', name: 'Polished' }] }])
+    expect(screen.getByText('Generated from Polished')).toBeTruthy()
+    expect(screen.getByText('Case finish → Polished ✓ · 3 of 4 kept')).toBeTruthy()
+    expect(screen.getByText(/img-1/)).toBeTruthy()
+    expect(screen.getByText(/a navy dial/)).toBeTruthy()
+    expect(screen.queryByRole('note', { name: 'Image credit' })).toBeNull()
+  })
+
+  it('with the option not found it falls back to a neutral heading and verdict', () => {
+    setup(false, generated, [])
+    expect(screen.getByText('Generated image')).toBeTruthy()
+    expect(screen.getByText('Checked · 3 of 4 kept')).toBeTruthy()
+  })
+
   it('a licensed item shows its stored credit in the header', () => {
     setup(false, {
       rights_status: 'licensed',
