@@ -11,12 +11,14 @@ from typing import Any, Protocol
 import httpx2
 import openai
 
+from app.explore.schema import CHECK_SCHEMA, OPTIONS_SCHEMA
 from app.providers.meta_client import check_model_id, data_url
 from app.providers.reliability import ModelError, call_model
 
 MAX_EXTRACT_IMAGES = 6
 MAX_PROPOSE_IMAGES = 20
 MAX_VERIFY_IMAGES = 50
+MAX_EXPLORE_IMAGES = 4
 BASETEN_URL = "https://inference.baseten.co/v1"
 SCHEMA_NAME = "design_language"
 
@@ -37,6 +39,10 @@ class ReasoningProvider(Protocol):
     def verify(
         self, images: list[bytes], schema: dict[str, Any], prompt: str
     ) -> dict[str, Any]: ...
+
+    def explore_options(self, images: list[bytes], prompt: str) -> dict[str, Any]: ...
+
+    def check_target(self, images: list[bytes], prompt: str) -> dict[str, Any]: ...
 
 
 def _limit(images: list[bytes], maximum: int) -> None:
@@ -132,6 +138,14 @@ class MuseSparkProvider:
 
         return call_model(go, timeout=self.timeout, max_retries=self.max_retries)
 
+    def explore_options(self, images: list[bytes], prompt: str) -> dict[str, Any]:
+        _limit(images, MAX_EXPLORE_IMAGES)
+        return self._run(prompt, images, OPTIONS_SCHEMA, "low")
+
+    def check_target(self, images: list[bytes], prompt: str) -> dict[str, Any]:
+        _limit(images, MAX_EXPLORE_IMAGES)
+        return self._run(prompt, images, CHECK_SCHEMA, "low")
+
 
 class MuseSparkOpenProvider:
     """Open-weights Muse Spark on Baseten via chat completions; JSON is parsed from text."""
@@ -197,6 +211,14 @@ class MuseSparkOpenProvider:
         _limit(images, MAX_VERIFY_IMAGES)
         return self._run(prompt, images, schema)
 
+    def explore_options(self, images: list[bytes], prompt: str) -> dict[str, Any]:
+        _limit(images, MAX_EXPLORE_IMAGES)
+        return self._run(prompt, images, OPTIONS_SCHEMA)
+
+    def check_target(self, images: list[bytes], prompt: str) -> dict[str, Any]:
+        _limit(images, MAX_EXPLORE_IMAGES)
+        return self._run(prompt, images, CHECK_SCHEMA)
+
 
 GENERIC_LENS: dict[str, Any] = {
     "label": "Custom",
@@ -253,6 +275,31 @@ class MockReasoningProvider:
     def verify(self, images: list[bytes], schema: dict[str, Any], prompt: str) -> dict[str, Any]:
         _limit(images, MAX_VERIFY_IMAGES)
         return self._make(images, schema, prompt)
+
+    def explore_options(self, images: list[bytes], prompt: str) -> dict[str, Any]:
+        _limit(images, MAX_EXPLORE_IMAGES)
+        distances = ("near", "bold", "wild")
+        return {
+            "options": [
+                {
+                    "name": f"Option {c}",
+                    "description": f"A mock design move {c}.",
+                    "distance": distances[i % 3],
+                    "value": f"option_{c.lower()}",
+                    "keeps": [],
+                    "edit_prompt": f"Change only the target attribute to option {c}.",
+                }
+                for i, c in enumerate("ABCDEFGH")
+            ]
+        }
+
+    def check_target(self, images: list[bytes], prompt: str) -> dict[str, Any]:
+        _limit(images, MAX_EXPLORE_IMAGES)
+        if self.truth:
+            return {"answer": "yes", "confidence": 0.9, "box": None, "note": ""}
+        n = int(hashlib.sha256(prompt.encode()).hexdigest()[:8], 16)
+        return {"answer": ("yes", "no", "unclear")[n % 3], "confidence": round(0.5 + (n % 40) / 100, 2),
+                "box": None, "note": ""}  # fmt: skip
 
     def _make(self, images: list[bytes], schema: dict[str, Any], prompt: str) -> dict[str, Any]:
         h = hashlib.sha256()
