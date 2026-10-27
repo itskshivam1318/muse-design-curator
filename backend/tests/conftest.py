@@ -23,6 +23,12 @@ def _mock_providers(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("EMBEDDER", "mock")
 
 
+@pytest.fixture(autouse=True)
+def _no_live_search(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Live source search is off unless a test turns it on (and then uses fake transports)."""
+    monkeypatch.setenv("LIVE_SEARCH", "0")
+
+
 @pytest.fixture
 def session() -> Iterator[Session]:
     """In-memory SQLite with the schema built by running Alembic migrations."""
