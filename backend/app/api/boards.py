@@ -3,11 +3,12 @@ from typing import Any
 from fastapi import APIRouter, Request
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
+from starlette.background import BackgroundTask
 
-from app import lens_service
+from app import demo, lens_service
 from app.api.deps import SessionDep
 from app.api.schemas import BoardCreate, BoardPatch, board_to_dict, item_to_dict
-from app.board.events import profile_snapshot, stream
+from app.board.events import acquire_slot, profile_snapshot, stream
 from app.db.repos import boards as boards_repo
 from app.db.repos import items as items_repo
 from app.errors import AppError
@@ -69,4 +70,8 @@ def get_profile(board_id: str, session: SessionDep) -> dict[str, Any]:
 @router.get("/{board_id}/events")
 async def board_events(board_id: str, request: Request, session: SessionDep) -> EventSourceResponse:
     require_board(session, board_id)
-    return EventSourceResponse(stream(board_id, request, session), ping=15)
+    slot = acquire_slot(demo.client_ip(request))  # 429 TOO_MANY_STREAMS over the caps
+    # released when the stream ends; the background task covers a stream that never started
+    return EventSourceResponse(
+        stream(board_id, request, session, slot), ping=15, background=BackgroundTask(slot.release)
+    )

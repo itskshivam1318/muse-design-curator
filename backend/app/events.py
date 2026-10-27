@@ -1,5 +1,11 @@
-"""In-process pub/sub keyed by board id. Thread-safe; SSE transport arrives in a later task."""
+"""In-process pub/sub keyed by board id. Thread-safe.
 
+`subscribe` gives a blocking queue (workers, tests); `subscribe_async` gives an asyncio queue fed
+with `loop.call_soon_threadsafe`, so an SSE stream awaits events without holding a worker thread.
+"""
+
+import asyncio
+import contextlib
 import queue
 import threading
 from collections import defaultdict
@@ -32,12 +38,18 @@ class Subscription:
             raise StopIteration
         return ev
 
-    def close(self) -> None:
+    def _deliver(self, ev: dict[str, Any]) -> None:
+        self._q.put(ev)
+
+    def _unregister(self) -> None:
         with _lock:
             _subs[self.board_id].discard(self)
             if not _subs[self.board_id]:
                 _subs.pop(self.board_id, None)
         self._closed = True
+
+    def close(self) -> None:
+        self._unregister()
         self._q.put(None)
 
     def __enter__(self) -> Self:
@@ -45,6 +57,37 @@ class Subscription:
 
     def __exit__(self, *_exc: object) -> None:
         self.close()
+
+
+class AsyncSubscription(Subscription):
+    """Delivers into an asyncio.Queue on `loop`; safe to publish from any thread."""
+
+    def __init__(self, board_id: str, loop: asyncio.AbstractEventLoop) -> None:
+        super().__init__(board_id)
+        self._loop = loop
+        self._aq: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+
+    def _deliver(self, ev: dict[str, Any]) -> None:
+        with contextlib.suppress(RuntimeError):  # the loop has already closed
+            self._loop.call_soon_threadsafe(self._aq.put_nowait, ev)
+
+    async def aget(self, timeout: float) -> dict[str, Any] | None:
+        """Next event, or None after `timeout` seconds."""
+        try:
+            return await asyncio.wait_for(self._aq.get(), timeout)
+        except TimeoutError:
+            return None
+
+    def close(self) -> None:
+        self._unregister()
+
+
+def subscribe_async(board_id: str) -> AsyncSubscription:
+    """Call from the event loop that will await the events."""
+    sub = AsyncSubscription(board_id, asyncio.get_running_loop())
+    with _lock:
+        _subs[board_id].add(sub)
+    return sub
 
 
 def subscribe(board_id: str) -> Subscription:
@@ -60,7 +103,7 @@ def publish(board_id: str, type: str, data: dict[str, Any]) -> None:
         seq = _seq[board_id]
         targets = list(_subs.get(board_id, ()))
     for s in targets:
-        s._q.put({"type": type, "board_id": board_id, "data": data, "seq": seq})
+        s._deliver({"type": type, "board_id": board_id, "data": data, "seq": seq})
 
 
 def last_seq(board_id: str) -> int:

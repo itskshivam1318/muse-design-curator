@@ -13,6 +13,9 @@ from sqlalchemy.orm import Session
 from app import events
 from app.api.schemas import item_to_dict
 from app.board import profile_hook
+from app.config import get_settings
+from app.corpus.embedding_lock import load_matrix
+from app.corpus.indexer import embeddings_path
 from app.db.models import BoardItem, CorpusItem, Decision, RunCandidate, VariationRun
 from app.db.repos import attributes as attrs_repo
 from app.db.repos import corpus as corpus_repo
@@ -21,9 +24,6 @@ from app.db.repos import idempotency as idem_repo
 from app.db.repos import items as items_repo
 from app.db.repos import lenses as lenses_repo
 from app.db.repos import runs as runs_repo
-from app.config import get_settings
-from app.corpus.embedding_lock import load_matrix
-from app.corpus.indexer import embeddings_path
 from app.db.session import after_commit
 from app.domain.attributes import RELIABLE_CONFIDENCE
 from app.domain.lens import LensSpec

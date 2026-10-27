@@ -226,3 +226,124 @@ def test_bool_value_patch_is_400_not_500(client: TestClient, db: Session, key: s
         r = client.patch(f"/api/items/{ids[0]}/attributes/{key}", json={"value": bad})
         assert r.status_code == 400, (key, r.status_code)
         assert r.json()["error"]["code"] == "INVALID_ATTRIBUTE_VALUE"
+
+
+class _Conn:
+    """One in-process SSE connection driven through the ASGI app."""
+
+    def __init__(self, board_id: str, ip: str) -> None:
+        self.board_id, self.ip = board_id, ip
+        self.status: asyncio.Future[int] = asyncio.get_running_loop().create_future()
+        self.gone = asyncio.Event()
+        self._sent = False
+        self.task: asyncio.Task[None] | None = None
+
+    async def _receive(self) -> dict[str, Any]:
+        if not self._sent:
+            self._sent = True
+            return {"type": "http.request", "body": b"", "more_body": False}
+        await self.gone.wait()
+        return {"type": "http.disconnect"}
+
+    async def _send(self, msg: dict[str, Any]) -> None:
+        if msg["type"] == "http.response.start" and not self.status.done():
+            self.status.set_result(msg["status"])
+
+    def start(self) -> "_Conn":
+        scope = {
+            "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "GET",
+            "path": f"/api/boards/{self.board_id}/events", "raw_path": b"", "query_string": b"",
+            "headers": [], "server": ("t", 80), "client": (self.ip, 1), "scheme": "http",
+            "root_path": "",
+        }  # fmt: skip
+        self.task = asyncio.create_task(app(scope, self._receive, self._send))
+        return self
+
+    async def close(self) -> None:
+        self.gone.set()
+        assert self.task is not None
+        await asyncio.wait_for(self.task, 10)
+
+
+async def _get(path: str) -> int:
+    status: list[int] = []
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(msg: dict[str, Any]) -> None:
+        if msg["type"] == "http.response.start":
+            status.append(msg["status"])
+
+    scope = {
+        "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "GET",
+        "path": path, "raw_path": b"", "query_string": b"", "headers": [],
+        "server": ("t", 80), "client": ("10.9.9.9", 1), "scheme": "http", "root_path": "",
+    }  # fmt: skip
+    await app(scope, receive, send)
+    return status[0]
+
+
+def test_many_open_streams_hold_no_threadpool_worker(client: TestClient, db: Session) -> None:
+    import anyio.to_thread
+
+    board_id, _ = seed(db)
+
+    async def go() -> None:
+        conns = [_Conn(board_id, f"10.0.{i // 3}.{i % 3}").start() for i in range(50)]
+        assert {await asyncio.wait_for(c.status, 10) for c in conns} == {200}
+        await asyncio.sleep(1.2)  # several poll intervals
+        limiter = anyio.to_thread.current_default_thread_limiter()
+        assert limiter.borrowed_tokens == 0  # an idle stream holds no worker
+        t0 = asyncio.get_running_loop().time()
+        assert await asyncio.wait_for(_get(f"/api/boards/{board_id}"), 5) == 200
+        assert asyncio.get_running_loop().time() - t0 < 2
+        events.publish(board_id, "item.parsed", {"id": "x"})
+        for c in conns:
+            await c.close()
+
+    asyncio.run(go())
+    assert not events._subs
+
+
+def test_stream_caps_per_ip_and_global_release_on_disconnect(
+    client: TestClient, db: Session
+) -> None:
+    board_id, _ = seed(db)
+
+    async def go() -> None:
+        mine = [_Conn(board_id, "10.1.1.1").start() for _ in range(3)]
+        assert [await asyncio.wait_for(c.status, 10) for c in mine] == [200, 200, 200]
+        extra = _Conn(board_id, "10.1.1.1").start()
+        assert await asyncio.wait_for(extra.status, 10) == 429
+        await asyncio.wait_for(extra.task, 10)  # type: ignore[arg-type]
+        await mine[0].close()
+        again = _Conn(board_id, "10.1.1.1").start()
+        assert await asyncio.wait_for(again.status, 10) == 200
+        # global cap: 50 open streams in all
+        others = [_Conn(board_id, f"10.2.{i // 3}.{i % 3}").start() for i in range(47)]
+        assert {await asyncio.wait_for(c.status, 10) for c in others} == {200}
+        over = _Conn(board_id, "10.3.3.3").start()
+        assert await asyncio.wait_for(over.status, 10) == 429
+        await asyncio.wait_for(over.task, 10)  # type: ignore[arg-type]
+        for c in [*mine[1:], again, *others]:
+            await c.close()
+        last = _Conn(board_id, "10.3.3.3").start()
+        assert await asyncio.wait_for(last.status, 10) == 200
+        await last.close()
+
+    asyncio.run(go())
+    assert not events._subs
+
+
+def test_too_many_streams_error_body(client: TestClient, db: Session) -> None:
+    from app.board import events as board_events
+
+    board_id, _ = seed(db)
+    held = [board_events.acquire_slot("testclient") for _ in range(3)]  # TestClient's host
+    try:
+        r = client.get(f"/api/boards/{board_id}/events")
+        assert r.status_code == 429 and r.json()["error"]["code"] == "TOO_MANY_STREAMS"
+    finally:
+        for h in held:
+            h.release()
