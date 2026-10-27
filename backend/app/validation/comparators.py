@@ -64,6 +64,9 @@ def compare(spec: AttributeSpec, a: AttrValue, b: AttrValue, cfg: RankingConfig)
             return "unknown"
         return "same" if scale.index(a.value) == scale.index(b.value) else "different"
     if kind == "number":
+        # Model-read numbers can be low-confidence guesses; measured ones carry confidence 1.0.
+        if not (a.reliable(cfg) and b.reliable(cfg)):
+            return "unknown"
         x, y = _number(a), _number(b)
         if x is None or y is None:
             return "unknown"

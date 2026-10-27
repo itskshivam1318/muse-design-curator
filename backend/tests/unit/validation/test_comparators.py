@@ -70,6 +70,17 @@ def test_number_within_tol_same_beyond_double_different_between_unknown() -> Non
     assert compare(NUM, av(None, 0, "missing"), av(5.0), CFG) == "unknown"
 
 
+def test_number_low_confidence_is_unknown_same_or_different() -> None:
+    # A model-read number below the reliable confidence never decides same/different.
+    assert compare(NUM, av(5.0, 0.1, "uncertain"), av(5.2, 0.1, "uncertain"), CFG) == "unknown"
+    assert compare(NUM, av(1.0, 0.1, "uncertain"), av(9.0, 0.1, "uncertain"), CFG) == "unknown"
+    assert compare(NUM, av(5.0, 0.1, "uncertain"), av(5.0), CFG) == "unknown"
+    assert compare(NUM, av(5.0), av(9.0, 0.1, "uncertain"), CFG) == "unknown"
+    # Measured numbers (confidence 1.0) and edited/confirmed values stay reliable.
+    assert compare(NUM, av(5.0, 1.0, "extracted"), av(9.0, 1.0, "extracted"), CFG) == "different"
+    assert compare(NUM, av(5.0, 0.1, "edited"), av(5.2, 0.1, "confirmed"), CFG) == "same"
+
+
 def test_colour_delta_e_bands() -> None:
     assert compare(COL, av("x", measured=lab(50)), av("y", measured=lab(53)), CFG) == "same"
     assert compare(COL, av("x", measured=lab(50)), av("y", measured=lab(90)), CFG) == "different"

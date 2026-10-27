@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.corpus import hashing
 from app.db.models import CorpusItem
-from app.domain.kinds import EnumSpec, OrdinalSpec
+from app.domain.kinds import EnumSpec, NumberSpec, OrdinalSpec
 from app.domain.variation import ProtectedSpec, VariationRequest, VariationSpec
 from app.retrieval.config import RANKING_CONFIG as CFG
 from app.retrieval.filters import OnBoard, SourceItem, apply_exclusions
@@ -147,6 +147,28 @@ def test_unknown_protected_not_excluded(make) -> None:
     src = SourceItem(attrs={"p": AttrValue("mid", 0.9, "extracted")})
     kept, ex = apply_exclusions([unsure, absent], spec(protected=[_prot()]), src, CFG)
     assert len(kept) == 2 and not ex
+
+
+NUM = NumberSpec(key="n", label="Num", category="c", unit="mm", min=0, max=100, tolerance=1.0)
+
+
+def test_low_confidence_protected_number_is_not_a_hard_constraint(make) -> None:
+    far = make({"n": AttrValue(44.0, 0.1, "uncertain")})
+    src = SourceItem(attrs={"n": AttrValue(36.0, 0.1, "uncertain")})
+    prot = ProtectedSpec(key="n", spec=NUM, value=36.0)
+    kept, ex = apply_exclusions([far], spec(protected=[prot]), src, CFG)
+    assert kept == [far] and not ex
+
+
+def test_low_confidence_number_target_is_not_no_target_change(make) -> None:
+    tnum = VariationSpec(
+        request=VariationRequest(source_item_id="i", target_key="n", mode="explore"),
+        target_spec=NUM, target_value=40.0, values=(), protected=(),
+    )  # fmt: skip
+    same = make({"n": AttrValue(40.0, 0.1, "uncertain")})
+    src = SourceItem(attrs={"n": AttrValue(40.5, 0.1, "uncertain")})
+    kept, ex = apply_exclusions([same], tnum, src, CFG)
+    assert kept == [same] and not ex
 
 
 def test_avoided_value(make) -> None:

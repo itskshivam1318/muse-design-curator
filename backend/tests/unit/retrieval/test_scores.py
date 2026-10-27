@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.domain.kinds import EnumSpec, OrdinalSpec
+from app.domain.kinds import EnumSpec, NumberSpec, OrdinalSpec
 from app.domain.variation import Nudge, ProtectedSpec, VariationRequest, VariationSpec
 from app.retrieval.config import RANKING_CONFIG as CFG
 from app.retrieval.pool import PoolItem
@@ -94,6 +94,13 @@ def test_preservation():
     assert preservation_score(s, src, {"p": av("airy")}, CFG) == 0
     e = spec("explore", target_value="a")
     assert preservation_score(e, {}, {}, CFG) == 1
+
+
+def test_preservation_low_confidence_number_gets_only_partial_credit():
+    num = NumberSpec(key="n", label="N", category="c", unit="mm", min=0, max=100, tolerance=1.0)
+    s = spec("explore", target_value="a", protected=(ProtectedSpec(key="n", spec=num, value=40.0),))
+    src = {"n": av(40.0, 0.1, "uncertain")}
+    assert preservation_score(s, src, {"n": av(40.2, 0.1, "uncertain")}, CFG) == pytest.approx(0.05)
 
 
 def test_relevance_mapping():
