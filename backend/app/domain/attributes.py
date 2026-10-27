@@ -76,6 +76,8 @@ def validate_value(raw: Value, spec: AttributeSpec) -> Value:
     """Return the cleaned value, or None when it does not fit the spec."""
     if raw is None:
         return None
+    if isinstance(raw, bool) and spec.kind != "boolean":
+        return None
     if spec.kind == "boolean":
         return _coerce_bool(raw)
     if spec.kind == "number":

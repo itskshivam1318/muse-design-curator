@@ -4,7 +4,7 @@
  * The canvas opens a drawer with selection.openDrawer(kind, itemId) (toolbar buttons, I / V keys);
  * <RightDrawer> renders whichever panel is registered for the open kind.
  */
-import type { ComponentType } from 'react'
+import type { ComponentType, LazyExoticComponent } from 'react'
 
 export interface DrawerPanelProps {
   boardId: string
@@ -15,13 +15,15 @@ export interface DrawerPanelProps {
   locked?: boolean
 }
 
-const panels = new Map<string, ComponentType<DrawerPanelProps>>()
+export type DrawerPanel = ComponentType<DrawerPanelProps> | LazyExoticComponent<ComponentType<DrawerPanelProps>>
 
-export function registerDrawerPanel(kind: string, panel: ComponentType<DrawerPanelProps>): void {
+const panels = new Map<string, DrawerPanel>()
+
+export function registerDrawerPanel(kind: string, panel: DrawerPanel): void {
   panels.set(kind, panel)
 }
 
-export function getDrawerPanel(kind: string): ComponentType<DrawerPanelProps> | undefined {
+export function getDrawerPanel(kind: string): DrawerPanel | undefined {
   return panels.get(kind)
 }
 

@@ -39,7 +39,10 @@ beforeEach(() => {
   uploads.length = 0
   vi.mocked(upsertItems).mockClear()
 })
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
 
 describe('useAddFlow upload lifecycle', () => {
   it('unmounting during an upload aborts it and does not touch state afterwards', async () => {

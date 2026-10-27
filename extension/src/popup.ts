@@ -31,6 +31,9 @@ export function renderPopup(root: HTMLElement, settings: Settings, view: View, a
       el('p', {}, 'Enter the 6-digit code shown in the app'),
       input,
       el('button', { type: 'submit', id: 'pair' }, 'Pair'),
+      el('p', { id: 'api-note', className: 'note' },
+        `App address: ${settings.apiBase}. This build talks to http://localhost:8000. ` +
+        'To use another address, edit manifest.json host_permissions.'),
     )
     form.addEventListener('submit', (e) => { e.preventDefault(); actions.pair(input.value) })
     root.append(form)

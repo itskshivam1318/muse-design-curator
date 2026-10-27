@@ -295,9 +295,20 @@ export function TextEditor({ name, value, onCommit }: { name: string; value: str
   const [shown, setShown] = useState(value)
   const saved = useRef(value)
   const commitRef = useRef(onCommit)
+  const draftRef = useRef(draft)
   useEffect(() => {
     commitRef.current = onCommit
+    draftRef.current = draft
   })
+  // leaving with an unsaved edit (drawer closed, item switched) saves it instead of dropping it
+  useEffect(
+    () => () => {
+      if (draftRef.current === saved.current) return
+      saved.current = draftRef.current
+      commitRef.current(draftRef.current.trim() || null)
+    },
+    [],
+  )
   useEffect(() => {
     saved.current = value
   }, [value])

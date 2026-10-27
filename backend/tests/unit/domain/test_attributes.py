@@ -71,3 +71,18 @@ def test_high_confidence_with_region_is_extracted() -> None:
     r = norm("x", spec(kind="text"), conf=0.82)
     assert r.status == "extracted" and r.value == "x"
     assert r.source == "model" and r.source_detail == "test" and r.enabled is True
+
+
+def test_bool_is_not_a_valid_value_for_text_color_number_or_enum() -> None:
+    from app.domain.attributes import validate_value
+
+    for s in (
+        spec(kind="text"),
+        spec(kind="color"),
+        spec(kind="number", unit="mm", min=0, max=5, tolerance=1),
+        spec(kind="enum", open_vocabulary=True),
+        spec(kind="ordinal", scale=["a", "b", "c"]),
+    ):
+        assert validate_value(True, s) is None
+        assert validate_value(False, s) is None
+    assert validate_value(True, spec(kind="boolean")) is True

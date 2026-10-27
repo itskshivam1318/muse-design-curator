@@ -6,7 +6,10 @@ import { stubCanvasContext } from '../test/canvasStub'
 import { ItemNode } from './ItemNode'
 import type { CanvasPalette } from './palette'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
 
 const palette: CanvasPalette = {
   accent: '#00f', ink: '#000', paper: '#eee', panel: '#fff', muted: '#666', rule: '#ccc',

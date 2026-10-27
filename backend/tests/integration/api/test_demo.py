@@ -267,3 +267,15 @@ def test_non_ascii_cookie_is_locked_not_500(client: TestClient) -> None:
     status = client.get("/api/demo/status", headers=raw)
     assert status.json() == {"demo_mode": True, "unlocked": False}
     assert locked(client.post("/api/boards", json={"title": "x"}, headers=raw))
+
+
+def test_expired_window_keys_are_pruned(clock: Clock) -> None:
+    demo.windows.add("run:1.2.3.4")
+    assert demo.windows.retry_after("run:1.2.3.4", 3600, 5) is None
+    assert "run:1.2.3.4" in demo.windows._hits
+    clock.t += 3601
+    assert demo.windows.retry_after("run:1.2.3.4", 3600, 5) is None
+    assert "run:1.2.3.4" not in demo.windows._hits
+    # a probe of a key that never had hits leaves nothing behind
+    demo.windows.retry_after("run:9.9.9.9", 3600, 5)
+    assert "run:9.9.9.9" not in demo.windows._hits
