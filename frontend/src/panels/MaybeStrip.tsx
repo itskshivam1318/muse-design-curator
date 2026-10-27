@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { type CandidateView, corpusImageUrl, type Item } from '../api'
 import { useRun } from '../queries'
 import { barState, progressText, runFailureText, shortfallText } from '../vary/logic'
 import { runStore, useRunState } from '../vary/runStore'
 import { startRun } from '../vary/startRun'
 import { useDialog } from '../ui/useDialog'
-import { CandidatePopover } from './CandidatePopover'
+
+const CandidatePopover = lazy(() => import('./CandidatePopover').then((m) => ({ default: m.CandidatePopover })))
 
 interface Props {
   boardId: string
@@ -107,6 +108,7 @@ export function MaybeStrip({ boardId, streamOpen, onKept }: Props) {
       {why && <ShortfallDialog headline={short.headline} lines={short.lines} onClose={() => setWhy(false)} />}
 
       {open && data && (
+        <Suspense fallback={<p className="muted small">Loading…</p>}>
         <CandidatePopover
           key={open.id}
           boardId={boardId}
@@ -117,6 +119,7 @@ export function MaybeStrip({ boardId, streamOpen, onKept }: Props) {
           onClose={() => runStore.open(null)}
           onKept={onKept}
         />
+        </Suspense>
       )}
     </section>
   )
