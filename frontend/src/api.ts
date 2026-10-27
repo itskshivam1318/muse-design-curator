@@ -35,6 +35,17 @@ export interface Item {
   thumb_path: string | null
   parent_item_id: string | null
   created_at: string
+  /** Stored provenance of a licensed (corpus) image; null for the user's own items. */
+  licence?: ItemLicence | null
+}
+
+export interface ItemLicence {
+  credit: string
+  license_code: string
+  license_url: string | null
+  creator_name: string | null
+  landing_url: string | null
+  source: string
 }
 
 export interface Board {

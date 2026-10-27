@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { keys } from '../api'
+import { type Item, keys } from '../api'
 import { selection, selectionStore } from '../canvas/selection'
 import { makeAttrs } from '../test/attrs'
 import { makeItem, makeProfile } from '../test/fixtures'
@@ -24,9 +24,9 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-function setup(locked = false) {
+function setup(locked = false, item: Partial<Item> = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
-  qc.setQueryData(keys.items('b1'), [makeItem({ id: 'i1', board_id: 'b1' })])
+  qc.setQueryData(keys.items('b1'), [makeItem({ id: 'i1', board_id: 'b1', ...item })])
   qc.setQueryData(keys.attributes('i1'), makeAttrs({ case_finish: { status: 'edited', source: 'user' } }))
   qc.setQueryData(keys.profile('b1'), {
     version: 1,
@@ -41,6 +41,25 @@ function setup(locked = false) {
 }
 
 describe('InspectPanel', () => {
+  it('a licensed item shows its stored credit in the header', () => {
+    setup(false, {
+      rights_status: 'licensed',
+      licence: {
+        credit: 'Photo by Ana B, CC BY 4.0', license_code: 'CC-BY-4.0',
+        license_url: 'https://creativecommons.org/licenses/by/4.0/', creator_name: 'Ana B',
+        landing_url: 'https://commons.wikimedia.org/wiki/File:W.jpg', source: 'wikimedia',
+      },
+    })
+    const cap = screen.getByRole('note', { name: 'Image credit' })
+    expect(cap.textContent).toBe('© Ana B · CC-BY-4.0 · Source ↗')
+    expect(screen.getByRole('link', { name: 'Source ↗' }).getAttribute('href')).toBe('https://commons.wikimedia.org/wiki/File:W.jpg')
+  })
+
+  it('a user item shows no credit line', () => {
+    setup()
+    expect(screen.queryByRole('note', { name: 'Image credit' })).toBeNull()
+  })
+
   it('locked demo: values are shown but every editor is disabled', () => {
     setup(true)
     expect(screen.getByText('Demo — read-only: unlock to edit values.')).toBeTruthy()

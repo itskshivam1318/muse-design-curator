@@ -29,6 +29,8 @@ import {
 } from './geometry'
 import type { Move } from './history'
 import { ItemDecorations, type ItemHandlers, ItemNode } from './ItemNode'
+import { CreditCaption } from './CreditCaption'
+import { creditTargets } from './credit'
 import { ItemToolbar } from './ItemToolbar'
 import { itemBounds, lineagePoints, statusLabel } from './nodeProps'
 import { useCanvasPalette, usePrefersReducedMotion } from './palette'
@@ -430,6 +432,11 @@ export function Canvas({ items, actions, onFiles, onOpenPanel, spaceDown, ref, r
       {hoveredItem && hoveredItem.kind !== 'link' && hoveredItem.parse_status !== 'completed' && (
         <StatusTip item={positioned(hoveredItem)} view={view} />
       )}
+      {!dragging &&
+        !marquee &&
+        creditTargets(hoveredItem && positioned(hoveredItem), selectedItems).map((i) => (
+          <CreditCaption key={`credit-${i.id}`} item={i} screen={toScreenBounds(itemBounds(i), view)} />
+        ))}
       {selBounds && !dragging && !marquee && (
         <ItemToolbar
           items={selectedItems}

@@ -252,3 +252,32 @@ def test_not_this_item_carries_corpus_embedding(client, world) -> None:  # type:
     s.expire_all()
     row = s.get(BoardItem, r.json()["item"]["id"])
     assert row.embedding_json and row.palette_json
+
+
+def test_board_items_expose_stored_licence_credit(client, world) -> None:  # type: ignore[no-untyped-def]
+    s = world["session"]
+    items = client.get(f"/api/boards/{world['watch']}/items").json()["items"]
+    licensed = [i for i in items if i["rights_status"] == "licensed"]
+    assert licensed
+    for it in licensed:
+        cx = s.get(CorpusItem, s.get(BoardItem, it["id"]).corpus_item_id)
+        assert it["licence"] == {
+            "credit": cx.attribution_text, "license_code": cx.license_code,
+            "license_url": cx.license_url, "creator_name": cx.creator_name,
+            "landing_url": cx.landing_url, "source": cx.source,
+        }  # fmt: skip
+    # a kept candidate carries the same credit in its item payload
+    rid, top = setup(client, world)
+    kept = decide(client, rid, top["id"], decision="keep").json()["item"]
+    assert kept["licence"]["credit"] == top["provenance"]["credit"]
+    assert kept["licence"]["landing_url"] == top["provenance"]["landing_url"]
+
+
+def test_user_items_have_no_licence_block(client, world) -> None:  # type: ignore[no-untyped-def]
+    from app.api.schemas import item_to_dict
+    from app.db.repos import items as items_repo
+
+    s = world["session"]
+    it = items_repo.create(s, board_id=world["watch"], kind="image", origin="upload")
+    s.commit()
+    assert item_to_dict(it)["licence"] is None

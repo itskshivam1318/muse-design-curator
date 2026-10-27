@@ -1,8 +1,9 @@
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import object_session
 
-from app.db.models import Board, BoardItem
+from app.db.models import Board, BoardItem, CorpusItem
 
 ItemRole = Literal["reference", "counter_example"]
 
@@ -53,6 +54,21 @@ def board_to_dict(b: Board) -> dict[str, Any]:
     }  # fmt: skip
 
 
+def licence_of(i: BoardItem) -> dict[str, Any] | None:
+    """The stored credit for a licensed (corpus) image; never invented. None for user items."""
+    if i.corpus_item_id is None:
+        return None
+    session = object_session(i)
+    cx = session.get(CorpusItem, i.corpus_item_id) if session is not None else None
+    if cx is None:
+        return None
+    return {
+        "credit": cx.attribution_text, "license_code": cx.license_code,
+        "license_url": cx.license_url, "creator_name": cx.creator_name,
+        "landing_url": cx.landing_url, "source": cx.source,
+    }  # fmt: skip
+
+
 def item_to_dict(i: BoardItem) -> dict[str, Any]:
     return {
         "id": i.id, "board_id": i.board_id, "kind": i.kind, "origin": i.origin,
@@ -65,4 +81,5 @@ def item_to_dict(i: BoardItem) -> dict[str, Any]:
         "x": i.x, "y": i.y, "w": i.w, "h": i.h, "z": i.z,
         "storage_path": i.storage_path, "thumb_path": i.thumb_path,
         "parent_item_id": i.parent_item_id, "created_at": i.created_at,
+        "licence": licence_of(i),
     }  # fmt: skip

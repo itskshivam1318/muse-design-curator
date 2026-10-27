@@ -9,6 +9,7 @@ import {
   keys,
   patchAttribute,
 } from '../api'
+import { CreditLine } from '../canvas/CreditCaption'
 import { selection } from '../canvas/selection'
 import { humanize, itemTitle } from '../format'
 import { useAttributes, useItems, useProfile } from '../queries'
@@ -84,7 +85,12 @@ export function InspectPanel({ boardId, itemId, onClose, locked = false }: Drawe
 
   return (
     <div className="panel inspect-panel">
-      <PanelHead eyebrow="Inspect" title={item ? itemTitle(item) : 'Item'} onClose={onClose} />
+      <PanelHead
+        eyebrow="Inspect"
+        title={item ? itemTitle(item) : 'Item'}
+        onClose={onClose}
+        sub={item?.licence && <CreditLine licence={item.licence} className="credit panel-credit small muted" />}
+      />
       <div className="panel-body">
         {q.isPending && <p className="muted">Loading attributes…</p>}
         {q.isError && <p className="error">Could not load attributes: {q.error.message}</p>}

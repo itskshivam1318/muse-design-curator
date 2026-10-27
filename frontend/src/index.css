@@ -806,6 +806,35 @@ button.onboarding-step:hover {
   object-fit: cover;
   display: block;
 }
+/* credit for a licensed image: a caption below it, outside its bounds (the image stays bare) */
+.credit-caption {
+  position: absolute;
+  z-index: 5;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.credit-caption p {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.credit-caption a,
+.panel-credit a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.panel-credit {
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
 .status-tip {
   position: absolute;
   transform: translate(-100%, -50%);
