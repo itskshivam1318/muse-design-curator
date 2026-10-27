@@ -1685,3 +1685,8 @@ button.onboarding-step:hover {
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+.verdict-ok { color: var(--good, #2f7d4f); }
+.verdict-warn { color: var(--warn, #a15c00); }
+.verdict-error { color: var(--bad, #b3261e); }
+.verdict-pending { color: var(--muted); }

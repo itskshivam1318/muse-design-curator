@@ -12,7 +12,8 @@ import {
 import { CreditLine } from '../canvas/CreditCaption'
 import { selection } from '../canvas/selection'
 import { humanize, itemTitle } from '../format'
-import { useAttributes, useItems, useProfile } from '../queries'
+import { itemVerdict } from '../explore/verdict'
+import { useAttributes, useExplorations, useItems, useProfile } from '../queries'
 import { COLOR_TABLE, colorHex, formatValue, isBoardSignal, numberBounds, scaleOf, vocabularyOf } from '../vary/logic'
 import { Swatch } from './AttrBits'
 import type { DrawerPanelProps } from './drawerRegistry'
@@ -70,6 +71,11 @@ export function InspectPanel({ boardId, itemId, onClose, locked = false }: Drawe
   const profile = useProfile(boardId).data?.profile
   const { send, error } = usePatch(itemId)
   const lens = q.data?.lens
+  const explorations = useExplorations(boardId).data
+  const verdict = useMemo(
+    () => (item ? itemVerdict(item, explorations, new Map((lens?.attributes ?? []).map((a) => [a.key, a.label]))) : null),
+    [item, explorations, lens],
+  )
 
   const groups = useMemo(() => {
     const recs = new Map((q.data?.attributes ?? []).map((a) => [a.key, a]))
@@ -92,6 +98,14 @@ export function InspectPanel({ boardId, itemId, onClose, locked = false }: Drawe
         sub={item?.licence && <CreditLine licence={item.licence} className="credit panel-credit small muted" />}
       />
       <div className="panel-body">
+        {item?.generation && verdict && (
+          <section className="attr-group generated-from">
+            <h3 className="eyebrow">Generated from {verdict.optionName}</h3>
+            <p className={`verdict verdict-${verdict.tone}`}>{verdict.text}</p>
+            <p className="small muted">Model: {item.generation.model}</p>
+            <p className="small muted">Prompt: {item.generation.prompt}</p>
+          </section>
+        )}
         {q.isPending && <p className="muted">Loading attributes…</p>}
         {q.isError && <p className="error">Could not load attributes: {q.error.message}</p>}
         {q.data && q.data.parse_status !== 'completed' && (

@@ -43,6 +43,27 @@ describe('CreditCaption', () => {
   })
 })
 
+describe('generated caption', () => {
+  it('caption for generated item shows model, no licence', () => {
+    const item = makeItem({
+      licence,
+      generation: { model: 'gpt-image-1', prompt: 'p', option_id: 'o1' },
+    })
+    render(
+      <CreditCaption item={item} screen={box} verdict={{ text: 'Checking…', tone: 'pending' }} />,
+    )
+    expect(screen.getByText('generated · gpt-image-1')).toBeTruthy()
+    expect(screen.getByText('Checking…')).toBeTruthy()
+    expect(screen.queryByRole('note', { name: 'Image credit' })).toBeNull()
+    expect(screen.queryByText(/Ana B/)).toBeNull()
+  })
+
+  it('generated items are caption targets', () => {
+    const g = makeItem({ id: 'g', generation: { model: 'm', prompt: 'p', option_id: 'o' } })
+    expect(creditTargets(g, []).map((i) => i.id)).toEqual(['g'])
+  })
+})
+
 describe('creditTargets', () => {
   it('captions the hovered and the selected licensed images, once each, never links or user items', () => {
     const a = makeItem({ id: 'a', rights_status: 'licensed', licence })

@@ -13,7 +13,8 @@ import {
 import { Layer, Line, Rect, Stage } from 'react-konva'
 import type { Exploration, Item, Point, UploadOrigin } from '../api'
 import { useDemo } from '../demo'
-import { useExplorations } from '../queries'
+import { itemVerdict } from '../explore/verdict'
+import { useBoardLens, useExplorations } from '../queries'
 import type { ItemActions } from './actions'
 import { handleDrop } from './drop'
 import { FramesStrip } from './FramesStrip'
@@ -98,6 +99,8 @@ export function Canvas({ boardId, items, actions, onFiles, onOpenPanel, spaceDow
   const overStrip = useRef(false)
   const [overrides, setOverrides] = useState<Record<string, Point>>({})
   const explorations = useExplorations(boardId).data
+  const lensAttrs = useBoardLens(boardId).data?.spec.attributes
+  const labels = useMemo(() => new Map((lensAttrs ?? []).map((a) => [a.key, a.label])), [lensAttrs])
   // a note being dragged: its lines follow the pointer until the drop saves the spot
   const [noteDrag, setNoteDrag] = useState<({ id: string } & Point) | null>(null)
   const dragStart = useRef<Map<string, Point> | null>(null)
@@ -478,7 +481,12 @@ export function Canvas({ boardId, items, actions, onFiles, onOpenPanel, spaceDow
       {!dragging &&
         !marquee &&
         creditTargets(hoveredItem && positioned(hoveredItem), selectedItems).map((i) => (
-          <CreditCaption key={`credit-${i.id}`} item={i} screen={toScreenBounds(itemBounds(i), view)} />
+          <CreditCaption
+            key={`credit-${i.id}`}
+            item={i}
+            screen={toScreenBounds(itemBounds(i), view)}
+            verdict={itemVerdict(i, explorations, labels)}
+          />
         ))}
       {selBounds && !dragging && !marquee && (
         <ItemToolbar

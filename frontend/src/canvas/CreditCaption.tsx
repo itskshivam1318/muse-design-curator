@@ -1,5 +1,6 @@
 import type { Item, ItemLicence } from '../api'
 import { safeExternalUrl } from '../format'
+import type { Verdict } from '../explore/verdict'
 import type { Bounds } from './geometry'
 
 const GAP = 6 // screen px between the image's bottom edge and the caption
@@ -40,15 +41,28 @@ export function CreditLine({ licence, className }: { licence: ItemLicence; class
 }
 
 /** The credit caption under a licensed image on the canvas: outside the image, never over it. */
-export function CreditCaption({ item, screen }: { item: Item; screen: Bounds }) {
-  if (!item.licence) return null
+export function CreditCaption({ item, screen, verdict }: { item: Item; screen: Bounds; verdict?: Verdict | null }) {
+  if (!item.licence && !item.generation) return null
   return (
     <div
       className="credit-caption"
       style={{ left: screen.x, top: screen.y + screen.height + GAP, maxWidth: Math.max(screen.width, 220) }}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <CreditLine licence={item.licence} />
+      {item.generation ? (
+        <>
+          <p className="generated-line" role="note" aria-label="Generated image">
+            generated · {item.generation.model}
+          </p>
+          {verdict && (
+            <p className={`verdict verdict-${verdict.tone}`} role="status">
+              {verdict.text}
+            </p>
+          )}
+        </>
+      ) : (
+        item.licence && <CreditLine licence={item.licence} />
+      )}
     </div>
   )
 }
