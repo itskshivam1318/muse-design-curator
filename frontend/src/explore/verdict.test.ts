@@ -59,7 +59,17 @@ describe('itemVerdict', () => {
       text: 'Checking…', tone: 'pending', optionName: '',
     })
     expect(itemVerdict(makeItem({ ...base, check }), [], labels)).toEqual({
-      text: 'Checked · 3 of 4 kept', tone: 'ok', optionName: '',
+      text: '✓ · 3 of 4 kept', tone: 'ok', optionName: '',
+    })
+    const none = (c: object) => itemVerdict(makeItem({ ...base, check: c }), [], new Map([['strap', 'Strap']]))
+    const t = (answer: 'yes' | 'no' | 'unclear') => ({ answer, confidence: 1, note: '' })
+    expect(none({ target: t('no'), kept: 3, of: 4 })).toMatchObject({ text: "Didn't change to the option", tone: 'warn' })
+    expect(none({ target: t('unclear') })).toMatchObject({ text: 'Target unclear', tone: 'warn' })
+    expect(none({ target: t('yes'), kept: 2, of: 4, drifted: ['strap', 'dial'] })).toMatchObject({
+      text: '✓ · 2 of 4 kept · drifted: Strap, dial', tone: 'warn',
+    })
+    expect(none({ target: t('yes'), kept: 3, of: 3, unknown: 2 })).toMatchObject({
+      text: '✓ · 3 of 3 kept · 2 unclear', tone: 'ok',
     })
   })
 })

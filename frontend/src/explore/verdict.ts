@@ -42,6 +42,11 @@ export function itemVerdict(
   const c = item.check
   if (!c) return { text: 'Checking…', tone: 'pending', optionName: '' }
   if (c.error) return { text: 'Check failed', tone: 'error', optionName: '' }
-  const drifted = (c.drifted ?? []).length > 0
-  return { text: `Checked · ${c.kept ?? 0} of ${c.of ?? 0} kept`, tone: drifted ? 'warn' : 'ok', optionName: '' }
+  if (c.target?.answer === 'no') return { text: "Didn't change to the option", tone: 'warn', optionName: '' }
+  if (c.target?.answer !== 'yes') return { text: 'Target unclear', tone: 'warn', optionName: '' }
+  const drifted = c.drifted ?? []
+  let text = `✓ · ${c.kept ?? 0} of ${c.of ?? 0} kept`
+  if (drifted.length) text += ` · drifted: ${drifted.map((k) => labels.get(k) ?? k).join(', ')}`
+  if ((c.unknown ?? 0) > 0) text += ` · ${c.unknown} unclear`
+  return { text, tone: drifted.length ? 'warn' : 'ok', optionName: '' }
 }

@@ -61,7 +61,7 @@ describe('InspectPanel', () => {
   it('with the option not found it falls back to a neutral heading and verdict', () => {
     setup(false, generated, [])
     expect(screen.getByText('Generated image')).toBeTruthy()
-    expect(screen.getByText('Checked · 3 of 4 kept')).toBeTruthy()
+    expect(screen.getByText('✓ · 3 of 4 kept')).toBeTruthy()
   })
 
   it('a licensed item shows its stored credit in the header', () => {
