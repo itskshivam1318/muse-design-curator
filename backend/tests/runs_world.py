@@ -22,7 +22,10 @@ def world(client: TestClient) -> Iterator[dict[str, Any]]:
     from app import jobs
     from app.runs import orchestrator
 
+    from app.live import quick_index
+
     jobs.register("run_variation", orchestrator.run_variation_job)
+    jobs.register("deepen_item", quick_index.deepen_item)
     session: Session = deps._factory()()
     for d in ("watch", "fashion"):
         index_corpus(session, d, MANIFEST)

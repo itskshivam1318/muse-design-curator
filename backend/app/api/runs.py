@@ -76,6 +76,8 @@ def candidate_view(session: Session, cand: RunCandidate, cx: CorpusItem) -> dict
             "license_code": cx.license_code,
             "creator_name": cx.creator_name,
         },
+        "origin": "live" if cand.origin == "live" else "corpus",
+        "source": cx.source,
         "state": cand.state,
         "rank": cand.rank,
         "scores": cand.scores_json,

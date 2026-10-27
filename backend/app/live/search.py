@@ -103,6 +103,13 @@ def _known(session: Session, items: list[ManifestItem]) -> tuple[set[str], set[s
     return known_ids, known_urls
 
 
+def known_in_corpus(session: Session) -> tuple[set[str], set[str]]:
+    """Ids and landing URLs of every indexed corpus row (a snapshot for `known=`)."""
+    q = select(CorpusItem.id, CorpusItem.landing_url).where(CorpusItem.indexing_status == "indexed")
+    rows = session.execute(q).all()
+    return {r[0] for r in rows}, {r[1] for r in rows}
+
+
 def _limit_for(limits: int | Mapping[str, int], name: str) -> int:
     if isinstance(limits, int):
         return limits
@@ -117,6 +124,7 @@ def search_live(
     timeout: float,
     *,
     session: Session | None = None,
+    known: tuple[set[str], set[str]] | None = None,
     max_candidates: int | None = None,
     source_factory: SourceFactory | None = None,
 ) -> LiveItems:
@@ -187,7 +195,12 @@ def search_live(
             seen.add(item.id)
             unique[name].append(item)
     flat = [i for n in names for i in unique[n]]
-    known_ids, known_urls = _known(session, flat) if session is not None else (set(), set())
+    if known is not None:
+        known_ids, known_urls = known
+    elif session is not None:
+        known_ids, known_urls = _known(session, flat)
+    else:
+        known_ids, known_urls = set(), set()
     kept: dict[str, list[ManifestItem]] = {n: [] for n in names}
     for name in names:
         for item in unique[name]:

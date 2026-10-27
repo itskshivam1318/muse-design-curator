@@ -9,11 +9,13 @@ from sqlalchemy.orm import Session
 from app.db.models import RunCandidate, VariationRun
 from app.db.repos import runs as runs_repo
 from app.domain.lens import LensSpec
+from app.live.search import DISPLAY_NAMES
 from app.retrieval.config import RankingConfig
 
 SHORTFALL_ORDER = (
     "protected_changed", "target_not_met", "uncertain", "no_target_change", "avoided_value",
     "on_board", "duplicate_source", "duplicate_other", "provenance", "unusable", "no_candidates",
+    "source_failed",
 )  # fmt: skip
 
 
@@ -31,6 +33,28 @@ def _detail(c: RunCandidate) -> dict[str, Any]:
     except ValueError:
         return {}
     return d if isinstance(d, dict) else {}
+
+
+def _names(sources: list[str]) -> str:
+    names = [DISPLAY_NAMES.get(n, n) for n in sources]
+    head = names[0][:1].upper() + names[0][1:]
+    names = [head, *names[1:]]
+    if len(names) == 1:
+        return names[0]
+    return ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def _live_block(run: VariationRun, cands: list[RunCandidate]) -> dict[str, Any] | None:
+    live = (run.progress_json or {}).get("live")
+    if not isinstance(live, dict):
+        return None
+    return {
+        "queries": list(live.get("queries") or []),
+        "found": int(live.get("found") or 0),
+        "kept": sum(1 for c in cands if c.origin == "live" and c.rank is not None),
+        "sources": dict(live.get("sources") or {}),
+        "failed": list(live.get("failed") or []),
+    }
 
 
 def summarize_run(session: Session, run: VariationRun, lens: LensSpec) -> dict[str, Any]:
@@ -55,6 +79,9 @@ def summarize_run(session: Session, run: VariationRun, lens: LensSpec) -> dict[s
         "rejected": by_state["rejected"],
         "returned": returned,
     }
+    live = _live_block(run, cands)
+    if live is not None:
+        out["live"] = live
     if returned >= cfg.result_size:
         return out
 
@@ -103,6 +130,9 @@ def summarize_run(session: Session, run: VariationRun, lens: LensSpec) -> dict[s
         count["provenance"] += extra_invalid
     if not cands and not extra_invalid:
         count["no_candidates"] = 1
+    down = sorted({str(f.get("source")) for f in (live or {}).get("failed", [])})
+    if down:
+        count["source_failed"] = len(down)
 
     msgs = {
         "protected_changed": lambda n: (
@@ -121,6 +151,7 @@ def summarize_run(session: Session, run: VariationRun, lens: LensSpec) -> dict[s
         "provenance": lambda n: f"{n} licensed images were excluded for invalid provenance",
         "unusable": lambda n: f"{n} images were unusable",
         "no_candidates": lambda n: "No licensed candidates were available for this board",
+        "source_failed": lambda n: f"{_names(down)} didn't respond",
     }
     out["shortfall"] = [
         {"code": code, "count": count[code], "message": msgs[code](count[code])}

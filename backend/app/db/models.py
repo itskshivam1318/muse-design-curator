@@ -292,6 +292,8 @@ class RunCandidate(Base):
     scores_json: Mapped[Any] = _json()
     rank: Mapped[int | None] = mapped_column(Integer)
     observed_target_json: Mapped[Any] = _json()
+    # 'live' = found by this run's live source search; NULL = from the corpus
+    origin: Mapped[str | None] = mapped_column(String)
     __table_args__ = (
         UniqueConstraint("run_id", "corpus_item_id"),
         CheckConstraint(

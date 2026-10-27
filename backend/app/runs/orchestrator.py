@@ -6,6 +6,7 @@ Each stage commits so polling sees progress; progress events go out after the co
 import hashlib
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from functools import partial
@@ -28,11 +29,14 @@ from app.domain.attributes import AttributeRecord, Evidence
 from app.domain.lens import LensSpec
 from app.domain.variation import Nudge, VariationRequest, VariationSpec, validate_variation
 from app.errors import AppError
+from app.live import queries as live_queries
+from app.live import search as live_search
+from app.live.quick_index import DEEPEN_JOB, MAX_DEEPEN_PER_RUN, quick_index
 from app.providers import get_reasoning, get_segmentation
 from app.providers.reliability import ModelError
 from app.retrieval.config import RANKING_CONFIG, RankingConfig
 from app.retrieval.filters import apply_exclusions, on_board_from_items, source_from_board_item
-from app.retrieval.pool import build_pool
+from app.retrieval.pool import Pool, build_pool, live_pool_items
 from app.retrieval.scores import Candidate, score_candidate
 from app.retrieval.select import select_diverse, shortlist
 from app.runs.summary import summarize_run
@@ -164,6 +168,8 @@ def _progress(session: Session, run: VariationRun, stage: str, **extra: Any) -> 
         "run_id": run.id, "stage": stage, "validated_n": prog.get("validated_n", 0),
         "shortlist_n": prog.get("shortlist_n", 0),
     }  # fmt: skip
+    if "live" in prog:
+        payload["live"] = prog["live"]
     after_commit(session, partial(events.publish, run.board_id, "run.progress", payload))
 
 
@@ -184,6 +190,39 @@ def _providers() -> Providers:
     return Providers(reasoning, seg)
 
 
+def _live_enabled(board: Any) -> list[str]:
+    """The live sources to search for this board, or [] when live search is off."""
+    s = get_settings()
+    if not s.LIVE_SEARCH or not board.domain:
+        return []
+    return live_search.parse_sources(s.LIVE_SOURCES)
+
+
+def _live_queries(
+    session: Session, spec: VariationSpec, source_attrs: dict[str, AttrValue], lens: LensSpec,
+    board: Any, providers: Providers,
+) -> list[str]:  # fmt: skip
+    if providers.reasoning is not None:
+        try:
+            return live_queries.write_queries(
+                spec, source_attrs, lens, board.context or "", providers.reasoning, session=session
+            )  # fmt: skip
+        except Exception as exc:  # noqa: BLE001 - live search never fails the run
+            log.warning("live query writing failed (%s); using fallback queries", exc)
+    return live_queries.fallback_queries(spec, lens)[: get_settings().LIVE_QUERY_COUNT]
+
+
+def _live_info(found: live_search.LiveItems, queries: list[str], indexed: int) -> dict[str, Any]:
+    return {
+        "queries": queries, "found": len(found), "indexed": indexed,
+        "sources": {n: st.status for n, st in found.sources.items()},
+        "failed": found.failed() + [
+            {"source": st.name, "error_code": "TIMEOUT"}
+            for st in found.sources.values() if st.status == "timeout"
+        ],
+    }  # fmt: skip
+
+
 def _run(session: Session, run: VariationRun) -> None:
     cfg = RankingConfig.model_validate(run.ranking_config_json)
     board = boards_repo.get(session, run.board_id)
@@ -196,13 +235,61 @@ def _run(session: Session, run: VariationRun) -> None:
     source_attrs = {r.key: AttrValue.from_record(r) for r in records}
     source = source_from_board_item(item, source_attrs)
 
-    # retrieving
+    # searching: the corpus pool and the live licensed-source search run side by side
+    settings = get_settings()
+    providers = _providers()
+    live_sources = _live_enabled(board)
+    domain = board.domain or ""
     run.status = "retrieving"
-    _progress(session, run, "retrieving")
+    if live_sources:
+        _progress(
+            session, run, "searching",
+            live={"sources": {}, "searching": live_sources, "found": 0, "queries": []},
+        )  # fmt: skip
+    else:
+        _progress(session, run, "retrieving")
     session.commit()
     profile = profiles_repo.latest(session, board.id)
     centroid = (profile.profile_json or {}).get("centroid") if profile else None
+    live_ids: set[str] = set()
+    live_fut = None
+    live_queries_used: list[str] = []
+    live_pool: ThreadPoolExecutor | None = None
+    if live_sources:
+        live_queries_used = _live_queries(session, spec, source_attrs, lens, board, providers)
+        known = live_search.known_in_corpus(session)
+        session.commit()  # release the read/cache write before the threads start
+        live_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="live-search")
+        live_fut = live_pool.submit(
+            live_search.search_live, live_queries_used, domain, live_sources,
+            settings.LIVE_PER_SOURCE_LIMIT, settings.LIVE_TIMEOUT_S, known=known,
+            max_candidates=settings.LIVE_MAX_CANDIDATES,
+        )  # fmt: skip
     pool = build_pool(session, board, item.embedding_json, centroid, cfg)
+    if live_fut is not None and live_pool is not None:
+        live_extra: list[Any] = []
+        try:
+            found = live_fut.result(timeout=settings.LIVE_TIMEOUT_S + 10)
+            new_rows = quick_index(session, list(found), domain) if found else []
+            live_ids = {r.id for r in new_rows}
+            live_extra = live_pool_items(session, new_rows, item.embedding_json, centroid, cfg)
+            info = _live_info(found, live_queries_used, len(new_rows))
+        except Exception as exc:  # noqa: BLE001 - the corpus alone still answers the run
+            log.warning("live search failed: %s", exc)
+            session.rollback()
+            info = {
+                "queries": live_queries_used, "found": 0, "indexed": 0, "sources": {},
+                "failed": [], "error": type(exc).__name__,
+            }  # fmt: skip
+        finally:
+            live_pool.shutdown(wait=False, cancel_futures=True)
+        have = {p.item.id for p in pool}
+        merged = list(pool) + [p for p in live_extra if p.item.id not in have]
+        merged.sort(key=lambda p: (-p.relevance, p.item.id))
+        pool = Pool(merged, pool.meta)
+        run = runs_repo.get(session, run.id) or run
+        _progress(session, run, "searching", live=info)
+        session.commit()
     on_board = on_board_from_items(items_repo.list_active(session, board.id), item.id)
     kept, excluded = apply_exclusions(list(pool), spec, source, cfg, on_board)
     cands = [score_candidate(p, spec, source_attrs, cfg) for p in kept]
@@ -212,11 +299,12 @@ def _run(session: Session, run: VariationRun) -> None:
         rows[p.item.id] = runs_repo.add_candidate(
             session, run_id=run.id, corpus_item_id=p.item.id, state="excluded",
             excluded_reason=ex["reason"], excluded_detail=json.dumps(ex["detail"], default=str),
+            origin="live" if p.item.id in live_ids else None,
         )  # fmt: skip
     for c in cands:
         rows[c.pool.item.id] = runs_repo.add_candidate(
             session, run_id=run.id, corpus_item_id=c.pool.item.id, state="retrieved",
-            scores_json=_scores(c),
+            scores_json=_scores(c), origin="live" if c.pool.item.id in live_ids else None,
         )  # fmt: skip
     top = shortlist(cands, cfg)
     for c in top:
@@ -230,7 +318,6 @@ def _run(session: Session, run: VariationRun) -> None:
     session.commit()
 
     # validating, a batch at a time
-    providers = _providers()
     done: dict[str, CandidateValidation] = {}
     for i in range(0, len(top), MAX_CANDIDATES_PER_CALL):
         batch = top[i : i + MAX_CANDIDATES_PER_CALL]
@@ -258,6 +345,8 @@ def _run(session: Session, run: VariationRun) -> None:
         row.rank = c.rank
         row.scores_json = _scores(c)
     session.flush()
+    for c in [c for c in top if c.pool.item.id in live_ids][:MAX_DEEPEN_PER_RUN]:
+        after_commit(session, partial(jobs.enqueue, DEEPEN_JOB, corpus_item_id=c.pool.item.id))
     run.summary_json = summarize_run(session, run, lens)
     run.status = "completed"
     run.completed_at = datetime.now(UTC).isoformat(timespec="milliseconds")
