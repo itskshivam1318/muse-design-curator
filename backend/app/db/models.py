@@ -80,6 +80,8 @@ class CorpusItem(Base):
     # 'quick' = embedding and palette only (live search); 'full' or NULL = fully indexed
     index_depth: Mapped[str | None] = mapped_column(String)
     palette_json: Mapped[Any] = _json()
+    # 'present' / 'absent' (app/corpus/subject.py); NULL until attributes are extracted
+    subject_status: Mapped[str | None] = mapped_column(String)
     __table_args__ = (
         UniqueConstraint("source", "source_id"),
         CheckConstraint(_in("indexing_status", ("pending", "indexed", "failed"))),
@@ -334,6 +336,23 @@ class Decision(Base):
     item_id: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[str] = _created()
     __table_args__ = (CheckConstraint(_in("decision", ("keep", "reject"))),)
+
+
+class UiEvent(Base):
+    """What the person did in the board UI (opened Vary, ran it, closed the review strip...).
+
+    Runs and decisions record outcomes; these record the path to them, for finding confusing spots.
+    """
+
+    __tablename__ = "ui_events"
+    id: Mapped[str] = _id("ui_event")
+    board_id: Mapped[str] = mapped_column(ForeignKey("boards.id"), index=True)
+    action: Mapped[str] = mapped_column(String)
+    item_id: Mapped[str | None] = mapped_column(String)
+    run_id: Mapped[str | None] = mapped_column(String)
+    detail_json: Mapped[Any] = _json()
+    client_at: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[str] = _created()
 
 
 class ModelCache(Base):

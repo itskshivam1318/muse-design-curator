@@ -165,3 +165,13 @@ def test_unknown_or_disabled_sources_are_refused() -> None:
 
 def test_default_factory_builds_real_adapters() -> None:
     assert search.make_source("commons", "watch").name == "commons"
+
+
+def test_keyed_sources_are_live_only_with_their_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    names = ["commons", "smithsonian", "europeana", "cleveland"]
+    monkeypatch.setenv("SMITHSONIAN_API_KEY", "")
+    monkeypatch.setenv("EUROPEANA_API_KEY", "")
+    assert search.configured(names) == ["commons", "cleveland"]
+    monkeypatch.setenv("SMITHSONIAN_API_KEY", "k")
+    monkeypatch.setenv("EUROPEANA_API_KEY", "k")
+    assert search.configured(names) == names

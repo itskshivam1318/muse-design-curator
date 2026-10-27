@@ -4,6 +4,7 @@ import { deleteItem, type Item, keys, patchItem } from '../api'
 import { upsertItems } from '../events'
 import { createMoveHistory, type Move } from './history'
 import { selection } from './selection'
+import { track } from '../telemetry'
 
 /** Item mutations with optimistic cache updates; the server's SSE echo confirms them. */
 export function useItemActions(boardId: string) {
@@ -51,6 +52,7 @@ export function useItemActions(boardId: string) {
       },
       remove(ids: readonly string[]) {
         if (ids.length === 0) return
+        track('item.remove', { detail: { items: [...ids] } })
         const gone = new Set(ids)
         qc.setQueryData<Item[]>(keys.items(boardId), (old) => old?.filter((i) => !gone.has(i.id)))
         selection.clear()
@@ -61,6 +63,7 @@ export function useItemActions(boardId: string) {
         if (items.length === 0) return
         const role: Item['role'] = items.every((i) => i.role === 'counter_example') ? 'reference' : 'counter_example'
         const ids = new Set(items.map((i) => i.id))
+        track('item.role', { detail: { items: [...ids], role } })
         qc.setQueryData<Item[]>(keys.items(boardId), (old) => old?.map((i) => (ids.has(i.id) ? { ...i, role } : i)))
         for (const id of ids) patchItem(id, { role }).catch(fail('Could not update item'))
       },

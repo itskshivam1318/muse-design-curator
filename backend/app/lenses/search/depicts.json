@@ -1,0 +1,7 @@
+{
+  "_comment": "Wikidata items per curated domain, for Commons 'depicts' (P180) search: files tagged as showing one of these. Labels checked against Wikidata 2026-10-28.",
+  "watch": {"Q178794": "watch", "Q26965868": "wristwatch"},
+  "fashion": {"Q200539": "dress", "Q22676": "shoe", "Q467505": "handbag", "Q11460": "clothing"},
+  "interior": {"Q11285759": "armchair", "Q131514": "couch", "Q475018": "living room", "Q14745": "furniture"},
+  "ui": {"Q208594": "screenshot", "Q782543": "graphical user interface", "Q36774": "web page"}
+}

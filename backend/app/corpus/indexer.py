@@ -25,7 +25,8 @@ from app.config import data_dir, get_settings
 from app.corpus import hashing
 from app.corpus.embedding_lock import EMBEDDINGS_LOCK
 from app.corpus.provenance import check_provenance
-from app.corpus.sources.base import ManifestItem, user_agent
+from app.corpus.sources.base import ManifestItem, source_headers
+from app.corpus.subject import subject_status
 from app.db.models import CorpusItem
 from app.db.repos import corpus as corpus_repo
 from app.domain.lens import load_curated_lens
@@ -151,6 +152,9 @@ def store_attributes(session: Session, corpus_id: str, domain: str, data: bytes,
             source=rec.source, evidence_json=rec.evidence.model_dump(mode="json"),
             measured_json=rec.measured,
         )  # fmt: skip
+    status = subject_status(rec.value for rec in records)
+    if status is not None:
+        corpus_repo.update(session, corpus_id, subject_status=status)
 
 
 def index_corpus(
@@ -170,7 +174,7 @@ def index_corpus(
     report = IndexReport()
     http = client or httpx.Client(
         timeout=HTTP_TIMEOUT,
-        headers={"User-Agent": user_agent(get_settings())},
+        headers=source_headers(get_settings()),
         follow_redirects=True,
     )
     top = session.scalar(select(func.max(CorpusItem.embedding_row)))

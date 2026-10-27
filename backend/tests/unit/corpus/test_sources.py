@@ -6,15 +6,22 @@ import pytest
 import respx
 
 from app.config import Settings
+from app.corpus.sources import openverse as openverse_module
 from app.corpus.sources.aic import AicSource
+from app.corpus.sources.cleveland import API as CLEVELAND_API
+from app.corpus.sources.cleveland import ClevelandSource
 from app.corpus.sources.commons import API as COMMONS_API
 from app.corpus.sources.commons import CommonsSource
-from app.corpus.sources.met import API as MET
+from app.corpus.sources.europeana import API as EUROPEANA_API
+from app.corpus.sources.europeana import EuropeanaSource
+from app.corpus.sources.met import OBJECTS_API as MET_OBJECTS
+from app.corpus.sources.met import SEARCH_API as MET_SEARCH
 from app.corpus.sources.met import MetSource
 from app.corpus.sources.openverse import OpenverseSource
 from app.corpus.sources.pexels import PexelsSource
 from app.corpus.sources.rijks import RijksSource
 from app.corpus.sources.self_capture import SelfCaptureSource
+from app.corpus.sources.smithsonian import API as SI_API
 from app.corpus.sources.smithsonian import BUCKET, SmithsonianSource
 
 NO_SLEEP = lambda _s: None
@@ -92,7 +99,7 @@ def test_commons_throttles_to_200_per_minute() -> None:
 
 @respx.mock
 def test_met_skips_not_public_domain_and_imageless() -> None:
-    respx.get(f"{MET}/search").respond(json={"total": 4, "objectIDs": [1, 2, 3, 4]})
+    respx.get(MET_SEARCH).respond(json={"total": 4, "objectIDs": [1, 2, 3, 4]})
     objs = {
         1: {"objectID": 1, "isPublicDomain": True, "primaryImage": "https://i/1.jpg", "objectURL": "https://m/1", "artistDisplayName": "Ann", "title": "Watch"},
         2: {"objectID": 2, "isPublicDomain": False, "primaryImage": "", "objectURL": "https://m/2", "title": "Closed"},
@@ -100,7 +107,7 @@ def test_met_skips_not_public_domain_and_imageless() -> None:
         4: {"objectID": 4, "isPublicDomain": True, "primaryImage": "", "objectURL": "https://m/4", "title": "No image"},
     }  # fmt: skip
     for i, o in objs.items():
-        respx.get(f"{MET}/objects/{i}").respond(json=o)
+        respx.get(f"{MET_OBJECTS}/{i}").respond(json=o)
     sleeps: list[float] = []
     got = list(MetSource("thing", settings(), sleep=sleeps.append).search("watch", 10))
     assert [g.source_id for g in got] == ["1"]
@@ -142,11 +149,62 @@ def test_openverse_uses_returned_attribution_and_licence_filter() -> None:
     assert [g.license_code for g in got] == ["CC-BY-2.0", "PDM-1.0"]
     assert got[0].attribution_text == '"T" by Zed is licensed under CC BY 2.0.'
     assert route.calls[0].request.url.params["license"] == "by,by-sa,cc0,pdm"
+    assert route.calls[0].request.url.params["filter_dead"] == "false"
+    assert route.calls[0].request.url.params["page_size"] == "10"
+
+
+OV_ROW = {"id": "u1", "url": "https://i/1.jpg", "license": "cc0", "license_version": "1.0"}
+
+
+@respx.mock
+def test_openverse_token_is_reused_and_pages_stay_within_the_authed_cap(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(openverse_module, "_tokens", {})
+    token = respx.post("https://api.openverse.org/v1/auth_tokens/token/").respond(
+        json={"access_token": "t1", "expires_in": 43200}
+    )
+    images = respx.get("https://api.openverse.org/v1/images/").respond(
+        json={"page_count": 1, "results": [OV_ROW]}
+    )
+    s = settings(OPENVERSE_CLIENT_ID="id", OPENVERSE_CLIENT_SECRET="secret")
+    list(OpenverseSource("thing", s).search("dial", 200))
+    list(OpenverseSource("thing", s).search("case", 200))
+    assert token.call_count == 1
+    assert images.calls[0].request.headers["authorization"] == "Bearer t1"
+    assert images.calls[0].request.url.params["page_size"] == "50"  # above 50 the API sends 401
+
+
+@respx.mock
+def test_openverse_refreshes_a_rejected_token_once(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(openverse_module, "_tokens", {})
+    token = respx.post("https://api.openverse.org/v1/auth_tokens/token/").mock(side_effect=[
+        httpx.Response(200, json={"access_token": "old", "expires_in": 43200}),
+        httpx.Response(200, json={"access_token": "new", "expires_in": 43200}),
+    ])  # fmt: skip
+    images = respx.get("https://api.openverse.org/v1/images/").mock(side_effect=[
+        httpx.Response(401), httpx.Response(200, json={"page_count": 1, "results": [OV_ROW]}),
+    ])  # fmt: skip
+    s = settings(OPENVERSE_CLIENT_ID="id", OPENVERSE_CLIENT_SECRET="secret")
+    assert len(list(OpenverseSource("thing", s).search("dial", 5))) == 1
+    assert token.call_count == 2
+    assert images.calls[1].request.headers["authorization"] == "Bearer new"
+
+
+@respx.mock
+def test_openverse_never_pages_past_240_results() -> None:
+    images = respx.get("https://api.openverse.org/v1/images/").respond(
+        json={"page_count": 99, "results": [OV_ROW] * 20}
+    )
+    assert len(list(OpenverseSource("thing", settings()).search("dial", 1000))) == 240
+    assert images.call_count == 12
+
+
+def test_met_searches_v1_1_but_reads_objects_from_v1() -> None:
+    assert MET_SEARCH.endswith("/v1.1/search") and MET_OBJECTS.endswith("/v1/objects")
 
 
 @respx.mock
 def test_aic_keeps_only_public_domain_with_image() -> None:
-    respx.post("https://api.artic.edu/api/v1/artworks/search").respond(json={
+    route = respx.post("https://api.artic.edu/api/v1/artworks/search").respond(json={
         "pagination": {"total_pages": 1}, "config": {"iiif_url": "https://iiif.example/2"},
         "data": [
             {"id": 1, "title": "Dress", "image_id": "abc", "artist_title": "Ann", "is_public_domain": True},
@@ -157,6 +215,8 @@ def test_aic_keeps_only_public_domain_with_image() -> None:
     (got,) = AicSource("thing", settings()).search("dress", 10)
     assert got.image_url == "https://iiif.example/2/abc/full/843,/0/default.jpg"
     assert got.license_code == "CC0-1.0" and got.id == "cx_aic_1"
+    # without AIC-User-Agent the museum's Cloudflare answers every request with a 403 challenge
+    assert route.calls[0].request.headers["AIC-User-Agent"].startswith("DesignLanguageEngine/")
 
 
 @respx.mock
@@ -174,6 +234,30 @@ def test_smithsonian_reads_bulk_lines_and_requires_cc0_media() -> None:
     got = list(SmithsonianSource("thing", settings()).search("textile", 10))
     assert [g.source_id for g in got] == ["chndm_1"]
     assert got[0].creator_name == "Dee" and got[0].license_code == "CC0-1.0"
+
+
+@respx.mock
+def test_smithsonian_uses_the_search_api_when_a_key_is_set() -> None:
+    def row(i: int, access: str) -> dict:
+        return {"id": f"ld1-{i}", "content": {"descriptiveNonRepeating": {
+            "record_ID": f"nasm_{i}", "record_link": f"https://si.edu/{i}",
+            "title": {"content": "Wristwatch, Hour Angle"},
+            "online_media": {"media": [{"type": "Images", "content": f"https://ids/{i}", "usage": {"access": access}}]},
+        }}}  # fmt: skip
+
+    route = respx.get(SI_API).respond(
+        json={
+            "response": {"rowCount": 2, "rows": [row(1, "CC0"), row(2, "Usage Conditions Apply")]}
+        }
+    )
+    bulk = respx.get(url__regex=rf"{BUCKET}/.*").respond(404)
+    got = list(
+        SmithsonianSource("thing", settings(SMITHSONIAN_API_KEY="k")).search("wristwatch", 10)
+    )
+    assert [g.source_id for g in got] == ["nasm_1"] and got[0].license_code == "CC0-1.0"
+    params = route.calls[0].request.url.params
+    assert params["api_key"] == "k" and params["q"].startswith("wristwatch AND")
+    assert "media_usage:CC0" in params["q"] and bulk.call_count == 0
 
 
 @respx.mock
@@ -215,3 +299,58 @@ def test_self_capture_reads_hand_written_manifest(tmp_path: Path) -> None:
         and got.license_code == "GPL-3.0-only"
         and got.domain == "ui"
     )
+
+
+@respx.mock
+def test_commons_searches_files_tagged_as_the_subject_first() -> None:
+    route = respx.get(COMMONS_API).mock(side_effect=[
+        httpx.Response(200, json={"query": {"pages": [page(1, "Watch.jpg", "CC0", "Ann")]}}),
+        httpx.Response(200, json={"query": {"pages": [
+            page(1, "Watch.jpg", "CC0", "Ann"), page(2, "Dial.jpg", "CC0", "Bo"),
+        ]}}),
+    ])  # fmt: skip
+    got = list(CommonsSource("watch", settings(), sleep=lambda _s: None).search("arabic", 10))
+    assert [g.source_id for g in got] == ["1", "2"]  # the tagged file once, then the broad one
+    first = route.calls[0].request.url.params["gsrsearch"]
+    assert first == "filetype:bitmap haswbstatement:P180=Q178794|P180=Q26965868 arabic"
+    assert route.calls[1].request.url.params["gsrsearch"] == "filetype:bitmap arabic"
+
+
+@respx.mock
+def test_europeana_needs_a_key_and_keeps_only_open_rights() -> None:
+    route = respx.get(EUROPEANA_API).respond(json={"totalResults": 3, "items": [
+        {"id": "/2021009/_E1", "edmIsShownBy": ["https://img/1.jpg"], "title": ["Wristwatch Flipper"],
+         "rights": ["http://creativecommons.org/licenses/by/4.0/"], "dcCreator": ["Saarinen, UA"],
+         "dataProvider": ["Finnish Heritage Agency"]},
+        {"id": "/1/_NC", "edmIsShownBy": ["https://img/2.jpg"], "rights": ["http://creativecommons.org/licenses/by-nc/4.0/"]},
+        {"id": "/1/_NOIMG", "rights": ["http://creativecommons.org/publicdomain/zero/1.0/"]},
+    ]})  # fmt: skip
+    assert list(EuropeanaSource("thing", settings()).search("wristwatch", 10)) == []
+    assert route.call_count == 0
+    (got,) = EuropeanaSource("thing", settings(EUROPEANA_API_KEY="k")).search("wristwatch", 10)
+    assert got.license_code == "CC-BY-4.0" and got.source_id == "2021009__E1"
+    assert got.landing_url == "https://www.europeana.eu/item/2021009/_E1"
+    assert got.attribution_text == (
+        '"Wristwatch Flipper", Saarinen, UA, Finnish Heritage Agency, CC-BY-4.0, via Europeana'
+    )
+    params = route.calls[0].request.url.params
+    assert (
+        params["reusability"] == "open" and params["wskey"] == "k" and params["qf"] == "TYPE:IMAGE"
+    )
+
+
+@respx.mock
+def test_cleveland_keeps_cc0_with_web_image() -> None:
+    route = respx.get(CLEVELAND_API).respond(json={"info": {"total": 3}, "data": [
+        {"id": 7, "title": "Armchair", "share_license_status": "CC0", "url": "https://clevelandart.org/art/7",
+         "images": {"web": {"url": "https://cdn/7.jpg"}}, "creators": [{"description": "Ann (French)"}]},
+        {"id": 8, "title": "Copyrighted", "share_license_status": "Copyrighted", "images": {"web": {"url": "https://cdn/8.jpg"}}},
+        {"id": 9, "title": "No image", "share_license_status": "CC0", "images": None},
+    ]})  # fmt: skip
+    (got,) = ClevelandSource("thing", settings()).search("armchair", 10)
+    assert (
+        got.source_id == "7"
+        and got.license_code == "CC0-1.0"
+        and got.creator_name == "Ann (French)"
+    )
+    assert route.calls[0].request.url.params["cc0"] == "1"

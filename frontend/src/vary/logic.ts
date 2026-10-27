@@ -285,6 +285,29 @@ export const SOURCE_NAMES: Record<string, string> = {
   met: 'the Met',
   aic: 'the Art Institute of Chicago',
   smithsonian: 'the Smithsonian',
+  europeana: 'Europeana',
+  cleveland: 'the Cleveland Museum of Art',
+}
+
+// ---- find more yourself ----
+
+export interface FindMoreLink {
+  site: string
+  url: string
+}
+
+/**
+ * Searches the person runs in their own tab: anything they like they save with the extension,
+ * which keeps it as their private reference (never fetched, licensed or shared by us).
+ */
+export function findMoreLinks(queries: readonly string[] | undefined): FindMoreLink[] {
+  const q = queries?.find((x) => x.trim())?.trim()
+  if (!q) return []
+  const enc = encodeURIComponent(q)
+  return [
+    { site: 'Pinterest', url: `https://www.pinterest.com/search/pins/?q=${enc}` },
+    { site: 'Google Images', url: `https://www.google.com/search?udm=2&q=${enc}` },
+  ]
 }
 
 export function sourceName(id: string): string {

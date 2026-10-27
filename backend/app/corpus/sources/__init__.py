@@ -2,7 +2,9 @@
 
 from app.corpus.sources.aic import AicSource
 from app.corpus.sources.base import BaseSource, ManifestItem, Source
+from app.corpus.sources.cleveland import ClevelandSource
 from app.corpus.sources.commons import CommonsSource
+from app.corpus.sources.europeana import EuropeanaSource
 from app.corpus.sources.met import MetSource
 from app.corpus.sources.openverse import OpenverseSource
 from app.corpus.sources.pexels import PexelsSource
@@ -14,7 +16,7 @@ SOURCES: dict[str, type[BaseSource]] = {
     cls.name: cls
     for cls in (
         CommonsSource, OpenverseSource, MetSource, SmithsonianSource, AicSource, RijksSource,
-        PexelsSource, SelfCaptureSource,
+        PexelsSource, SelfCaptureSource, EuropeanaSource, ClevelandSource,
     )
 }  # fmt: skip
 

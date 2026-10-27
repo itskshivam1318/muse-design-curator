@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
+import { track } from '../telemetry'
 import {
   type AttributeSpec,
   type CandidateCheck,
@@ -61,6 +62,10 @@ export function CandidatePopover({ boardId, runId, candidate: c, sourceItemId, t
     setError(null)
     try {
       const res = await postDecision(runId, c.id, body, idempotencyKey())
+      track(`candidate.${body.decision}`, {
+        runId,
+        detail: { candidate: c.id, state: c.state, reason: body.reason_code ?? null },
+      })
       if (res.item) upsertItems(qc, boardId, [res.item])
       void qc.invalidateQueries({ queryKey: keys.run(runId) })
       if (body.decision === 'keep' && res.item) onKept?.(res.item, img.current?.getBoundingClientRect() ?? null)

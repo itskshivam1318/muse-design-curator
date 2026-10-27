@@ -6,6 +6,7 @@ from typing import Any
 
 from app.corpus.hashing import dhash as compute_dhash
 from app.corpus.hashing import hamming
+from app.corpus.subject import ABSENT, subject_status
 from app.domain.variation import VariationSpec
 from app.measure.palette import named_lab
 from app.retrieval.config import RankingConfig
@@ -116,6 +117,10 @@ def apply_exclusions(
         why = _unusable(p)
         if why:
             excluded.append(_exclude(p, "unusable", problem=why))
+            continue
+        if subject_status(a.value for a in p.attrs.values()) == ABSENT:
+            readable = sum(a.value is not None for a in p.attrs.values())
+            excluded.append(_exclude(p, "not_subject", readable=readable, of=len(p.attrs)))
             continue
         if c.dhash:
             near = None

@@ -223,3 +223,18 @@ def test_source_exclusion_still_wins_over_on_board_for_the_source_item(make) -> 
         [p], spec(), SourceItem(corpus_item_id=p.item.id), CFG, on_board=ob
     )
     assert ex[0]["reason"] == "source"
+
+
+def test_image_with_almost_nothing_readable_is_not_the_subject(make) -> None:
+    blank = {k: AttrValue(None, 0.0, "extracted") for k in "abcdefgh"}
+    toyish = {**blank, "a": AttrValue("x", 0.6, "extracted")}  # 1 of 8 readable
+    kept, ex = apply_exclusions([make(blank), make(toyish)], spec(), SourceItem(), CFG)
+    assert not kept
+    assert [(e["reason"], e["detail"]) for e in ex] == [
+        ("not_subject", {"readable": 0, "of": 8}), ("not_subject", {"readable": 1, "of": 8}),
+    ]  # fmt: skip
+
+
+def test_quick_indexed_image_without_attributes_is_kept(make) -> None:
+    kept, ex = apply_exclusions([make({})], spec(), SourceItem(), CFG)
+    assert len(kept) == 1 and not ex

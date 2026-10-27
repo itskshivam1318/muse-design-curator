@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     OPENVERSE_CLIENT_ID: str | None = None
     OPENVERSE_CLIENT_SECRET: str | None = None
     SMITHSONIAN_API_KEY: str | None = None
+    EUROPEANA_API_KEY: str | None = None
     CONTACT_EMAIL: str | None = None
     MODEL_TIMEOUT_S: float = 60
     MODEL_MAX_RETRIES: int = 2
@@ -36,7 +37,7 @@ class Settings(BaseSettings):
     SHAPE_KIND_ENABLED: bool = False
     # Live licensed-source search inside Vary (see app/live); tests force LIVE_SEARCH off
     LIVE_SEARCH: bool = True
-    LIVE_SOURCES: str = "commons,openverse,met,aic,smithsonian"
+    LIVE_SOURCES: str = "commons,openverse,met,aic,smithsonian,europeana,cleveland"
     LIVE_MAX_CANDIDATES: int = 40
     LIVE_TIMEOUT_S: float = 20
     LIVE_PER_SOURCE_LIMIT: int = 15

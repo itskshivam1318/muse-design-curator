@@ -4,7 +4,10 @@ from collections.abc import Iterator
 
 from app.corpus.sources.base import BaseSource, ManifestItem
 
-API = "https://collectionapi.metmuseum.org/public/collection/v1.1"
+# search moved to v1.1 (v1/search was retired 2026-10-01); objects exist only under v1, and v1.1
+# object requests 404, which repeated fast enough trips the museum's bot protection
+SEARCH_API = "https://collectionapi.metmuseum.org/public/collection/v1.1/search"
+OBJECTS_API = "https://collectionapi.metmuseum.org/public/collection/v1/objects"
 DELAY_S = 0.4  # faster loops trip the museum's bot protection
 
 
@@ -13,7 +16,7 @@ class MetSource(BaseSource):
 
     def search(self, query: str, limit: int) -> Iterator[ManifestItem]:
         resp = self.client.get(
-            f"{API}/search", params={"q": query, "hasImages": "true", "isPublicDomain": "true"}
+            SEARCH_API, params={"q": query, "hasImages": "true", "isPublicDomain": "true"}
         )
         resp.raise_for_status()
         ids = resp.json().get("objectIDs") or []
@@ -22,7 +25,7 @@ class MetSource(BaseSource):
             if seen >= limit:
                 return
             self._sleep(DELAY_S)
-            r = self.client.get(f"{API}/objects/{object_id}")
+            r = self.client.get(f"{OBJECTS_API}/{object_id}")
             if r.status_code == 404:
                 continue
             r.raise_for_status()

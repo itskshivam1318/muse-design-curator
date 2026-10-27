@@ -63,8 +63,9 @@ schema-constrained JSON 8.4 s, SAM image 2.2 s, SAM video 2.7 s, `/embeddings` 4
 |---|---|---|
 | `MODEL_API_KEY` | live mode (required) | Meta Model API key (`LLM_…`), one key covers Muse Spark 1.3 and SAM 3.1. Never use `*-contributor` models: they grant Meta training rights over images we do not own. |
 | `CONTACT_EMAIL` | Wikimedia Commons import, link unfurling | Sent in the User-Agent; Wikimedia blocks generic agents and rate-limits anonymous ones. |
-| `OPENVERSE_CLIENT_ID` / `_SECRET` | optional | Anonymous Openverse works (20 results per page); registered access raises the page size to 500. |
-| `SMITHSONIAN_API_KEY` | optional, currently unused | The Smithsonian importer reads the public S3 bulk files, which need no key. |
+| `OPENVERSE_CLIENT_ID` / `_SECRET` | optional | Anonymous Openverse works (20 results per page, 200 requests a day); a registered app gets 50 per page. The keys appear only in the registration response, so save it. |
+| `SMITHSONIAN_API_KEY` | optional | Free api.data.gov key. With it, the Smithsonian is searched live through its API; without it, live search skips the Smithsonian and the importer reads the public S3 bulk files. |
+| `EUROPEANA_API_KEY` | optional | Free key from pro.europeana.eu/page/get-api. Live search skips Europeana without it. |
 | `BASETEN_API_KEY` | optional | Only for `REASONING_PROVIDER=muse-spark-open` (Baseten, `meta-models/muse-spark-open`). |
 | `PEXELS_API_KEY` / `PEXELS_ENABLED` | off by design | Pexels' terms forbid systematic copying and automated collection "for machine learning purposes" without permission. The adapter stays off (`PEXELS_ENABLED=0`) and is capped at 300 items until written permission exists. |
 

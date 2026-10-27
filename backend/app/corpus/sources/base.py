@@ -46,6 +46,16 @@ def user_agent(settings: Settings) -> str:
     return f"DesignLanguageEngine/0.1 (contact: {settings.CONTACT_EMAIL or 'unset'})"
 
 
+def source_headers(settings: Settings) -> dict[str, str]:
+    """Headers for licensed-source APIs and image downloads.
+
+    The Art Institute of Chicago's Cloudflare rules challenge (403) any API or IIIF request that
+    lacks `AIC-User-Agent`; other hosts ignore it, and it repeats what User-Agent already says.
+    """
+    ua = user_agent(settings)
+    return {"User-Agent": ua, "AIC-User-Agent": ua}
+
+
 def strip_html(value: str | None) -> str | None:
     """Plain text of an HTML fragment (Commons credits arrive as HTML); None when empty."""
     if not value:
@@ -88,7 +98,7 @@ class BaseSource:
         self.domain = domain
         self.settings = settings or get_settings()
         self.client = client or httpx.Client(
-            timeout=30, headers={"User-Agent": user_agent(self.settings)}, follow_redirects=True
+            timeout=30, headers=source_headers(self.settings), follow_redirects=True
         )
         self._sleep = sleep
 

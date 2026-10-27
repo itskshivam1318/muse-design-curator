@@ -84,6 +84,18 @@ describe('MaybeStrip', () => {
     expect(chips.querySelector('[data-status="failed"]')?.textContent).toContain('the Met')
   })
 
+  it('offers Pinterest and Google Images searches for the run, opening in a new tab', () => {
+    const base = runResponse()
+    setup(runResponse({
+      summary: { ...base.summary!, live: { queries: ['watch arabic numerals', 'watch dial'], found: 3, kept: 1, sources: { commons: 'ok' } } },
+    }))
+    const pin = screen.getByRole('link', { name: 'Pinterest ↗' })
+    expect(pin.getAttribute('href')).toBe('https://www.pinterest.com/search/pins/?q=watch%20arabic%20numerals')
+    expect(pin.getAttribute('target')).toBe('_blank')
+    expect(pin.getAttribute('rel')).toContain('noopener')
+    expect(screen.getByRole('link', { name: 'Google Images ↗' }).getAttribute('href')).toContain('udm=2')
+  })
+
   it('"Why only N?" shows each live source and whether it answered', () => {
     const base = runResponse()
     setup(runResponse({
