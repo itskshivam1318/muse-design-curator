@@ -47,9 +47,7 @@ def _check_args(
 ) -> None:
     if decision not in ("keep", "reject"):
         raise AppError(400, "INVALID_DECISION", "decision must be 'keep' or 'reject'")
-    if decision == "keep" and (
-        reason_code is not None or note is not None or mark_not_this
-    ):
+    if decision == "keep" and (reason_code is not None or note is not None or mark_not_this):
         raise AppError(
             400, "REASON_ONLY_ON_REJECT", "reason, note and mark_not_this apply to reject"
         )

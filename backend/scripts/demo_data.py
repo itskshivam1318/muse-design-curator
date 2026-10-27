@@ -1,8 +1,8 @@
 """Real-photo demo corpus: import manifests -> index with the live providers -> seed the boards.
 
-    uv run python scripts/demo_data.py [--plan] [--skip-import] [--yes]
+    uv run python scripts/demo_data.py [--yes] [--plan] [--skip-import]
 
-Idempotent: manifests de-duplicate by id, indexing skips what is indexed, and every model call is
+Without --yes only the plan is printed (no network, no model calls). Idempotent: manifests de-duplicate by id, indexing skips what is indexed, and every model call is
 cached, so a re-run costs nothing. The caps below are hard limits and the planned call counts are
 printed before any live model call. Only official source APIs and bulk files are used.
 """
@@ -87,12 +87,15 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--plan", action="store_true", help="print the plan and exit")
     ap.add_argument("--skip-import", action="store_true")
+    ap.add_argument("--yes", action="store_true", help="run: import, live indexing, seed")
     args = ap.parse_args(argv)
     counts = planned_calls()
     check_caps(counts)
     print(f"plan: up to {counts['items']} items (cap {MAX_ITEMS}), {counts['spark']} Muse Spark "
           f"calls (cap {MAX_SPARK_CALLS}), {counts['sam']} SAM calls (cap {MAX_SAM_CALLS})")  # fmt: skip
-    if args.plan:
+    if args.plan or not args.yes:
+        if not args.plan:
+            print("nothing run; add --yes to import, index with the live providers and seed")
         return 0
     if not args.skip_import:
         run_imports()
@@ -103,7 +106,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"-- index {domain}", flush=True)
         index_corpus.main(["--domain", domain, "--limit", str(INDEX_LIMIT[domain])])
     print("-- seed", flush=True)
-    return seed.main([])
+    return seed.main(
+        ["--no-index"]
+    )  # never re-index the whole manifest, which would bypass the caps
 
 
 if __name__ == "__main__":

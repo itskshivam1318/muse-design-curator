@@ -36,7 +36,8 @@ from app.storage import files
 
 log = logging.getLogger(__name__)
 
-BATCH_SIZE = 25
+BATCH_SIZE = 5  # commit (and flush embeddings) every few items: a stall loses little
+HTTP_TIMEOUT = httpx.Timeout(15.0, connect=10.0)
 
 
 @dataclass
@@ -167,7 +168,7 @@ def index_corpus(
     base_dir = manifest_path.parent
     report = IndexReport()
     http = client or httpx.Client(
-        timeout=httpx.Timeout(15.0, connect=10.0),
+        timeout=HTTP_TIMEOUT,
         headers={"User-Agent": user_agent(get_settings())},
         follow_redirects=True,
     )

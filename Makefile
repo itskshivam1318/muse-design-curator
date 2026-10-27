@@ -39,7 +39,7 @@ index:
 
 # Real-photo demo corpus (network + LIVE models from .env; capped, cached, idempotent): import -> index -> seed.
 demo-data:
-	cd backend && uv run python scripts/demo_data.py
+	cd backend && uv run python scripts/demo_data.py --yes
 
 ext:
 	cd extension && npm run build
