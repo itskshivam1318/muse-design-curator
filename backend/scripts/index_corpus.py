@@ -19,6 +19,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--domain", required=True)
     ap.add_argument("--manifest", type=Path, help="default: corpus/manifests/<domain>.jsonl")
+    ap.add_argument("--limit", type=int, help="index only an evenly spaced subset of this size")
     args = ap.parse_args(argv)
     manifest = args.manifest or REPO_ROOT / "corpus" / "manifests" / f"{args.domain}.jsonl"
     if not manifest.is_file():
@@ -28,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
 
     session = deps.new_session()
     try:
-        report = index_corpus(session, args.domain, manifest)
+        report = index_corpus(session, args.domain, manifest, limit=args.limit)
     finally:
         session.close()
     print(

@@ -157,13 +157,19 @@ def index_corpus(
     manifest_path: Path,
     client: httpx.Client | None = None,
     batch_size: int = BATCH_SIZE,
+    limit: int | None = None,
 ) -> IndexReport:
-    """Index the manifest's items for `domain`. Commits once per batch (see module docstring)."""
+    """Index the manifest's items for `domain` (an evenly spaced `limit` of them, if given).
+
+    Commits once per batch (see module docstring).
+    """
     manifest_path = Path(manifest_path)
     base_dir = manifest_path.parent
     report = IndexReport()
     http = client or httpx.Client(
-        timeout=30, headers={"User-Agent": user_agent(get_settings())}, follow_redirects=True
+        timeout=httpx.Timeout(15.0, connect=10.0),
+        headers={"User-Agent": user_agent(get_settings())},
+        follow_redirects=True,
     )
     top = session.scalar(select(func.max(CorpusItem.embedding_row)))
     store = EmbeddingStore(embeddings_path(), keep_rows=0 if top is None else top + 1)
@@ -174,9 +180,11 @@ def index_corpus(
         session.commit()
 
     done = 0
-    for item in read_manifest(manifest_path):
-        if item.domain != domain:
-            continue
+    todo = [i for i in read_manifest(manifest_path) if i.domain == domain]
+    if limit is not None and 0 < limit < len(todo):
+        # an evenly spaced subset keeps every query/source represented
+        todo = [todo[k * len(todo) // limit] for k in range(limit)]
+    for item in todo:
         status, issue = check_provenance(item)
         row = corpus_repo.get(session, item.id)
         fields = {**_metadata(item), "provenance_status": status, "provenance_issue": issue}

@@ -212,3 +212,11 @@ def test_seed_creates_four_boards_with_licensed_items(
     seed.seed(indexed)  # re-running adds nothing
     indexed.commit()
     assert indexed.scalar(select(func.count()).select_from(Board)) == 4
+
+
+def test_limit_indexes_an_evenly_spaced_subset(session: Session, data_dir: Path) -> None:
+    full = [json.loads(ln) for ln in MANIFEST.read_text().splitlines() if ln.strip()]
+    n_watch = sum(1 for r in full if r["domain"] == "watch")
+    report = index_corpus(session, "watch", MANIFEST, limit=3)
+    assert n_watch > 3
+    assert report.indexed + report.invalid + report.failed == 3

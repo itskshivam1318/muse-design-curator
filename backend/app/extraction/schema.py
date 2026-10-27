@@ -16,7 +16,8 @@ _EVIDENCE: dict[str, Any] = {
         },
         "note": {"type": ["string", "null"]},
     },
-    "required": ["kind"],
+    "required": ["kind", "bbox", "note"],
+    "additionalProperties": False,  # strict structured output: every object is closed
 }
 
 
@@ -58,5 +59,11 @@ def build_extraction_schema(lens: Any) -> dict[str, Any]:
                 "evidence": _EVIDENCE,
             },
             "required": ["value", "confidence", "evidence"],
+            "additionalProperties": False,
         }
-    return {"type": "object", "properties": props, "required": list(props)}
+    return {
+        "type": "object",
+        "properties": props,
+        "required": list(props),
+        "additionalProperties": False,
+    }

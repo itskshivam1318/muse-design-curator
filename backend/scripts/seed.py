@@ -129,12 +129,14 @@ def index_all(session: Session, fixtures: bool) -> None:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--fixtures", action="store_true", help="use the committed test corpus")
+    ap.add_argument("--no-index", action="store_true", help="seed from what is already indexed")
     args = ap.parse_args(argv)
     from app.api import deps
 
     session = deps.new_session()
     try:
-        index_all(session, args.fixtures)
+        if not args.no_index:
+            index_all(session, args.fixtures)
         boards = seed(session)
         session.commit()
         for b in boards:

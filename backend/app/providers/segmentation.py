@@ -103,6 +103,35 @@ def _instances(records: Iterable[Any], width: int, height: int) -> dict[int, lis
     return out
 
 
+API_MAX_EDGE = 1024  # larger images make the client-side mask decoder take minutes
+
+
+def shrink_for_api(image: bytes, max_edge: int = API_MAX_EDGE) -> tuple[bytes, tuple[int, int]]:
+    """The bytes to send and their (width, height); a downscaled JPEG copy if the image is large."""
+    with Image.open(io.BytesIO(image)) as im:
+        w, h = im.size
+        if max(w, h) <= max_edge:
+            return image, (w, h)
+        k = max_edge / max(w, h)
+        small = im.convert("RGB").resize(
+            (max(1, round(w * k)), max(1, round(h * k))), Image.Resampling.LANCZOS
+        )
+    buf = io.BytesIO()
+    small.save(buf, "JPEG", quality=92)
+    return buf.getvalue(), small.size
+
+
+def _rescale(inst: SegInstance, src: tuple[int, int], dst: tuple[int, int]) -> SegInstance:
+    """Map an instance found on the downscaled copy back onto the original's pixel grid."""
+    fx, fy = dst[0] / src[0], dst[1] / src[1]
+    mask = np.asarray(
+        Image.fromarray(inst.mask.astype(np.uint8) * 255).resize(dst, Image.Resampling.NEAREST)
+    )
+    x1, y1, x2, y2 = inst.bbox
+    box = (round(x1 * fx), round(y1 * fy), min(dst[0], round(x2 * fx)), min(dst[1], round(y2 * fy)))
+    return SegInstance(box, mask > 127, inst.score)
+
+
 class Sam31Provider:
     id = "sam31"
     is_mock = False
@@ -153,9 +182,12 @@ class Sam31Provider:
     def localize(self, image: bytes, sha256: str, noun: str) -> SegResult:
         with Image.open(io.BytesIO(image)) as im:
             width, height = im.size
-        part = {"type": "input_image", "image_url": data_url(image)}
+        small, (sw, sh) = shrink_for_api(image)
+        part = {"type": "input_image", "image_url": data_url(small)}
         result = self._segment(noun, part, video=False)
-        insts = _instances(result.records, width, height).get(0, [])
+        insts = _instances(result.records, sw, sh).get(0, [])
+        if (sw, sh) != (width, height):
+            insts = [_rescale(i, (sw, sh), (width, height)) for i in insts]
         return SegResult(found=bool(insts), instances=insts)
 
     def track(self, video: bytes, noun: str) -> list[SegResult]:

@@ -141,3 +141,59 @@ def test_pe_core_selector_is_recognised(monkeypatch: pytest.MonkeyPatch) -> None
     with pytest.raises(ModelError) as ei:
         get_embedder(Settings(EMBEDDER="pe-core"))
     assert ei.value.code == "PROVIDER_MISCONFIGURED" and "embed" in str(ei.value)
+
+
+def test_siglip_features_unwrap_model_output() -> None:
+    from types import SimpleNamespace
+
+    import torch
+
+    from app.providers.embedding import _features
+
+    t = torch.ones(1, 3)
+    assert _features(t) is t
+    assert _features(SimpleNamespace(pooler_output=t)) is t
+
+
+def test_extraction_schema_is_strict_closed_objects() -> None:
+    from app.domain.lens import load_curated_lens
+    from app.extraction.schema import build_extraction_schema
+
+    lens = load_curated_lens("watch", False)
+    assert lens is not None
+
+    def objects(node: object) -> list[dict]:  # type: ignore[type-arg]
+        out: list[dict] = []  # type: ignore[type-arg]
+        if isinstance(node, dict):
+            if node.get("type") == "object":
+                out.append(node)
+            for v in node.values():
+                out += objects(v)
+        elif isinstance(node, list):
+            for v in node:
+                out += objects(v)
+        return out
+
+    found = objects(build_extraction_schema(lens))
+    assert len(found) > 2
+    for o in found:
+        assert o.get("additionalProperties") is False
+        assert set(o["required"]) == set(o["properties"])
+
+
+def test_sam_input_is_shrunk_and_instances_map_back() -> None:
+    import numpy as np
+
+    from app.providers.segmentation import SegInstance, _rescale, shrink_for_api
+
+    small_png = png((9, 9, 9))
+    assert shrink_for_api(small_png)[0] is small_png
+    big = io.BytesIO()
+    Image.new("RGB", (2048, 1024), (5, 5, 5)).save(big, "JPEG")
+    data, size = shrink_for_api(big.getvalue())
+    assert size == (1024, 512) and Image.open(io.BytesIO(data)).size == (1024, 512)
+    mask = np.zeros((512, 1024), dtype=bool)
+    mask[100:200, 200:400] = True
+    out = _rescale(SegInstance((200, 100, 400, 200), mask, 0.9), (1024, 512), (2048, 1024))
+    assert out.mask.shape == (1024, 2048) and out.bbox == (400, 200, 800, 400)
+    assert out.mask[300, 600] and not out.mask[10, 10] and out.score == 0.9

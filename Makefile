@@ -1,6 +1,6 @@
 export PATH := $(HOME)/.local/bin:$(PATH)
 
-.PHONY: install dev test lint e2e seed import index ext smoke
+.PHONY: install dev test lint e2e seed import index demo-data ext smoke
 
 install:
 	uv python install 3.12
@@ -36,6 +36,10 @@ import:
 
 index:
 	cd backend && uv run python scripts/index_corpus.py --domain $(DOMAIN)
+
+# Real-photo demo corpus (network + LIVE models from .env; capped, cached, idempotent): import -> index -> seed.
+demo-data:
+	cd backend && uv run python scripts/demo_data.py
 
 ext:
 	cd extension && npm run build

@@ -66,6 +66,11 @@ def _require_torch(name: str) -> Any:
     return torch
 
 
+def _features(out: Any) -> Any:
+    """transformers 5 returns a model-output object from get_*_features; older versions a tensor."""
+    return out if hasattr(out, "cpu") else out.pooler_output
+
+
 class SigLIP2Embedder:
     id = "siglip2"
 
@@ -84,13 +89,13 @@ class SigLIP2Embedder:
         inputs = self._proc(images=pics, return_tensors="pt")
         with self._torch.no_grad():
             out = self._model.get_image_features(**inputs)
-        return l2_normalise(out.cpu().numpy())
+        return l2_normalise(_features(out).cpu().numpy())
 
     def embed_text(self, texts: list[str]) -> np.ndarray:
         inputs = self._proc(text=texts, padding="max_length", max_length=64, return_tensors="pt")
         with self._torch.no_grad():
             out = self._model.get_text_features(**inputs)
-        return l2_normalise(out.cpu().numpy())
+        return l2_normalise(_features(out).cpu().numpy())
 
 
 class PECoreEmbedder:
