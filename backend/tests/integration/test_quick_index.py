@@ -167,3 +167,60 @@ def test_matrix_rows_line_up_with_database(session, data_dir) -> None:  # type: 
     row = session.get(CorpusItem, "cx_commons_a")
     assert m.shape[0] == 1 and row.embedding_row == 0
     assert abs(float(np.linalg.norm(m[0])) - 1.0) < 1e-5
+
+
+def _redirecting(routes: dict[str, httpx.Response], seen: list[str]) -> httpx.Client:
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen.append(str(req.url))
+        return routes.get(str(req.url), httpx.Response(404))
+
+    return httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+
+
+def test_redirect_to_a_private_address_is_dropped(session, data_dir) -> None:  # type: ignore[no-untyped-def]
+    seen: list[str] = []
+    meta = "http://169.254.169.254/latest/meta-data/x.png"
+    client = _redirecting(
+        {
+            "https://img.test/a.png": httpx.Response(302, headers={"location": meta}),
+            "https://img.test/b.png": httpx.Response(302, headers={"location": "http://10.0.0.5/b.png"}),
+            meta: httpx.Response(200, content=image_bytes("PNG", (300, 300), 3)),
+            "http://10.0.0.5/b.png": httpx.Response(200, content=image_bytes("PNG", (300, 300), 4)),
+        },
+        seen,
+    )
+    rows = qi.quick_index(session, [mi("a"), mi("b")], "watch", client=client)
+    assert rows == []
+    assert all("169.254" not in u and "10.0.0.5" not in u for u in seen)  # never requested
+
+
+def test_redirect_to_a_public_host_is_followed_and_capped_at_three(session, data_dir) -> None:  # type: ignore[no-untyped-def]
+    seen: list[str] = []
+    hop = lambda n: f"https://cdn.test/{n}.png"
+    client = _redirecting(
+        {
+            "https://img.test/ok.png": httpx.Response(301, headers={"location": hop(1)}),
+            hop(1): httpx.Response(200, content=image_bytes("PNG", (300, 300), 5)),
+            "https://img.test/far.png": httpx.Response(302, headers={"location": hop(10)}),
+            **{hop(n): httpx.Response(302, headers={"location": hop(n + 1)}) for n in range(10, 14)},
+            hop(14): httpx.Response(200, content=image_bytes("PNG", (300, 300), 6)),
+        },
+        seen,
+    )
+    rows = qi.quick_index(session, [mi("ok"), mi("far")], "watch", client=client)
+    assert [r.id for r in rows] == [item_id("commons", "ok")]
+    assert hop(14) not in seen  # more than three redirects: dropped before the fourth hop
+
+
+def test_default_client_pins_the_vetted_address(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from app.ingest import links
+
+    pinned: list[str] = []
+
+    def fake_transport(ip: str) -> httpx.BaseTransport:
+        pinned.append(ip)
+        return httpx.MockTransport(lambda r: httpx.Response(200, content=b"x"))
+
+    monkeypatch.setattr(links, "pinned_transport", fake_transport)
+    assert qi._download(None, "https://img.test/a.png", 100) == b"x"
+    assert pinned == ["93.184.216.34"]

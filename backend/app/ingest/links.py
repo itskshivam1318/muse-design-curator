@@ -15,6 +15,7 @@ from app.ingest.common import IngestResult, ItemMeta, create_item
 from app.ingest.images import ingest_image
 
 MAX_REDIRECTS = 3
+REDIRECT_CODES = (301, 302, 303, 307, 308)
 MAX_PAGE_BYTES = 2 * 1024 * 1024
 
 
@@ -85,7 +86,8 @@ class _PinnedBackend(httpcore.NetworkBackend):
         self._inner.sleep(seconds)
 
 
-def _pinned_transport(ip: str) -> httpx.HTTPTransport:
+def pinned_transport(ip: str) -> httpx.HTTPTransport:
+    """A transport that connects only to `ip` (vetted by check_url)."""
     t = httpx.HTTPTransport()
     t._pool._network_backend = _PinnedBackend(ip, t._pool._network_backend)  # type: ignore[attr-defined]
     return t
@@ -105,11 +107,11 @@ def fetch(url: str, max_bytes: int = MAX_PAGE_BYTES) -> tuple[str, str, bytes]:
         ip = check_url(current)
         with httpx.Client(
             follow_redirects=False, timeout=timeout, headers=headers, trust_env=False,
-            transport=_pinned_transport(ip),
+            transport=pinned_transport(ip),
         ) as client:  # fmt: skip
             try:
                 with client.stream("GET", current) as r:
-                    if r.status_code in (301, 302, 303, 307, 308):
+                    if r.status_code in REDIRECT_CODES:
                         loc = r.headers.get("location")
                         if not loc:
                             raise AppError(502, "LINK_FETCH_FAILED", "Redirect without location")

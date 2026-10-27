@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from concurrent.futures import TimeoutError as FuturesTimeout
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from PIL import Image
@@ -31,6 +31,7 @@ from app.corpus.provenance import check_provenance
 from app.corpus.sources.base import ManifestItem, user_agent
 from app.db.models import CorpusItem
 from app.db.repos import corpus as corpus_repo
+from app.ingest import links
 from app.ingest.sniff import sniff_image
 from app.measure.palette import masked_palette, to_rgb_array
 from app.providers import get_embedder
@@ -49,17 +50,42 @@ class QuickProviders:
     embedder: Any = None
 
 
-def _download(client: httpx.Client, url: str, limit: int) -> bytes:
-    if urlparse(url).scheme not in ("http", "https"):
-        raise ValueError("UNSUPPORTED_URL")
-    with client.stream("GET", url) as resp:
-        resp.raise_for_status()
-        buf = bytearray()
-        for chunk in resp.iter_bytes():
-            buf += chunk
-            if len(buf) > limit:
-                raise ValueError("IMAGE_TOO_LARGE")
-    return bytes(buf)
+def _download(client: httpx.Client | None, url: str, limit: int) -> bytes:
+    """GET one image with the link fetcher's SSRF guard: every hop's addresses are vetted
+    (`links.check_url`), redirects are followed by hand (at most `links.MAX_REDIRECTS`), and with
+    no injected client each hop connects only to its vetted IP. Raises on any refusal."""
+    current = url
+    for _hop in range(links.MAX_REDIRECTS + 1):
+        if urlparse(current).scheme not in ("http", "https"):
+            raise ValueError("UNSUPPORTED_URL")
+        ip = links.check_url(current)  # AppError SSRF_BLOCKED for private/link-local targets
+        own = None
+        if client is None:
+            own = httpx.Client(
+                timeout=15, headers={"User-Agent": user_agent(get_settings())},
+                follow_redirects=False, trust_env=False, transport=links.pinned_transport(ip),
+            )  # fmt: skip
+        http = client or own
+        assert http is not None
+        try:
+            with http.stream("GET", current, follow_redirects=False) as resp:
+                if resp.status_code in links.REDIRECT_CODES:
+                    loc = resp.headers.get("location")
+                    if not loc:
+                        raise ValueError("REDIRECT_WITHOUT_LOCATION")
+                    current = urljoin(current, loc)
+                    continue
+                resp.raise_for_status()
+                buf = bytearray()
+                for chunk in resp.iter_bytes():
+                    buf += chunk
+                    if len(buf) > limit:
+                        raise ValueError("IMAGE_TOO_LARGE")
+                return bytes(buf)
+        finally:
+            if own is not None:
+                own.close()
+    raise ValueError("TOO_MANY_REDIRECTS")
 
 
 def _fit(data: bytes) -> tuple[bytes, str, int, int]:
@@ -118,9 +144,7 @@ def quick_index(
     valid = [i for i in items if check_provenance(i)[0] == "valid"]
     if not valid:
         return []
-    http = client or httpx.Client(
-        timeout=15, headers={"User-Agent": user_agent(settings)}, follow_redirects=True
-    )
+    http = client  # None: each download opens its own pinned, guarded connection
     limit = settings.MAX_UPLOAD_BYTES
 
     # download in parallel (bounded); everything touching the session stays on this thread

@@ -39,6 +39,20 @@ def _no_source_cooldowns() -> Iterator[None]:
     search.reset_cooldowns()
 
 
+@pytest.fixture(autouse=True)
+def _offline_resolver(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The SSRF guard resolves every host; tests never touch real DNS. Fake `*.test` hosts get a
+    public documentation address; anything else is unresolvable (a test patches its own)."""
+    from app.ingest import links
+
+    def resolve(host: str) -> list[str]:
+        if host.endswith(".test"):
+            return ["93.184.216.34"]
+        raise OSError(f"offline test: {host} is not resolvable")
+
+    monkeypatch.setattr(links, "resolver", resolve)
+
+
 @pytest.fixture
 def session() -> Iterator[Session]:
     """In-memory SQLite with the schema built by running Alembic migrations."""
