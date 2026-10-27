@@ -1,11 +1,15 @@
 from pathlib import Path
 
-from sqlalchemy import create_engine, inspect, text
+import pytest
+from alembic.config import Config
+from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from alembic import command
 from app.db.models import BoardItem
 from app.db.repos import boards, explore, items
-from app.db.session import run_migrations
+from app.db.session import BACKEND_DIR, run_migrations
 
 
 def _setup(session: Session) -> tuple[str, str]:
@@ -54,6 +58,17 @@ def test_generated_item_allowed(session: Session) -> None:
     session.flush()
 
 
+def _insert(c, **kw) -> None:  # type: ignore[no-untyped-def]
+    row = {"id": "itm_x", "board_id": "brd_x", "kind": "image", "origin": "generated",
+           "rights_status": "generated", "captured_at": "t", "parse_status": "pending",
+           "role": "reference", "x": 0, "y": 0, "w": 0, "h": 0, "z": 0, "parse_attempts": 0,
+           "created_at": "t", **kw}  # fmt: skip
+    cols = ", ".join(row)
+    c.execute(
+        text(f"INSERT INTO board_items ({cols}) VALUES ({', '.join(':' + k for k in row)})"), row
+    )
+
+
 def test_migration_upgrade_head(tmp_path: Path) -> None:
     engine = create_engine(f"sqlite:///{tmp_path / 'm.sqlite'}")
     run_migrations(engine)
@@ -61,9 +76,57 @@ def test_migration_upgrade_head(tmp_path: Path) -> None:
     assert {"explorations", "explore_options"} <= set(insp.get_table_names())
     cols = {c["name"] for c in insp.get_columns("board_items")}
     assert {"explore_option_id", "generation_json", "check_json"} <= cols
-    with engine.connect() as c:
+    assert all(
+        fk["constrained_columns"] != ["explore_option_id"]
+        for fk in insp.get_foreign_keys("board_items")
+    )
+    with engine.begin() as c:
         idx = c.execute(
             text("SELECT sql FROM sqlite_master WHERE name='uq_board_items_active_sha256'")
         ).scalar()
-    assert idx and "WHERE" in idx
+        assert idx and "WHERE" in idx
+        c.execute(
+            text(
+                "INSERT INTO boards (id, title, context, created_at, updated_at) "
+                "VALUES ('brd_x', 't', '', 't', 't')"
+            )
+        )
+        _insert(c)  # generated item, no corpus item
+    with pytest.raises(IntegrityError), engine.begin() as c:
+        _insert(c, id="itm_y", origin="upload", rights_status="licensed")
+    engine.dispose()
+
+
+def test_migration_downgrade_is_clean(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'd.sqlite'}")
+
+    @event.listens_for(engine, "connect")
+    def _fk_on(dbapi, _rec):  # type: ignore[no-untyped-def]
+        dbapi.execute("PRAGMA foreign_keys=ON")
+
+    run_migrations(engine)
+    with engine.begin() as c:
+        c.execute(
+            text(
+                "INSERT INTO boards (id, title, context, created_at, updated_at) "
+                "VALUES ('brd_x', 't', '', 't', 't')"
+            )
+        )
+        _insert(c)
+        c.execute(
+            text(
+                "INSERT INTO explorations (id, board_id, item_id, key, created_at) "
+                "VALUES ('exp_x', 'brd_x', 'itm_x', 'k', 't')"
+            )
+        )
+    cfg = Config(str(BACKEND_DIR / "alembic.ini"))
+    cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+    with engine.begin() as conn:
+        assert conn.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+        cfg.attributes["connection"] = conn
+        command.downgrade(cfg, "0003")
+    names = set(inspect(engine).get_table_names())
+    assert "explorations" not in names and "explore_options" not in names
+    with engine.connect() as c:
+        assert c.execute(text("SELECT count(*) FROM board_items")).scalar() == 0
     engine.dispose()

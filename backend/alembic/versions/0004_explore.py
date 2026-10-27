@@ -56,13 +56,8 @@ def upgrade() -> None:
     )
     op.create_index("ix_explore_options_exploration_id", "explore_options", ["exploration_id"])
     with op.batch_alter_table("board_items", recreate="always") as b:
-        b.add_column(
-            sa.Column(
-                "explore_option_id",
-                sa.String(),
-                sa.ForeignKey("explore_options.id", name="fk_item_explore_option"),
-            )
-        )
+        b.add_column(sa.Column("explore_option_id", sa.String()))
+        b.create_index("ix_board_items_explore_option_id", ["explore_option_id"])
         b.add_column(sa.Column("generation_json", sa.JSON()))
         b.add_column(sa.Column("check_json", sa.JSON()))
         b.drop_constraint("ck_item_origin", type_="check")
@@ -75,15 +70,23 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # explorations reference board_items, so they go first; then the generated items'
+    # dependents, then the items themselves
+    op.drop_table("explore_options")
+    op.drop_table("explorations")
+    gen = "SELECT id FROM board_items WHERE origin = 'generated'"
+    for table in ("item_frames", "item_attributes", "attribute_events"):
+        op.execute(f"DELETE FROM {table} WHERE item_id IN ({gen})")
+    op.execute(f"DELETE FROM variation_runs WHERE source_item_id IN ({gen})")
+    op.execute("UPDATE board_items SET parent_item_id = NULL WHERE parent_item_id IN (" + gen + ")")
     op.execute("DELETE FROM board_items WHERE origin = 'generated'")
     with op.batch_alter_table("board_items", recreate="always") as b:
         b.drop_column("check_json")
         b.drop_column("generation_json")
+        b.drop_index("ix_board_items_explore_option_id")
         b.drop_column("explore_option_id")
         b.drop_constraint("ck_item_origin", type_="check")
         b.drop_constraint("ck_item_rights", type_="check")
         b.create_check_constraint("ck_item_origin", f"origin IN ({_OLD_ORIGINS})")
         b.create_check_constraint("ck_item_rights", f"rights_status IN ({_OLD_RIGHTS})")
     _ensure_sha_index()
-    op.drop_table("explore_options")
-    op.drop_table("explorations")
