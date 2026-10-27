@@ -75,10 +75,11 @@ def test_explore_creates_options_on_first_call(client: TestClient, world) -> Non
     assert got["item_id"] == item and got["key"] == "markers" and got["board_id"] == world["watch"]
     opts = got["options"]
     assert 6 <= len(opts) <= 10
-    assert [o["name"] for o in opts] == [f"Option {c}" for c in "ABCDEFGH"]
+    tag = opts[0]["name"].split()[-1]
+    assert [o["name"] for o in opts] == [f"Option {c} {tag}" for c in "ABCDEFGH"]
     assert all(o["batch"] == 1 and o["status"] == "open" for o in opts)
     assert all(o["x"] is None and o["y"] is None and o["parent_option_id"] is None for o in opts)
-    assert opts[0]["value"] == "option_a" and opts[0]["distance"] == "near"
+    assert opts[0]["value"] == f"option_a_{tag}" and opts[0]["distance"] == "near"
     assert opts[0]["edit_prompt"] and opts[0]["description"]
 
 
@@ -107,6 +108,16 @@ def test_more_appends_without_repeats(client: TestClient, world, monkeypatch) ->
     assert [o["name"] for o in opts] == [o["name"] for o in SIX] + ["Devanagari", "Lumed plots"]
     assert [o["batch"] for o in opts[-2:]] == [2, 2]
     assert "Sector dial" in f.prompts[1] and "do not repeat" in f.prompts[1].lower()
+
+
+def test_more_with_the_plain_mock_adds_new_options(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    item = source(world)
+    first = explore(client, item).json()["options"]
+    r = explore(client, item, mode="more")
+    assert r.status_code == 200, r.json()
+    opts = r.json()["options"]
+    assert len(opts) == 16 and [o["batch"] for o in opts[8:]] == [2] * 8
+    assert not {o["name"] for o in first} & {o["name"] for o in opts[8:]}
 
 
 def test_further_asks_for_bolder(client: TestClient, world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -175,9 +186,16 @@ def test_keeps_are_filtered_to_known_keys(client: TestClient, world, monkeypatch
 
 
 def test_missing_edit_prompt_gets_a_default(client: TestClient, world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    fake(monkeypatch, [opt("Devanagari", edit_prompt="  ")])
-    o = explore(client, source(world)).json()["options"][0]
-    assert "Markers" in o["edit_prompt"] and "Devanagari" in o["edit_prompt"]
+    fake(monkeypatch, [opt("Devanagari", edit_prompt="  "),
+                       opt("Kanji", description="", edit_prompt="")])  # fmt: skip
+    a, b = explore(client, source(world)).json()["options"]
+    assert a["edit_prompt"] == (
+        "Change only Markers to Devanagari: Devanagari on this item."
+        " Keep everything else exactly the same."
+    )
+    assert (
+        b["edit_prompt"] == "Change only Markers to Kanji. Keep everything else exactly the same."
+    )
 
 
 def test_unparsed_item_still_explores(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]

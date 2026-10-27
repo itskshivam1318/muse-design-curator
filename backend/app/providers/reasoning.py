@@ -279,13 +279,14 @@ class MockReasoningProvider:
     def explore_options(self, images: list[bytes], prompt: str) -> dict[str, Any]:
         _limit(images, MAX_EXPLORE_IMAGES)
         distances = ("near", "bold", "wild")
+        tag = hashlib.sha256(prompt.encode()).hexdigest()[:4]  # new names for each new prompt
         return {
             "options": [
                 {
-                    "name": f"Option {c}",
+                    "name": f"Option {c} {tag}",
                     "description": f"A mock design move {c}.",
                     "distance": distances[i % 3],
-                    "value": f"option_{c.lower()}",
+                    "value": f"option_{c.lower()}_{tag}",
                     "keeps": [],
                     "edit_prompt": f"Change only the target attribute to option {c}.",
                 }

@@ -107,9 +107,11 @@ def test_check_prompt_has_option() -> None:
 def test_mock_explore_options_shape() -> None:
     out = MockReasoningProvider().explore_options([b"x"], "p")
     opts = out["options"]
-    assert [o["name"] for o in opts] == [f"Option {c}" for c in "ABCDEFGH"]
+    tag = opts[0]["name"].split()[-1]
+    assert len(tag) == 4
+    assert [o["name"] for o in opts] == [f"Option {c} {tag}" for c in "ABCDEFGH"]
     assert [o["distance"] for o in opts[:4]] == ["near", "bold", "wild", "near"]
-    assert opts[0]["value"] == "option_a" and opts[7]["value"] == "option_h"
+    assert opts[0]["value"] == f"option_a_{tag}" and opts[7]["value"] == f"option_h_{tag}"
     assert all(o["keeps"] == [] and o["description"] and o["edit_prompt"] for o in opts)
 
 
@@ -119,3 +121,11 @@ def test_mock_check_target_shape() -> None:
                                            "note": ""}  # fmt: skip
     out = MockReasoningProvider().check_target([b"x"], "p")
     assert out["answer"] in ("yes", "no", "unclear") and 0 <= out["confidence"] <= 1
+
+
+def test_mock_explore_options_vary_per_prompt() -> None:
+    mock = MockReasoningProvider()
+    first = [o["name"] for o in mock.explore_options([b"x"], "p")["options"]]
+    again = [o["name"] for o in mock.explore_options([b"x"], "p")["options"]]
+    other = [o["name"] for o in mock.explore_options([b"x"], "p, more")["options"]]
+    assert first == again and not set(first) & set(other)

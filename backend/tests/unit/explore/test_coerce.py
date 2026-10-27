@@ -46,11 +46,13 @@ def test_ordinal_off_scale_is_none() -> None:
     assert coerce_option_value(spec, "mirror", current="matte") is None
 
 
-def test_boolean_flips_current() -> None:
+def test_boolean_uses_the_models_state_else_the_current() -> None:
     spec = BooleanSpec(key="has_date_window", label="Has date window", category="c")
-    assert coerce_option_value(spec, "true", current=True) is False
     assert coerce_option_value(spec, "true", current=False) is True
-    assert coerce_option_value(spec, "true", current=None) is None
+    assert coerce_option_value(spec, " False ", current=True) is False
+    assert coerce_option_value(spec, "framed at 6", current=True) is True
+    assert coerce_option_value(spec, "", current=False) is False
+    assert coerce_option_value(spec, "maybe", current=None) is None
 
 
 def test_shape_is_none() -> None:

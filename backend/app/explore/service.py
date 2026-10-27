@@ -17,7 +17,13 @@ from app.db.models import Exploration, ExploreOption
 from app.db.repos import boards as boards_repo
 from app.db.repos import explore as explore_repo
 from app.db.session import after_commit
-from app.domain.attributes import AttributeRecord, Value, canonical_token, validate_value
+from app.domain.attributes import (
+    AttributeRecord,
+    Value,
+    _coerce_bool,
+    canonical_token,
+    validate_value,
+)
 from app.domain.kinds import AttributeSpec
 from app.errors import AppError
 from app.explore.prompts import build_explore_prompt
@@ -41,12 +47,16 @@ def coerce_option_value(spec: AttributeSpec, raw: str, *, current: Value) -> Val
     """The option's value typed for the attribute's kind, or None when it does not fit.
 
     Enum and text values are tokens even outside a closed vocabulary (explore goes beyond it).
-    A boolean option keeps the feature's other state: options are about how it is done.
+    A boolean option is about how the feature is done: the model's true/false if it gave one,
+    else the current state.
     """
     if spec.kind == "shape":
         return None
     if spec.kind == "boolean":
-        return (not current) if isinstance(current, bool) else None
+        parsed = _coerce_bool(raw)
+        if parsed is not None:
+            return parsed
+        return current if isinstance(current, bool) else None
     if spec.kind in ("enum", "text"):
         return canonical_token(raw) or None
     if spec.kind == "color":
@@ -86,12 +96,15 @@ def _clean(
         for k in raw_keeps if isinstance(raw_keeps, list) else []:
             if isinstance(k, str) and k in known and k != spec.key and k not in keeps:
                 keeps.append(k)
+        description = _text(o.get("description"))
+        # the description's own full stop would double the sentence's
+        detail = f"{name}: {description.rstrip('.')}" if description.rstrip(".") else name
         edit = _text(o.get("edit_prompt")) or (
-            f"Change only the {spec.label} to {name}. Keep everything else exactly the same."
+            f"Change only {spec.label} to {detail}. Keep everything else exactly the same."
         )
         seen.add(name.lower())
         out.append({
-            "name": name, "description": _text(o.get("description")), "distance": distance,
+            "name": name, "description": description, "distance": distance,
             "value_json": value, "keeps_json": keeps, "edit_prompt": edit,
         })  # fmt: skip
         if len(out) == MAX_OPTIONS:
