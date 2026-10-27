@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     REASONING_PROVIDER: str = "muse-spark"
     MUSE_SPARK_MODEL: str = "muse-spark-1.3"
     SEGMENTATION_PROVIDER: str = "sam-3.1"
+    IMAGE_PROVIDER: str = "muse-image"
+    IMAGE_MODEL: str = "muse-image-1.0"
+    EXPLORE_ENABLED: bool = True
     EMBEDDER: str = "siglip2"
     BASETEN_API_KEY: str | None = None
     BASETEN_MODEL: str = "meta-models/muse-spark-open"

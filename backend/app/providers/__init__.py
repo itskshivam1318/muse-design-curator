@@ -6,6 +6,7 @@ import threading
 
 from app.config import Settings
 from app.providers.embedding import Embedder, MockEmbedder, PECoreEmbedder, SigLIP2Embedder
+from app.providers.image_gen import ImageProvider, MockImageProvider, MuseImageProvider
 from app.providers.meta_client import check_model_id, get_client
 from app.providers.reasoning import (
     MockReasoningProvider,
@@ -16,7 +17,14 @@ from app.providers.reasoning import (
 from app.providers.reliability import ModelError
 from app.providers.segmentation import MockSegmentationProvider, Sam31Provider, SegmentationProvider
 
-__all__ = ["ModelError", "embedder_id", "get_embedder", "get_reasoning", "get_segmentation"]
+__all__ = [
+    "ModelError",
+    "embedder_id",
+    "get_embedder",
+    "get_image_provider",
+    "get_reasoning",
+    "get_segmentation",
+]
 
 
 def _need(value: str | None, name: str, who: str) -> str:
@@ -46,6 +54,19 @@ def get_reasoning(settings: Settings) -> ReasoningProvider:
             max_retries=settings.MODEL_MAX_RETRIES, timeout=settings.MODEL_TIMEOUT_S,
         )  # fmt: skip
     raise ModelError("PROVIDER_MISCONFIGURED", message=f"unknown REASONING_PROVIDER {name!r}")
+
+
+def get_image_provider(settings: Settings) -> ImageProvider:
+    name = settings.IMAGE_PROVIDER.replace("_", "-")
+    if name == "mock":
+        return MockImageProvider()
+    if name == "muse-image":
+        _need(settings.MODEL_API_KEY, "MODEL_API_KEY", "IMAGE_PROVIDER=muse-image")
+        return MuseImageProvider(
+            get_client(settings), settings.IMAGE_MODEL,
+            max_retries=settings.MODEL_MAX_RETRIES, timeout=settings.MODEL_TIMEOUT_S,
+        )  # fmt: skip
+    raise ModelError("PROVIDER_MISCONFIGURED", message=f"unknown IMAGE_PROVIDER {name!r}")
 
 
 def get_segmentation(settings: Settings) -> SegmentationProvider:

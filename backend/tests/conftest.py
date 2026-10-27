@@ -20,6 +20,7 @@ def _mock_providers(monkeypatch: pytest.MonkeyPatch) -> None:
     """The code defaults are live; the test environment is always mock (and offline)."""
     monkeypatch.setenv("REASONING_PROVIDER", "mock")
     monkeypatch.setenv("SEGMENTATION_PROVIDER", "mock")
+    monkeypatch.setenv("IMAGE_PROVIDER", "mock")
     monkeypatch.setenv("EMBEDDER", "mock")
 
 

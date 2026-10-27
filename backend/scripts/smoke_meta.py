@@ -182,6 +182,19 @@ async def main() -> int:
                 notes.append(f"{model}={type(exc).__name__}")
         return ("PASS" if ok else "FAIL"), " ".join(notes)
 
+    async def image_edit() -> Outcome:
+        buf = io.BytesIO()
+        from PIL import Image
+
+        Image.new("RGB", (128, 128), (200, 120, 60)).save(buf, "PNG")
+        r = await client.images.edit(
+            model=s.IMAGE_MODEL,
+            image=("source.png", buf.getvalue(), "image/png"),
+            prompt="make it a cool blue palette",
+        )
+        raw = base64.b64decode(r.data[0].b64_json or "")  # type: ignore[index]
+        return "PASS", f"output {len(raw)} bytes ({r.output_format})"
+
     await _run("1 muse-spark-1.3 text", spark_text, has_key, no_key)
     await _run("2 muse-spark 10-image json_schema", spark_schema, has_key, no_key)
     await _run("3 sam-3.1 image 'watch dial'", lambda: sam("image"), has_key, no_key)
@@ -190,6 +203,9 @@ async def main() -> int:
         "5 baseten muse-spark-open", baseten, bool(s.BASETEN_API_KEY), "BASETEN_API_KEY not set"
     )
     await _run("7 sam-3.1 video (3 s mp4)", lambda: sam("video"), has_key, no_key)
+
+    if "--image" in sys.argv:
+        await _run("8 muse-image edit", image_edit, has_key, no_key)
 
     if latencies:
         summary = ", ".join(f"{n.split()[0]}={t * 1000:.0f}ms" for n, t in latencies)
