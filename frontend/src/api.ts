@@ -230,6 +230,10 @@ export interface CandidateView {
   width: number | null
   height: number | null
   provenance: { credit: string | null; landing_url: string | null; license_code: string | null; creator_name: string | null }
+  /** Where this run found it: the pre-indexed library, or a live licensed-source search. */
+  origin: 'corpus' | 'live'
+  /** The source adapter id (e.g. 'commons'). */
+  source?: string
   state: CandidateState
   rank: number | null
   scores: Record<string, number> | null
@@ -245,6 +249,26 @@ export interface ShortfallLine {
   message: string
 }
 
+export type LiveSourceStatus = 'ok' | 'failed' | 'timeout'
+
+/** Live search progress: which sources answered, and how many candidates they found so far. */
+export interface LiveProgress {
+  sources: Record<string, LiveSourceStatus>
+  /** The source ids being searched (before they report). */
+  searching?: string[]
+  downloaded?: number
+  found: number
+  queries?: string[]
+}
+
+export interface LiveSummary {
+  queries: string[]
+  found: number
+  kept: number
+  sources: Record<string, LiveSourceStatus>
+  failed?: { source: string; error_code: string | null }[]
+}
+
 export interface RunSummary {
   pool_size: number
   excluded: Record<string, number>
@@ -253,6 +277,7 @@ export interface RunSummary {
   rejected: number
   returned: number
   shortfall?: ShortfallLine[]
+  live?: LiveSummary
 }
 
 export type RunStatus = 'queued' | 'retrieving' | 'validating' | 'completed' | 'failed'
@@ -275,7 +300,7 @@ export interface RunInfo {
 
 export interface RunResponse {
   run: RunInfo
-  progress: { stage: string; validated_n?: number; shortlist_n?: number } | null
+  progress: { stage: string; validated_n?: number; shortlist_n?: number; live?: LiveProgress } | null
   summary: RunSummary | null
   results: CandidateView[]
   needs_review: CandidateView[]

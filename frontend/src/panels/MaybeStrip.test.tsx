@@ -64,6 +64,42 @@ describe('MaybeStrip', () => {
     expect(screen.getByText('Checking 8 of 16')).toBeTruthy()
   })
 
+  it('reads as a live search, then as checking', async () => {
+    const qc = setup(runResponse({
+      run: { ...runResponse().run, status: 'retrieving' },
+      progress: { stage: 'searching', live: { sources: {}, searching: ['commons', 'met', 'aic'], found: 23 } },
+      results: [], needs_review: [], summary: null,
+    }))
+    expect(screen.getByText('Searching Wikimedia Commons, the Met, … (found 23)')).toBeTruthy()
+    act(() => {
+      qc.setQueryData(keys.run('r1'), runResponse({
+        run: { ...runResponse().run, status: 'validating' },
+        progress: { stage: 'validating', validated_n: 8, shortlist_n: 16, live: { sources: { commons: 'ok', met: 'failed' }, found: 23 } },
+        results: [], needs_review: [], summary: null,
+      }))
+    })
+    expect(await screen.findByText('Checking 8 of 16')).toBeTruthy()
+    const chips = screen.getByLabelText('Live sources')
+    expect(chips.textContent).toContain('Wikimedia Commons')
+    expect(chips.querySelector('[data-status="failed"]')?.textContent).toContain('the Met')
+  })
+
+  it('"Why only N?" shows each live source and whether it answered', () => {
+    const base = runResponse()
+    setup(runResponse({
+      summary: {
+        ...base.summary!,
+        live: { queries: ['q'], found: 12, kept: 1, sources: { commons: 'ok', openverse: 'failed' } },
+        shortfall: [{ code: 'source_failed', count: 1, message: "Openverse didn't respond" }],
+      },
+    }))
+    fireEvent.click(screen.getByRole('button', { name: 'Why only 2?' }))
+    const dialog = screen.getByLabelText('Why fewer results')
+    expect(dialog.textContent).toContain("Openverse didn't respond")
+    expect(dialog.textContent).toContain('Wikimedia Commons: searched')
+    expect(dialog.textContent).toContain('Found 12 live, 1 kept')
+  })
+
   it('"Why only N?" opens the shortfall summary', () => {
     setup(runResponse())
     fireEvent.click(screen.getByRole('button', { name: 'Why only 2?' }))

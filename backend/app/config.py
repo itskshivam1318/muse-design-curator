@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     # Test-only: comma-separated hostnames exempt from the link SSRF guard (e2e fixture server).
     LINK_ALLOW_PRIVATE_HOSTS: str = ""
     SHAPE_KIND_ENABLED: bool = False
+    # Live licensed-source search inside Vary (see app/live); tests force LIVE_SEARCH off
+    LIVE_SEARCH: bool = True
+    LIVE_SOURCES: str = "commons,openverse,met,aic,smithsonian"
+    LIVE_MAX_CANDIDATES: int = 40
+    LIVE_TIMEOUT_S: float = 20
+    LIVE_PER_SOURCE_LIMIT: int = 15
+    LIVE_QUERY_COUNT: int = 4
     EXTENSION_ORIGIN: str | None = None
     PUBLIC_APP_URL: str = "http://localhost:5173"
     JOBS_SYNC: bool = False
