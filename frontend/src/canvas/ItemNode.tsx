@@ -78,7 +78,7 @@ function SiteMark({ host, x, y, size, palette }: { host: string; x: number; y: n
   return (
     <Group x={x} y={y} listening={false}>
       <Rect width={size} height={size} cornerRadius={3} fill={palette.rule} />
-      <Text width={size} height={size} align="center" verticalAlign="middle" text={host.charAt(0).toUpperCase()} fontSize={10} fontStyle="600" fill={palette.ink} />
+      <Text width={size} height={size} align="center" verticalAlign="middle" text={host.charAt(0).toUpperCase()} fontSize={10} fontStyle="bold" fill={palette.ink} />
     </Group>
   )
 }
@@ -94,7 +94,7 @@ function LinkCard({ item, draggable, palette, handlers }: NodeProps) {
     <Group id={item.id} x={item.x} y={item.y} {...common(item, draggable, handlers)}>
       <Rect width={w} height={h} fill={palette.panel} stroke={palette.rule} strokeWidth={1} dash={[5, 4]} cornerRadius={6} />
       <SiteMark host={host} x={pad} y={pad} size={16} palette={palette} />
-      <Text x={pad + 22} y={pad + 1} width={w - pad * 2 - 22} text={host} fontStyle="600" fontSize={13} fill={palette.ink} ellipsis wrap="none" listening={false} />
+      <Text x={pad + 22} y={pad + 1} width={w - pad * 2 - 22} text={host} fontStyle="bold" fontSize={13} fill={palette.ink} ellipsis wrap="none" listening={false} />
       <Text x={pad} y={pad + 28} width={w - pad * 2} height={h - pad * 2 - 50} text={title} fontSize={12} lineHeight={1.35} fill={palette.muted} ellipsis listening={false} />
       <Text x={pad} y={h - pad - 14} width={w - pad * 2} text="Use the extension to capture this" fontSize={12} fill={palette.accent} listening={false} />
     </Group>

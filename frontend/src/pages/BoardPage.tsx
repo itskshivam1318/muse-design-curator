@@ -35,6 +35,7 @@ import { RightDrawer } from '../panels/RightDrawer'
 import { UploadStatus } from '../panels/UploadStatus'
 import { useBoard, useBoardLens, useItems, useProfile } from '../queries'
 import { Link } from '../Link'
+import { insideOverlay } from './shortcutGuard'
 import { runStore } from '../vary/runStore'
 
 function isTyping(t: EventTarget | null): boolean {
@@ -129,6 +130,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
         return
       }
       if (mod || e.altKey) return
+      if (e.key !== 'Escape' && insideOverlay(e.target)) return // not while a dialog or drawer has focus
       const sel = selectionStore.get().selected
       const chosen = (itemsData ?? []).filter((i) => sel.includes(i.id))
       switch (e.key.toLowerCase()) {

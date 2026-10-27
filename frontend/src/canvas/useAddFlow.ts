@@ -66,6 +66,7 @@ export function useAddFlow(boardId: string) {
       const id = nextId++
       const label = valid.length === 1 ? valid[0].name : `${valid.length} files`
       if (valid.length === 0) {
+        if (!alive.current) return
         setJobs((js) => [...js, { id, label: 'Nothing uploaded', progress: 0, state: 'failed', errors: rejected }])
         return
       }

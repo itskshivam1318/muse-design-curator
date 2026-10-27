@@ -108,4 +108,25 @@ describe('TextEditor', () => {
     expect(onCommit).toHaveBeenCalledTimes(1)
     expect(onCommit).toHaveBeenCalledWith('1970s')
   })
+
+  it('flushes a pending edit on unmount instead of dropping it', async () => {
+    vi.useFakeTimers()
+    const { TextEditor } = await import('./InspectPanel')
+    const onCommit = vi.fn()
+    const { unmount } = render(<TextEditor name="Era value" value="1960s" onCommit={onCommit} />)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Era value' }), { target: { value: '1980s' } })
+    expect(onCommit).not.toHaveBeenCalled()
+    unmount()
+    expect(onCommit).toHaveBeenCalledTimes(1)
+    expect(onCommit).toHaveBeenCalledWith('1980s')
+    act(() => vi.advanceTimersByTime(2000))
+    expect(onCommit).toHaveBeenCalledTimes(1) // the cleared timer does not fire it again
+  })
+
+  it('does not commit on unmount when nothing changed', async () => {
+    const { TextEditor } = await import('./InspectPanel')
+    const onCommit = vi.fn()
+    render(<TextEditor name="Era value" value="1960s" onCommit={onCommit} />).unmount()
+    expect(onCommit).not.toHaveBeenCalled()
+  })
 })

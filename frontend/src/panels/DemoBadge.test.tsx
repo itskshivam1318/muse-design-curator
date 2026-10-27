@@ -9,7 +9,10 @@ import { AddMenu } from './AddMenu'
 import { ContextBar } from './ContextBar'
 import { DemoBadge } from './DemoBadge'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
 

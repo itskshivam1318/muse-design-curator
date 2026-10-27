@@ -21,7 +21,14 @@ export function useDialog<T extends HTMLElement>(onClose: () => void) {
     const el = ref.current
     const target = el?.querySelector<HTMLElement>('[data-autofocus]') ?? el
     target?.focus()
+    // pointer escape: focus that lands outside the open dialog goes back to its first control
+    const onFocusIn = (e: FocusEvent) => {
+      if (!el || !(e.target instanceof Node) || el.contains(e.target)) return
+      ;(el.querySelector<HTMLElement>(FOCUSABLE) ?? el).focus()
+    }
+    document.addEventListener('focusin', onFocusIn)
     return () => {
+      document.removeEventListener('focusin', onFocusIn)
       // restore focus unless the user already moved it somewhere else on purpose
       const now = document.activeElement
       if (before && before.isConnected && (!now || now === document.body || el?.contains(now))) before.focus()

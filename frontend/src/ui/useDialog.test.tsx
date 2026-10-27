@@ -58,11 +58,31 @@ describe('useDialog', () => {
     openIt()
     const last = screen.getByRole('button', { name: 'Last' })
     const first = screen.getByRole('button', { name: 'First' })
+    // fireEvent returns false when the handler called preventDefault (the browser would not move focus)
     last.focus()
-    fireEvent.keyDown(last, { key: 'Tab' })
+    expect(fireEvent.keyDown(last, { key: 'Tab' })).toBe(false)
     expect(document.activeElement).toBe(first)
-    fireEvent.keyDown(first, { key: 'Tab', shiftKey: true })
+    expect(fireEvent.keyDown(first, { key: 'Tab', shiftKey: true })).toBe(false)
     expect(document.activeElement).toBe(last)
+    // in the middle, the browser's own tab order is left alone
+    const main = screen.getByRole('button', { name: 'Main' })
+    main.focus()
+    expect(fireEvent.keyDown(main, { key: 'Tab' })).toBe(true)
+    expect(document.activeElement).toBe(main)
+  })
+
+  it('pulls focus back in when it lands outside the open dialog', () => {
+    render(
+      <>
+        <button type="button">Outside</button>
+        <Host />
+      </>,
+    )
+    const opener = screen.getByRole('button', { name: 'Opener' })
+    opener.focus()
+    fireEvent.click(opener)
+    screen.getByRole('button', { name: 'Outside' }).focus()
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'First' }))
   })
 
   it('Escape closes from inside an input and restores focus to the opener', () => {
