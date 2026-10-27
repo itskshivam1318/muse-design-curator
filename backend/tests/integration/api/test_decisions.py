@@ -209,3 +209,10 @@ def test_csv_neutralises_formulas_and_round_trips(client, world) -> None:  # typ
         "'=HYPERLINK(\"x\")", "'+1", "'-2", "'@cmd", "'\tTab", "line1\nline2", 'say "hi", ok',
     ]
     assert all(len(row) == 8 for row in rows)
+
+
+def test_empty_string_reason_or_note_on_keep_is_400(client, world) -> None:  # type: ignore[no-untyped-def]
+    rid, top = setup(client, world)
+    assert decide(client, rid, top["id"], decision="keep", reason_code="").status_code == 400
+    assert decide(client, rid, top["id"], decision="keep", note="").status_code == 400
+    assert decide(client, rid, top["id"], decision="keep").status_code == 201

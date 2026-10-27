@@ -7,7 +7,7 @@ from typing import Any
 
 import numpy as np
 from PIL import Image
-from skimage.color import deltaE_ciede2000, rgb2lab
+from skimage.color import deltaE_ciede2000, lab2rgb, rgb2lab
 from sklearn.cluster import KMeans
 
 MAX_PIXELS = 20_000
@@ -62,8 +62,6 @@ def _rgb_to_lab(rgb: np.ndarray) -> np.ndarray:
 
 
 def _lab_to_hex(lab: np.ndarray) -> str:
-    from skimage.color import lab2rgb
-
     rgb = lab2rgb(np.asarray(lab, dtype=float).reshape(1, 1, 3)).reshape(3)
     r, g, b = (round(float(np.clip(v, 0, 1)) * 255) for v in rgb)
     return f"#{r:02X}{g:02X}{b:02X}"

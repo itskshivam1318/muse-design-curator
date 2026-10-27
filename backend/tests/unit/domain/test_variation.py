@@ -203,3 +203,11 @@ def test_propose_protected_orders_signals_first_and_excludes() -> None:
     assert out[0] == {"key": "size", "is_board_signal": True, "strength": 0.9}
     assert out[2] == {"key": "weight", "is_board_signal": False, "strength": 0.0}
     assert [r["key"] for r in propose_protected(a, "style", None)] == ["weight", "size", "tone"]
+
+
+def test_ordinal_nudge_edges() -> None:
+    less = {"direction": "less", "steps": 1}
+    r = req(mode="nudge", target_key="weight", nudge=less)
+    assert code(r, attrs(weight="low")) == "NUDGE_OUT_OF_RANGE"
+    # a stored value outside the scale is a 422, not a ValueError
+    assert code(r, attrs(weight="bogus")) == "NUDGE_NEEDS_KNOWN_TARGET"

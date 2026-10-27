@@ -133,6 +133,8 @@ class _Windows:
         """Seconds until a slot frees up, or None when under the limit."""
         with self._lock:
             q = self._trim(key, window)
+            if not q:
+                self._hits.pop(key, None)
             if len(q) < limit:
                 return None
             return max(1, int(q[0] + window - now()) + 1)

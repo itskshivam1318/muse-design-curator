@@ -24,6 +24,10 @@ LENS = {
     "attributes": [
         {"key": "finish", "label": "Finish", "category": "c", "kind": "enum",
          "vocabulary": ["brushed", "polished"]},
+        {"key": "size_mm", "label": "Size", "category": "c", "kind": "number",
+         "unit": "mm", "min": 0, "max": 100, "tolerance": 5},
+        {"key": "accent", "label": "Accent", "category": "c", "kind": "color"},
+        {"key": "note", "label": "Note", "category": "c", "kind": "text"},
     ],
 }  # fmt: skip
 
@@ -213,3 +217,12 @@ def test_attribute_edit_route_recomputes_and_publishes(client: TestClient, db: S
     db.expire_all()
     latest = profiles_repo.latest(db, board_id)
     assert latest is not None and latest.version >= 3
+
+
+@pytest.mark.parametrize("key", ["finish", "size_mm", "accent", "note"])
+def test_bool_value_patch_is_400_not_500(client: TestClient, db: Session, key: str) -> None:
+    _, ids = seed(db)
+    for bad in (True, False):
+        r = client.patch(f"/api/items/{ids[0]}/attributes/{key}", json={"value": bad})
+        assert r.status_code == 400, (key, r.status_code)
+        assert r.json()["error"]["code"] == "INVALID_ATTRIBUTE_VALUE"

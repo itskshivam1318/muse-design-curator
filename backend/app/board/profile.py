@@ -32,6 +32,8 @@ TENSION_MIN_SHARE = 0.3
 MAX_COLOR_CLUSTERS = 3
 COLOR_MERGE_DELTA_E = 10.0
 SHAPE_SAME = 0.7
+COUNTER_MIN_ITEMS = 2
+COUNTER_MIN_SHARE_GAP = 0.25
 REFERENCE = "reference"
 COUNTER = "counter_example"
 DISCRETE = ("enum", "ordinal", "boolean")
@@ -332,8 +334,10 @@ def compute_profile(
             ref = Counter(
                 t for _, a in ref_rows.get(key, []) if (t := _discrete_tokens(kind, a)) is not None
             )
+            n_ctr, n_ref = sum(ctr.values()), sum(ref.values())
             for value, n in sorted(ctr.items()):
-                if n > ref.get(value, 0):
+                ref_share = ref.get(value, 0) / n_ref if n_ref else 0.0
+                if n >= COUNTER_MIN_ITEMS and n / n_ctr - ref_share >= COUNTER_MIN_SHARE_GAP:
                     counter_signals.append(
                         CounterSignal(
                             key=key,

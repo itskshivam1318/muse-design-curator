@@ -187,6 +187,12 @@ def validate_variation(
             )
         sign = 1 if req.nudge.direction == "more" else -1
         if tspec.kind == "ordinal":
+            if str(current) not in tspec.scale:
+                raise _err(
+                    "NUDGE_NEEDS_KNOWN_TARGET",
+                    f"The source item's {tspec.label} is not a step on its scale.",
+                    key=key,
+                )
             idx = tspec.scale.index(str(current)) + sign * req.nudge.steps
             ok = 0 <= idx < len(tspec.scale)
         else:

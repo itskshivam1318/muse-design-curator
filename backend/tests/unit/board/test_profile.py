@@ -70,14 +70,51 @@ def test_two_blue_two_green_is_tension_not_signal() -> None:
 
 
 def test_counter_example_values_become_counter_signals() -> None:
-    items = [item("a"), item("b"), item("c"), item("x", role="counter_example")]
+    items = [item("a"), item("b"), item("c"), item("x", role="counter_example"),
+             item("y", role="counter_example")]  # fmt: skip
     attrs = {
         "a": [attr("finish", "brushed")], "b": [attr("finish", "brushed")],
         "c": [attr("finish", "brushed")], "x": [attr("finish", "polished")],
+        "y": [attr("finish", "polished")],
     }  # fmt: skip
     p = run(items, attrs)
     assert [(c.key, c.value) for c in p.counter_signals] == [("finish", "polished")]
     assert p.attributes["finish"].distribution == {"brushed": 3}
+
+
+def test_counter_signal_needs_two_counter_items() -> None:
+    items = [item("a"), item("b"), item("x", role="counter_example")]
+    attrs = {
+        "a": [attr("finish", "brushed")], "b": [attr("finish", "brushed")],
+        "x": [attr("finish", "polished")],
+    }  # fmt: skip
+    assert run(items, attrs).counter_signals == []
+
+
+def test_counter_signal_compares_shares_not_counts() -> None:
+    # polished: 2 of 2 counters (1.0) vs 3 of 6 references (0.5): +0.5 -> signal
+    # brushed: 2 of 2 counters but 6 of 6 references share is 1.0 -> no signal
+    refs = [item(f"r{n}") for n in range(6)]
+    ctrs = [item(f"c{n}", role="counter_example") for n in range(4)]
+    attrs: dict[str, list[Any]] = {}
+    for n, r in enumerate(refs):
+        attrs[r.id] = [attr("finish", "polished" if n < 3 else "brushed"), attr("hue", "blue")]
+    for n, c in enumerate(ctrs):
+        attrs[c.id] = [attr("finish", "polished"), attr("hue", "blue" if n < 2 else "green")]
+    p = run(refs + ctrs, attrs)
+    got = {(c.key, c.value) for c in p.counter_signals}
+    # finish polished: counter share 1.0 vs ref share 0.5 -> +0.5 (signal)
+    # hue green: counter 2/4 = 0.5 vs ref 0 -> signal; hue blue: 0.5 vs 1.0 -> no
+    assert got == {("finish", "polished"), ("hue", "green")}
+    # a bigger count alone is not enough: count 3 > 2 but shares 0.5 vs 0.4 differ by < 0.25
+    refs2 = [item(f"r{n}") for n in range(5)]
+    ctrs2 = [item(f"c{n}", role="counter_example") for n in range(6)]
+    a2: dict[str, list[Any]] = {}
+    for n, r in enumerate(refs2):
+        a2[r.id] = [attr("finish", "polished" if n < 2 else "brushed")]
+    for n, c in enumerate(ctrs2):
+        a2[c.id] = [attr("finish", "polished" if n < 3 else "brushed")]
+    assert run(refs2 + ctrs2, a2).counter_signals == []
 
 
 def test_unreliable_and_disabled_values_do_not_count() -> None:
