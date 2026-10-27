@@ -1,6 +1,6 @@
 """Prepare an isolated, offline data directory for the Playwright end-to-end suite.
 
-    REASONING_PROVIDER=mock SEGMENTATION_PROVIDER=mock EMBEDDER=mock \
+    REASONING_PROVIDER=mock SEGMENTATION_PROVIDER=mock IMAGE_PROVIDER=mock EMBEDDER=mock \
     DATA_DIR=./data/e2e DATABASE_URL=sqlite:///./data/e2e/dle.sqlite \
     uv run python scripts/e2e_prepare.py
 
@@ -41,6 +41,7 @@ def _guard() -> Path:
         "REASONING_PROVIDER": st.REASONING_PROVIDER,
         "SEGMENTATION_PROVIDER": st.SEGMENTATION_PROVIDER,
         "EMBEDDER": st.EMBEDDER,
+        "IMAGE_PROVIDER": st.IMAGE_PROVIDER,
     }
     not_mock = {k: v for k, v in live.items() if v != "mock"}
     if not_mock:

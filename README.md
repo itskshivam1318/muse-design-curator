@@ -57,6 +57,25 @@ provider (`provider.id`, `provider.is_mock`) with every item's values.
 to `backend/tests/fixtures/meta/live/`. Last run 2026-10-27 from India, all PASS: Spark text 5.2 s,
 schema-constrained JSON 8.4 s, SAM image 2.2 s, SAM video 2.7 s, `/embeddings` 404 (expected).
 
+## Explore → Visualize
+
+Select an item, press `V` (or the toolbar's Explore button), and pick an attribute of the board's lens.
+Explore asks the reasoning model for a handful of options for that attribute ("in the dimension"),
+listed in the drawer and pinned beside the item as notes. More, Further, a steer line and Branch widen
+or deepen the set; Dismiss removes one. **Visualize** edits the source photo into the option with the
+image provider, adds the result as a new item captioned `generated · <model>`, and checks it: did the
+target change, and which other attributes stayed (the verdict, also shown under "Generated from" in
+Inspect). "Find real examples" starts a Vary run for options that map to a known value.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `IMAGE_PROVIDER` | `muse-image` | Image-edit provider; `mock` is offline and deterministic (model id `mock-image`). |
+| `IMAGE_MODEL` | `muse-image-1.0` | Model id sent to the image provider. |
+| `EXPLORE_ENABLED` | `1` | Set `0` to hide Explore; `V` then opens the older Vary panel. |
+
+Muse Image is restricted from India under Meta's Geographic Use Policy §2.2. It is used here for
+development only; set IMAGE_PROVIDER to another provider for the demo.
+
 ## Keys
 
 | Key | Needed for | Notes |

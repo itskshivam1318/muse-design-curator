@@ -9,6 +9,7 @@ import { API_PORT, API_URL, APP_PORT, APP_URL, SITE_PORT, SITE_URL } from './tes
 const mockBackendEnv: Record<string, string> = {
   REASONING_PROVIDER: 'mock',
   SEGMENTATION_PROVIDER: 'mock',
+  IMAGE_PROVIDER: 'mock',
   EMBEDDER: 'mock',
   // explicit blanks override whatever the repo-root .env holds: no key is ever loaded
   MODEL_API_KEY: '',

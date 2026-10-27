@@ -30,6 +30,13 @@ test('demo flow: board, references, lens, link, video, vary, keep, reject, nudge
   const context = 'A field watch for a 38 mm wrist: legible and plain, but warmer than steel.'
   let boardId = ''
 
+  // This spec walks the Vary path, which V reaches only when Explore is off (EXPLORE_ENABLED=0);
+  // explore.spec.ts covers the Explore path. The app reads the flag from /api/demo/status.
+  await page.route('**/api/demo/status', async (route) => {
+    const res = await route.fetch()
+    await route.fulfill({ response: res, json: { ...(await res.json()), explore_enabled: false } })
+  })
+
   await test.step('1. create a board and type the context', async () => {
     await page.goto('/')
     await page.getByLabel('New board').fill('E2E field watch')
