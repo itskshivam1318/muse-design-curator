@@ -249,7 +249,8 @@ export interface ShortfallLine {
   message: string
 }
 
-export type LiveSourceStatus = 'ok' | 'failed' | 'timeout'
+/** `skipped`: the source is cooling down after refusing us or timing out, so it was not asked. */
+export type LiveSourceStatus = 'ok' | 'failed' | 'timeout' | 'skipped'
 
 /** Live search progress: which sources answered, and how many candidates they found so far. */
 export interface LiveProgress {

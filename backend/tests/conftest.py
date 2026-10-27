@@ -29,6 +29,16 @@ def _no_live_search(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LIVE_SEARCH", "0")
 
 
+@pytest.fixture(autouse=True)
+def _no_source_cooldowns() -> Iterator[None]:
+    """Live-source cooldowns are process state: every test starts and ends without any."""
+    from app.live import search
+
+    search.reset_cooldowns()
+    yield
+    search.reset_cooldowns()
+
+
 @pytest.fixture
 def session() -> Iterator[Session]:
     """In-memory SQLite with the schema built by running Alembic migrations."""

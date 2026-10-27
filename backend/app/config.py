@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     LIVE_TIMEOUT_S: float = 20
     LIVE_PER_SOURCE_LIMIT: int = 15
     LIVE_QUERY_COUNT: int = 4
+    # a source answering 401/403/429, or timing out twice in a row, is skipped this long (0: never)
+    LIVE_SOURCE_COOLDOWN_S: float = 900
     EXTENSION_ORIGIN: str | None = None
     PUBLIC_APP_URL: str = "http://localhost:5173"
     JOBS_SYNC: bool = False

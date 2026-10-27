@@ -372,3 +372,22 @@ def test_one_validation_pass_per_run_so_source_crops_are_made_once(
     assert run.status == "completed", run.error_code
     assert calls == [run.progress_json["shortlist_n"]] and calls[0] > 8
     assert len(made) == len(set(made))  # each image/part crop made once per run
+
+
+def test_a_refusing_source_is_skipped_by_the_next_run(world, live) -> None:  # type: ignore[no-untyped-def]
+    import httpx
+
+    req = httpx.Request("GET", "https://openverse.test")
+    refused = httpx.HTTPStatusError("403", request=req, response=httpx.Response(403, request=req))
+    two_sources(live, error=refused)
+    first = make_run(world, world["watch"])
+    assert first.status == "completed", first.error_code
+    assert first.summary_json["live"]["sources"] == {"commons": "ok", "openverse": "failed"}
+    asked = len(live["sources"]["openverse"].queries)
+    second = make_run(world, world["watch"], key="cool-2", protected_keys=["strap_color"])
+    assert second.status == "completed", second.error_code
+    block = second.summary_json["live"]
+    assert block["sources"] == {"commons": "ok", "openverse": "skipped"}
+    assert block["failed"] == []  # cooling down is not a failure of this run
+    assert len(live["sources"]["openverse"].queries) == asked  # not asked again
+    assert not any(r["code"] == "source_failed" for r in second.summary_json.get("shortfall", []))

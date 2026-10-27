@@ -291,7 +291,12 @@ export function sourceName(id: string): string {
   return SOURCE_NAMES[id] ?? id
 }
 
-const SOURCE_STATE: Record<LiveSourceStatus, string> = { ok: 'searched', failed: "didn't respond", timeout: 'timed out' }
+const SOURCE_STATE: Record<LiveSourceStatus, string> = {
+  ok: 'searched',
+  failed: "didn't respond",
+  timeout: 'timed out',
+  skipped: 'skipped (cooling down)',
+}
 
 /** One "Name: state" line per live source, for the "Why only N?" summary. */
 export function sourceStatusLines(live: LiveSummary | undefined): string[] {

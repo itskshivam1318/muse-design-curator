@@ -3,6 +3,9 @@
 Sources x queries fan out on a thread pool under one wall-clock deadline. A source that fails or
 runs out of time is recorded and skipped; what it had already returned is kept. Results are
 de-duplicated, filtered through the same provenance gate as the corpus, and capped.
+
+A source that refuses us (HTTP 401, 403 or 429) or times out twice in a row cools down: for
+LIVE_SOURCE_COOLDOWN_S it is not asked at all and reports status `skipped` (in this process only).
 """
 
 from __future__ import annotations
@@ -26,6 +29,7 @@ from app.corpus.sources.base import ManifestItem, Source
 from app.db.models import CorpusItem
 
 log = logging.getLogger(__name__)
+_clock = time.monotonic  # the cooldown clock (tests replace it)
 
 # Licensed APIs only. Pexels stays disabled; no web or image search engines.
 LIVE_ALLOWED = ("commons", "openverse", "met", "aic", "smithsonian")
@@ -42,7 +46,7 @@ SourceFactory = Callable[[str, str], Source]
 @dataclass
 class SourceStatus:
     name: str
-    status: str = "ok"  # ok | failed | timeout
+    status: str = "ok"  # ok | failed | timeout | skipped (cooling down)
     error_code: str | None = None
     found: int = 0
 
@@ -61,6 +65,50 @@ class LiveItems(list[ManifestItem]):
             for s in self.sources.values()
             if s.status == "failed"
         ]
+
+
+# ---- cooldown ----
+
+COOL_CODES = ("HTTP_401", "HTTP_403", "HTTP_429")
+TIMEOUTS_TO_COOL = 2
+COOLING_DOWN = "COOLING_DOWN"
+
+
+@dataclass
+class _Health:
+    timeouts: int = 0  # timeouts in a row
+    until: float = 0.0  # cooling down until this `_clock()` instant
+
+
+_health: dict[str, _Health] = {}
+_health_lock = threading.Lock()
+
+
+def reset_cooldowns() -> None:
+    with _health_lock:
+        _health.clear()
+
+
+def cooling_down(name: str) -> bool:
+    with _health_lock:
+        h = _health.get(name)
+        return h is not None and _clock() < h.until
+
+
+def _record(st: SourceStatus, cooldown_s: float) -> None:
+    """Update a searched source's health from this search's outcome."""
+    timed_out = st.status == "timeout" or (st.status == "failed" and st.error_code == "TIMEOUT")
+    with _health_lock:
+        h = _health.setdefault(st.name, _Health())
+        h.timeouts = h.timeouts + 1 if timed_out else 0
+        refused = st.status == "failed" and st.error_code in COOL_CODES
+        if cooldown_s > 0 and (refused or h.timeouts >= TIMEOUTS_TO_COOL):
+            h.until = _clock() + cooldown_s
+            h.timeouts = 0
+            log.warning(
+                "live source %s cools down for %.0f s (%s)", st.name, cooldown_s,
+                st.error_code or st.status,
+            )  # fmt: skip
 
 
 def parse_sources(value: str) -> list[str]:
@@ -129,12 +177,19 @@ def search_live(
     source_factory: SourceFactory | None = None,
 ) -> LiveItems:
     """Candidates from every source for every query, de-duplicated, licence-checked, capped."""
-    cap = get_settings().LIVE_MAX_CANDIDATES if max_candidates is None else max_candidates
+    settings = get_settings()
+    cap = settings.LIVE_MAX_CANDIDATES if max_candidates is None else max_candidates
     factory = source_factory or make_source
-    names = [n for n in sources if n in LIVE_ALLOWED] if source_factory is None else list(sources)
+    listed = [n for n in sources if n in LIVE_ALLOWED] if source_factory is None else list(sources)
     result = LiveItems()
-    status = {n: SourceStatus(n) for n in names}
+    status = {n: SourceStatus(n) for n in listed}
     result.sources = status
+    names = []
+    for n in listed:
+        if cooling_down(n):
+            status[n].status, status[n].error_code = "skipped", COOLING_DOWN
+        else:
+            names.append(n)
     if not names or not queries:
         return result
 
@@ -184,6 +239,7 @@ def search_live(
             status[name].status = "failed"
         if failed:
             status[name].error_code = failed[0]
+        _record(status[name], settings.LIVE_SOURCE_COOLDOWN_S)
 
     # de-duplicate within the batch, then against the corpus, then the licence gate
     seen: set[str] = set()

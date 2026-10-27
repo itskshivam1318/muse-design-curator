@@ -180,6 +180,12 @@ describe('live search copy', () => {
     ])
     expect(sourceStatusLines(undefined)).toEqual([])
   })
+  it('lists a cooling-down source as skipped', () => {
+    expect(sourceStatusLines({ queries: [], found: 3, kept: 0, sources: { commons: 'ok', aic: 'skipped' } })).toEqual([
+      'Wikimedia Commons: searched',
+      'the Art Institute of Chicago: skipped (cooling down)',
+    ])
+  })
   it('labels where a candidate came from', () => {
     expect(originLabel({ origin: 'live', source: 'commons' })).toBe('Found live on Wikimedia Commons')
     expect(originLabel({ origin: 'live', source: 'newsite' })).toBe('Found live on newsite')

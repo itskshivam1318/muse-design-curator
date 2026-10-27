@@ -17,7 +17,9 @@ search engines, Pinterest or Instagram. Pexels stays disabled.
    back to deterministic queries built from the lens labels.
 2. `search_live` fans sources x queries out on a thread pool under one `LIVE_TIMEOUT_S` deadline.
    A source that errors or times out is recorded (`failed` / `timeout`) and skipped; what it had
-   already returned is kept. Results are de-duplicated (by id and landing URL, also against the
+   already returned is kept. A source that answers HTTP 401, 403 or 429, or times out in two runs
+   in a row, cools down for `LIVE_SOURCE_COOLDOWN_S` (in process): it is not asked and reports
+   `skipped`. Results are de-duplicated (by id and landing URL, also against the
    corpus), filtered by provenance, and capped at `LIVE_MAX_CANDIDATES` round-robin across sources.
 3. `quick_index` downloads each new image (6 at a time, resized to at most 1280 px), computes
    sha256 / dHash, one SigLIP embedding row and a whole-image palette, and stores a corpus row with
@@ -36,10 +38,12 @@ not fetch or index it again.
 
 ## Surfaces
 
-- `run.progress`: `{stage: 'searching', live: {sources: {name: 'ok'|'failed'|'timeout'}, found}}`.
+- `run.progress`: `{stage: 'searching', live: {sources: {name: 'ok'|'failed'|'timeout'|'skipped'},
+  found}}`.
   With `LIVE_SEARCH=0` the stage stays `retrieving` and nothing live is reported.
 - Run summary: `live: {queries, found, kept, sources, failed}`; the shortfall text names sources
-  that did not answer ("Openverse didn't respond").
+  that did not answer ("Openverse didn't respond"); the source list shows a cooling-down source as
+  "skipped (cooling down)" (it is not counted as failed).
 - Candidate view: `origin: 'corpus' | 'live'` (and `source`).
 - Maybe strip: "Searching Wikimedia Commons, the Met, ... (found 23)", then "Checking 8 of 16";
   candidate cards say "Found live on Wikimedia Commons" or "From your library".
@@ -47,6 +51,7 @@ not fetch or index it again.
 ## Settings
 
 `LIVE_SEARCH` (default on), `LIVE_SOURCES`, `LIVE_MAX_CANDIDATES=40`, `LIVE_TIMEOUT_S=20`,
-`LIVE_PER_SOURCE_LIMIT=15`, `LIVE_QUERY_COUNT=4`. Live calls count against the existing demo run
+`LIVE_PER_SOURCE_LIMIT=15`, `LIVE_QUERY_COUNT=4`, `LIVE_SOURCE_COOLDOWN_S=900` (0 turns the
+cooldown off). Live calls count against the existing demo run
 limits; there are no new ones. Per run: 1 query-writing call, at most 2 verify calls as before,
 SAM only for the parts of shortlisted quick items, and at most 16 deepen jobs.

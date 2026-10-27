@@ -1259,6 +1259,9 @@ button.onboarding-step:hover {
 .source-chip[data-status='timeout'] {
   text-decoration: line-through;
 }
+.source-chip[data-status='skipped'] {
+  opacity: 0.55;
+}
 .source-status {
   margin: 4px 0 8px;
   padding-left: 18px;
