@@ -20,6 +20,7 @@ It never generates or edits images.
 make install        # Python 3.12 + backend deps (incl. the `embed` extra), npm deps; creates .env from .env.example
 # edit .env: MODEL_API_KEY=LLM_... and CONTACT_EMAIL=you@example.com for live mode (see below)
 make seed           # index the committed fixture corpus and create the four demo boards
+                    # (set the three providers to mock first, or it calls the live API)
 make dev            # API on http://localhost:8000, app on http://localhost:5173
 ```
 
@@ -89,6 +90,29 @@ Excluded, and why: **Unsplash** (API mandates hotlinking and routes ML use to a 
 **V&A** (non-commercial only, no local copies beyond four weeks), **Pixabay** (ML-use clause, 24 h
 cache), **Pexels** (ML-use clause; off unless permission is granted), and any **NC/ND** licence.
 Sources are fetched through official APIs or bulk files, never by scraping HTML.
+
+## Real demo corpus (`make demo-data`)
+
+`make demo-data` builds the real-photo demo from official APIs and bulk files (licence filters as
+described above; `CONTACT_EMAIL` goes in the User-Agent), indexes it with the LIVE providers from
+`.env`, and seeds the four demo boards. It is idempotent: manifests de-duplicate by id, indexed items
+are skipped, and every model call is cached, so a re-run costs nothing. Hard caps (checked and printed
+before any model call): at most 1,200 corpus items, 2,400 Muse Spark calls, 6,000 SAM calls. The plan
+(`backend/scripts/demo_data.py`) imports per domain: watch (Commons "wristwatch dial", "chronograph
+watch", "dive watch"; AIC "watch"), fashion (Smithsonian CHNDM, AIC "dress", Commons "streetwear"),
+interior (Met "chair", Rijksmuseum "stoel", Commons "living room interior") and ui (Commons
+"screenshot user interface", "dashboard screenshot"; each file keeps its own Commons licence, ND/NC
+dropped). A source that fails (rate limit, outage, refusal) is skipped and the rest continue. Live
+indexing takes about 40 s per item, so the demo indexes an evenly spaced subset of each manifest
+(`INDEX_LIMIT` in the script; `make index DOMAIN=watch` indexes a whole manifest). The manifests in
+`corpus/manifests/` are provenance only; images live in the gitignored `data/`.
+
+State of the committed demo (2026-10-27): the Commons queries ran (watch 378, fashion 58, interior
+79, ui 140 manifest lines), Smithsonian, AIC (HTTP 403), Met and Rijksmuseum failed from the build
+machine and were skipped, and live indexing was stopped early: watch 80, fashion 40, ui 24 and
+interior 2 items are indexed. The interior board therefore holds just those 2 items and its candidate
+pool is empty until live search (a later task) or `make index DOMAIN=interior` supplies more.
+`backend/scripts/seed.py --no-index` seeds from what is already indexed.
 
 ## Importing real photos
 
@@ -176,9 +200,10 @@ in `frontend/` once.
 - **`shape` kind is experimental** and off by default (`SHAPE_KIND_ENABLED=0`).
 - **In-process jobs.** Parsing and variation runs run on a thread pool inside the API process: a
   restart drops in-flight work (retry from the UI), and the API must run as a single process.
-- **Domain is inferred, not auto-applied.** The board shows the domain its items vote for ("Auto:
-  watch"); the curated lens attaches when you pick that domain. Without a choice, the engine proposes
-  a lens for review instead.
+- **Auto domain needs a clear vote.** An Auto board (no domain set) gets the curated lens by itself
+  once at least 3 items are embedded, the vote is not mixed (runner-up under 40%) and the winning
+  domain has a curated lens; the context bar then reads "Watch" instead of "Auto: watch". A domain you
+  set is never changed. A mixed board stays without a lens and the engine proposes one for review.
 - Choosing a video's key frame needs a mouse (the frame strip appears on hover).
 - With `REASONING_PROVIDER=muse-spark-open`, the Muse Model License requires a "Built with Muse Spark
   Open" notice, which the UI does not show yet.
