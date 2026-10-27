@@ -192,9 +192,16 @@ def explore(
     return e, visible(session, e.id)
 
 
+def resting_status(session: Session, option_id: str) -> str:
+    """An option not dismissed or busy: visualized once it has an image on the board, else open."""
+    return "visualized" if explore_repo.has_generated(session, option_id) else "open"
+
+
 def update_option(session: Session, option_id: str, **fields: Any) -> ExploreOption:
     """Dismiss, restore or move an option; publishes the exploration."""
     require_enabled()
+    if fields.get("status") == "open":
+        fields["status"] = resting_status(session, option_id)
     o = explore_repo.update_option(session, option_id, **fields)
     if o is None:
         raise AppError(404, "OPTION_NOT_FOUND", "Option not found")

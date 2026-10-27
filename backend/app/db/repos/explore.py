@@ -60,6 +60,14 @@ def update_option(session: Session, option_id: str, **fields: Any) -> ExploreOpt
     return o
 
 
+def has_generated(session: Session, option_id: str) -> bool:
+    """True while a generated item made from this option is on the board."""
+    q = select(BoardItem.id).where(
+        BoardItem.explore_option_id == option_id, BoardItem.removed_at.is_(None)
+    )
+    return session.scalar(q.limit(1)) is not None
+
+
 def next_batch(session: Session, exploration_id: str) -> int:
     top = session.scalar(
         select(func.max(ExploreOption.batch)).where(ExploreOption.exploration_id == exploration_id)

@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from app.api.boards import require_board
 from app.api.deps import SessionDep
 from app.db.repos import explore as explore_repo
-from app.explore import service
+from app.explore import service, visualize
 
 router = APIRouter(prefix="/api")
 
@@ -48,3 +48,9 @@ def board_explorations(board_id: str, session: SessionDep) -> dict[str, Any]:
 def patch_option(option_id: str, body: OptionPatch, session: SessionDep) -> dict[str, Any]:
     fields = body.model_dump(exclude_unset=True, exclude_none=True)
     return explore_repo.option_to_dict(service.update_option(session, option_id, **fields))
+
+
+@router.post("/options/{option_id}/visualize", status_code=202)
+def visualize_option(option_id: str, session: SessionDep) -> dict[str, Any]:
+    visualize.request_visualize(session, option_id)
+    return {"option_id": option_id, "status": "visualizing"}
