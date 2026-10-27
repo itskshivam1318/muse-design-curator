@@ -49,8 +49,8 @@ class Board(Base):
 
 
 ITEM_KINDS = ("image", "video", "link")
-ORIGINS = ("upload", "drop", "paste", "link", "extension", "candidate", "seed")
-RIGHTS = ("user_supplied", "licensed")
+ORIGINS = ("upload", "drop", "paste", "link", "extension", "candidate", "seed", "generated")
+RIGHTS = ("user_supplied", "licensed", "generated")
 PARSE_STATUS = ("pending", "pending_lens", "processing", "completed", "failed")
 ROLES = ("reference", "counter_example")
 
@@ -132,6 +132,9 @@ class BoardItem(Base):
     embedder_id: Mapped[str | None] = mapped_column(String)
     palette_json: Mapped[Any] = _json()
     removed_at: Mapped[str | None] = mapped_column(String)
+    explore_option_id: Mapped[str | None] = mapped_column(ForeignKey("explore_options.id"))
+    generation_json: Mapped[Any] = _json()
+    check_json: Mapped[Any] = _json()
     created_at: Mapped[str] = _created()
     __table_args__ = (
         CheckConstraint(_in("kind", ITEM_KINDS), name="ck_item_kind"),
@@ -151,6 +154,40 @@ class BoardItem(Base):
             sqlite_where=text("removed_at IS NULL AND sha256 IS NOT NULL"),
         ),
     )
+
+
+OPTION_STATUS = ("open", "dismissed", "visualizing", "visualized")
+
+
+class Exploration(Base):
+    __tablename__ = "explorations"
+    id: Mapped[str] = _id("exploration")
+    board_id: Mapped[str] = mapped_column(ForeignKey("boards.id"), index=True)
+    item_id: Mapped[str] = mapped_column(ForeignKey("board_items.id"))
+    key: Mapped[str] = mapped_column(String)
+    created_at: Mapped[str] = _created()
+    __table_args__ = (UniqueConstraint("item_id", "key"),)
+
+
+class ExploreOption(Base):
+    __tablename__ = "explore_options"
+    id: Mapped[str] = _id("option")
+    exploration_id: Mapped[str] = mapped_column(ForeignKey("explorations.id"), index=True)
+    parent_option_id: Mapped[str | None] = mapped_column(ForeignKey("explore_options.id"))
+    batch: Mapped[int] = mapped_column(Integer, default=1)
+    steer: Mapped[str | None] = mapped_column(String)
+    name: Mapped[str] = mapped_column(String)
+    description: Mapped[str] = mapped_column(String, default="")
+    distance: Mapped[str] = mapped_column(String, default="")
+    value_json: Mapped[Any] = _json()
+    keeps_json: Mapped[Any] = _json()
+    edit_prompt: Mapped[str] = mapped_column(String, default="")
+    status: Mapped[str] = mapped_column(String, default="open")
+    last_error: Mapped[str | None] = mapped_column(String)
+    x: Mapped[float | None] = mapped_column(Float)
+    y: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[str] = _created()
+    __table_args__ = (CheckConstraint(_in("status", OPTION_STATUS), name="ck_option_status"),)
 
 
 class ItemFrame(Base):
