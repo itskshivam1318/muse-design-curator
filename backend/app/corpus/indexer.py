@@ -225,8 +225,7 @@ def index_corpus(
             local = files.save_original(data, sha, ext)
             files.save_thumb(thumb_src, sha)
             vector = embedder.embed_images([data])[0]
-            with session.begin_nested():
-                store_attributes(session, item.id, domain, data, sha)
+            store_attributes(session, item.id, domain, data, sha)  # commits each new mask row
             session.commit()  # attributes are saved; nothing is pending when the lock is taken
             with EMBEDDINGS_LOCK:  # live quick-indexing hands out rows from the same matrix
                 try:
@@ -247,6 +246,7 @@ def index_corpus(
             report.indexed += 1
         except Exception as exc:  # noqa: BLE001 - one bad item must not stop the run
             log.warning("indexing %s failed: %s", item.id, exc)
+            session.rollback()  # partial attributes go; the item row was committed above
             corpus_repo.update(session, item.id, indexing_status="failed")
             report.failed += 1
             report.reasons[item.id] = type(exc).__name__ if not str(exc) else str(exc)

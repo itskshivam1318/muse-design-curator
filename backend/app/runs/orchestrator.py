@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 from functools import partial
 from typing import Any
 
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app import events, jobs
@@ -176,6 +177,20 @@ def _progress(session: Session, run: VariationRun, stage: str, **extra: Any) -> 
     after_commit(session, partial(events.publish, run.board_id, "run.progress", payload))
 
 
+def _report(session: Session, run: VariationRun, stage: str, **extra: Any) -> None:
+    """A progress-only update, best-effort. Pending work is committed first and that must not be
+    lost; the progress write itself may lose a lock race, which is logged and never fails a run.
+    """
+    session.commit()
+    run_id = run.id
+    try:
+        _progress(session, run, stage, **extra)
+        session.commit()
+    except OperationalError as exc:
+        session.rollback()
+        log.warning("run %s: %s progress update skipped (%s)", run_id, stage, exc.orig or exc)
+
+
 def _scores(c: Candidate) -> dict[str, float]:
     return {k: float(v) for k, v in asdict(c.scores).items()}
 
@@ -246,13 +261,12 @@ def _run(session: Session, run: VariationRun) -> None:
     domain = board.domain or ""
     run.status = "retrieving"
     if live_sources:
-        _progress(
+        _report(
             session, run, "searching",
             live={"sources": {}, "searching": live_sources, "found": 0, "queries": []},
         )  # fmt: skip
     else:
-        _progress(session, run, "retrieving")
-    session.commit()
+        _report(session, run, "retrieving")
     profile = profiles_repo.latest(session, board.id)
     centroid = (profile.profile_json or {}).get("centroid") if profile else None
     live_ids: set[str] = set()
@@ -279,20 +293,18 @@ def _run(session: Session, run: VariationRun) -> None:
         try:
             found = live_fut.result(timeout=max(1.0, live_deadline - time.monotonic()))
             names_now = {n: st.status for n, st in found.sources.items()}
-            _progress(
+            _report(
                 session, run, "searching",
                 live={"sources": names_now, "found": len(found), "downloaded": 0,
                       "queries": live_queries_used},
             )  # fmt: skip
-            session.commit()
 
             def landed(n: int) -> None:
-                _progress(
+                _report(
                     session, run, "searching",
                     live={"sources": names_now, "found": len(found), "downloaded": n,
                           "queries": live_queries_used},
                 )  # fmt: skip
-                session.commit()
 
             qreport: dict[str, int] = {}
             new_rows = (
@@ -368,8 +380,7 @@ def _run(session: Session, run: VariationRun) -> None:
                     attribute_key=ck.attribute_key, verdict=ck.verdict, reason=ck.reason,
                     evidence_json=ck.evidence, validator_version=run.validator_version,
                 )  # fmt: skip
-        _progress(session, run, "validating", validated_n=len(done))
-        session.commit()
+        _report(session, run, "validating", validated_n=len(done))
 
     # selecting
     ok = [c for c in top if done[c.pool.item.id].overall == "validated"]

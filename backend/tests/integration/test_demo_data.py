@@ -6,9 +6,11 @@ from typing import Any
 
 import httpx
 import pytest
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.corpus import indexer
+from app.db.models import PartMask
 
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 FIXTURE_MANIFEST = Path(__file__).resolve().parents[1] / "fixtures" / "corpus" / "manifest.jsonl"
@@ -40,8 +42,11 @@ def test_indexer_commits_every_batch(session: Session, data_dir: Path, monkeypat
     processed = report.indexed + report.failed
     # an indexed item commits three times (before slow work, attributes, row + embedding under the
     # lock); a failed one once (before slow work); every 2nd processed item adds a batch checkpoint,
-    # plus the final one. Skipped and invalid items commit only through those checkpoints.
-    assert len(commits) == 3 * report.indexed + report.failed + processed // 2 + 1
+    # plus the final one. Skipped and invalid items commit only through those checkpoints. Each
+    # newly cached SAM mask row commits on its own (no write transaction across the next SAM call).
+    masks = session.scalar(select(func.count()).select_from(PartMask))
+    assert masks
+    assert len(commits) == 3 * report.indexed + report.failed + processed // 2 + 1 + masks
 
 
 def test_client_uses_the_hard_timeout(session: Session, data_dir: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]

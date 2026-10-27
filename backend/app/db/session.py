@@ -12,6 +12,7 @@ from alembic import command
 from app.config import Settings, resolve_repo_path
 
 log = logging.getLogger(__name__)
+BUSY_TIMEOUT_MS = 15000  # a writer waits this long for another connection's write lock
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 
 
@@ -34,6 +35,7 @@ def make_engine(url: str, **kwargs: Any) -> Engine:
             cur = dbapi_conn.cursor()
             cur.execute("PRAGMA foreign_keys=ON")
             cur.execute("PRAGMA journal_mode=WAL")
+            cur.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
             cur.close()
 
     return engine

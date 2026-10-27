@@ -432,6 +432,7 @@ def _measure_quick(
             measured_json=rec.measured,
         )  # fmt: skip
         c.pool.attrs[rec.key] = AttrValue.from_row(row)
+    session.commit()  # short write: nothing stays pending across the next SAM or verify call
 
 
 # ---- verify ----

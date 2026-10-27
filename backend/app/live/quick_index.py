@@ -218,8 +218,8 @@ def deepen(session: Session, corpus_item_id: str) -> bool:
     path = files.abs_path(row.local_path)
     if not path.is_file():
         return False
-    with session.begin_nested():
-        store_attributes(session, row.id, row.domain, path.read_bytes(), row.sha256)
+    session.commit()  # nothing pending while SAM and the model run (mask rows commit one by one)
+    store_attributes(session, row.id, row.domain, path.read_bytes(), row.sha256)
     corpus_repo.update(session, row.id, index_depth="full")
     session.commit()
     return True

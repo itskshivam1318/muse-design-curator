@@ -119,13 +119,18 @@ def _fit(mask: np.ndarray, height: int, width: int) -> np.ndarray:
 def _part_mask(
     session: Session, seg: Any, image: bytes, sha: str, prompt: str, size: tuple[int, int]
 ) -> tuple[np.ndarray | None, tuple[float, float, float, float] | None]:
-    """(mask, normalised bbox) for a SAM part, cached by (image sha, prompt). None if absent."""
+    """(mask, normalised bbox) for a SAM part, cached by (image sha, prompt). None if absent.
+
+    A newly cached mask row is committed at once (with whatever the caller had pending), so no
+    write transaction stays open across the next SAM or model call.
+    """
     height, width = size
     row = masks_repo.get(session, sha, prompt)
     if row is None:
         res = seg.localize(image, sha, prompt)
         if not res.found or not res.instances:
             masks_repo.save(session, sha, prompt, found=False, provider=seg.id)
+            session.commit()
             return None, None
         best = max(res.instances, key=lambda i: i.score if i.score is not None else 0.0)
         rel = _mask_rel(sha, prompt)
@@ -136,6 +141,7 @@ def _part_mask(
             session, sha, prompt, found=True, bbox_json=list(best.bbox), mask_path=rel,
             score=best.score, provider=seg.id,
         )  # fmt: skip
+        session.commit()
     if not row.found or not row.mask_path:
         return None, None
     path = files.abs_path(row.mask_path)
