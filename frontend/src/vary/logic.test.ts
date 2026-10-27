@@ -8,8 +8,11 @@ import {
   modesFor,
   nudgeTarget,
   orderProtected,
+  originLabel,
   preflightSentence,
+  progressText,
   shortfallText,
+  sourceStatusLines,
   sortTargets,
 } from './logic'
 
@@ -134,5 +137,35 @@ describe('compare', () => {
     expect(rows.map((r) => r.key)).toEqual(['a', 'c'])
     expect(rows[0].values).toEqual(['x', 'y', 'x'])
     expect(rows[1].values).toEqual([3, 3, null])
+  })
+})
+
+describe('live search copy', () => {
+  it('names the sources being searched and the running count', () => {
+    const live = { sources: {}, searching: ['commons', 'met', 'aic'], found: 23 }
+    expect(progressText('searching', 0, 0, live)).toBe('Searching Wikimedia Commons, the Met, … (found 23)')
+    expect(progressText('searching', 0, 0, { sources: {}, searching: ['commons'], found: 0 })).toBe('Searching Wikimedia Commons')
+    expect(progressText('searching', 0, 0, { sources: { openverse: 'ok', met: 'failed' }, found: 5 })).toBe(
+      'Searching Openverse, the Met (found 5)',
+    )
+    expect(progressText('searching')).toBe('Searching')
+  })
+  it('keeps the old copy when live search is off, then counts checks', () => {
+    expect(progressText('retrieving')).toBe('Finding candidates')
+    expect(progressText('validating', 8, 16, { sources: { commons: 'ok' }, found: 23 })).toBe('Checking 8 of 16')
+  })
+  it('lists each source with its status', () => {
+    expect(sourceStatusLines({ queries: [], found: 12, kept: 2, sources: { commons: 'ok', openverse: 'failed', met: 'timeout' } })).toEqual([
+      'Wikimedia Commons: searched',
+      "Openverse: didn't respond",
+      'the Met: timed out',
+    ])
+    expect(sourceStatusLines(undefined)).toEqual([])
+  })
+  it('labels where a candidate came from', () => {
+    expect(originLabel({ origin: 'live', source: 'commons' })).toBe('Found live on Wikimedia Commons')
+    expect(originLabel({ origin: 'live', source: 'newsite' })).toBe('Found live on newsite')
+    expect(originLabel({ origin: 'corpus', source: 'commons' })).toBe('From your library')
+    expect(originLabel({})).toBe('From your library')
   })
 })

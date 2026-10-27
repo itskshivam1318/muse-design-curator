@@ -34,6 +34,28 @@ function setup(onKept = vi.fn(), provenance?: Partial<ReturnType<typeof cand>['p
   return { qc, onKept, onClose }
 }
 
+function originOf(over: Partial<ReturnType<typeof cand>>) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
+  qc.setQueryData(keys.items('b1'), [source])
+  qc.setQueryData(keys.attributes('i1'), makeAttrs())
+  render(
+    <QueryClientProvider client={qc}>
+      <CandidatePopover boardId="b1" runId="r1" candidate={cand('c1', 'validated', over)} sourceItemId="i1" targetKey="dial_color" onClose={vi.fn()} />
+    </QueryClientProvider>,
+  )
+}
+
+describe('CandidatePopover origin', () => {
+  it('says where a live find came from', () => {
+    originOf({ origin: 'live', source: 'openverse' })
+    expect(screen.getByText('Found live on Openverse')).toBeTruthy()
+  })
+  it('says a corpus candidate is from the library', () => {
+    originOf({ origin: 'corpus' })
+    expect(screen.getByText('From your library')).toBeTruthy()
+  })
+})
+
 describe('CandidatePopover', () => {
   it('shows credit, source link, target change and checks with per-kind visuals', () => {
     setup()

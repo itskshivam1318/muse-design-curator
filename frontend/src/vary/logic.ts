@@ -6,6 +6,9 @@ import type {
   BoardProfile,
   CandidateState,
   ItemAttribute,
+  LiveProgress,
+  LiveSourceStatus,
+  LiveSummary,
   RunSummary,
   VaryMode,
 } from '../api'
@@ -225,8 +228,39 @@ export function shortfallText(summary: RunSummary | null | undefined, size = RES
   }
 }
 
-export function progressText(stage: string | undefined, validated = 0, shortlist = 0): string {
+export const SOURCE_NAMES: Record<string, string> = {
+  commons: 'Wikimedia Commons',
+  openverse: 'Openverse',
+  met: 'the Met',
+  aic: 'the Art Institute of Chicago',
+  smithsonian: 'the Smithsonian',
+}
+
+export function sourceName(id: string): string {
+  return SOURCE_NAMES[id] ?? id
+}
+
+const SOURCE_STATE: Record<LiveSourceStatus, string> = { ok: 'searched', failed: "didn't respond", timeout: 'timed out' }
+
+/** One "Name: state" line per live source, for the "Why only N?" summary. */
+export function sourceStatusLines(live: LiveSummary | undefined): string[] {
+  return Object.entries(live?.sources ?? {}).map(([id, st]) => `${sourceName(id)}: ${SOURCE_STATE[st] ?? st}`)
+}
+
+export function originLabel(c: { origin?: 'corpus' | 'live'; source?: string }): string {
+  return c.origin === 'live' && c.source ? `Found live on ${sourceName(c.source)}` : 'From your library'
+}
+
+export function progressText(stage: string | undefined, validated = 0, shortlist = 0, live?: LiveProgress): string {
   switch (stage) {
+    case 'searching': {
+      const ids = live?.searching?.length ? live.searching : Object.keys(live?.sources ?? {})
+      if (ids.length === 0) return 'Searching'
+      const names = ids.slice(0, 2).map(sourceName).join(', ')
+      const more = ids.length > 2 ? ', …' : ''
+      const found = live?.found ? ` (found ${live.found})` : ''
+      return `Searching ${names}${more}${found}`
+    }
     case 'validating':
       return shortlist ? `Checking ${validated} of ${shortlist}` : 'Checking candidates'
     case 'retrieving':

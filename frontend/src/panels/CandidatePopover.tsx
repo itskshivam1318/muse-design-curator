@@ -13,7 +13,7 @@ import {
 import { upsertItems } from '../events'
 import { safeExternalUrl } from '../format'
 import { useAttributes } from '../queries'
-import { colorHex, formatValue, NOTE_MAX, numberBounds, REJECT_REASON_LABELS, scaleOf, verdictMark } from '../vary/logic'
+import { colorHex, formatValue, NOTE_MAX, numberBounds, originLabel, REJECT_REASON_LABELS, scaleOf, verdictMark } from '../vary/logic'
 import { idempotencyKey } from '../vary/startRun'
 import { useDialog } from '../ui/useDialog'
 import { ScaleView, Swatch, ValueText } from './AttrBits'
@@ -101,6 +101,10 @@ export function CandidatePopover({ boardId, runId, candidate: c, sourceItemId, t
             </a>
           </>
         )}
+      </p>
+
+      <p className="origin small muted" data-origin={c.origin}>
+        {originLabel(c)}
       </p>
 
       <p className="target-change">

@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { type CandidateView, corpusImageUrl, type Item } from '../api'
+import { type CandidateView, corpusImageUrl, type Item, type LiveSummary } from '../api'
 import { useRun } from '../queries'
-import { barState, progressText, runFailureText, shortfallText } from '../vary/logic'
+import { barState, progressText, runFailureText, shortfallText, sourceName, sourceStatusLines } from '../vary/logic'
 import { runStore, useRunState } from '../vary/runStore'
 import { startRun } from '../vary/startRun'
 import { useDialog } from '../ui/useDialog'
@@ -30,6 +30,7 @@ export function MaybeStrip({ boardId, streamOpen, onKept }: Props) {
   const review = data?.needs_review ?? []
   const short = shortfallText(data?.summary)
   const all = [...results, ...review]
+  const liveSources = Object.entries(data?.summary?.live?.sources ?? data?.progress?.live?.sources ?? {})
   const open = all.find((c) => c.id === openCandidate) ?? null
   const label = (c: CandidateView, i: number) =>
     `Candidate ${i + 1}, ${c.state === 'validated' ? 'validated' : 'needs review'}${c.decision ? `, ${c.decision.decision === 'keep' ? 'kept' : 'rejected'}` : ''}`
@@ -51,6 +52,7 @@ export function MaybeStrip({ boardId, streamOpen, onKept }: Props) {
       aria-label={label(c, i)}
       aria-expanded={openCandidate === c.id}
       data-decided={c.decision?.decision}
+      data-origin={c.origin}
       onClick={() => runStore.open(openCandidate === c.id ? null : c.id)}
     >
       <img src={corpusImageUrl(c.corpus_item_id)} alt="" draggable={false} />
@@ -69,8 +71,17 @@ export function MaybeStrip({ boardId, streamOpen, onKept }: Props) {
               ? 'Failed'
               : done
                 ? `${short.headline}${review.length ? ` ${review.length} to review.` : ''}`
-                : progressText(data?.progress?.stage ?? 'queued', data?.progress?.validated_n, data?.progress?.shortlist_n)}
+                : progressText(data?.progress?.stage ?? 'queued', data?.progress?.validated_n, data?.progress?.shortlist_n, data?.progress?.live)}
         </span>
+        {liveSources.length > 0 && (
+          <span className="source-chips" role="group" aria-label="Live sources">
+            {liveSources.map(([id, st]) => (
+              <span key={id} className="source-chip" data-status={st}>
+                {sourceName(id)}
+              </span>
+            ))}
+          </span>
+        )}
         {done && short.link && all.length > 0 && (
           <button type="button" className="link-btn" aria-expanded={why} onClick={() => setWhy((w) => !w)}>
             {short.link}
@@ -104,7 +115,7 @@ export function MaybeStrip({ boardId, streamOpen, onKept }: Props) {
         </div>
       )}
 
-      {why && <ShortfallDialog headline={short.headline} lines={short.lines} onClose={() => setWhy(false)} />}
+      {why && <ShortfallDialog headline={short.headline} lines={short.lines} live={data?.summary?.live} onClose={() => setWhy(false)} />}
 
       {open && data && (
         <CandidatePopover
@@ -122,7 +133,7 @@ export function MaybeStrip({ boardId, streamOpen, onKept }: Props) {
   )
 }
 
-function ShortfallDialog({ headline, lines, onClose }: { headline: string; lines: string[]; onClose: () => void }) {
+function ShortfallDialog({ headline, lines, live, onClose }: { headline: string; lines: string[]; live?: LiveSummary; onClose: () => void }) {
   const dialog = useDialog<HTMLDivElement>(onClose)
   return (
     <div className="shortfall" aria-label="Why fewer results" {...dialog}>
@@ -134,6 +145,18 @@ function ShortfallDialog({ headline, lines, onClose }: { headline: string; lines
           <li key={l}>{l}</li>
         ))}
       </ul>
+      {live && (
+        <>
+          <p className="small muted">{`Found ${live.found} live, ${live.kept} kept.`}</p>
+          <ul className="source-status" aria-label="Live sources">
+            {sourceStatusLines(live).map((l) => (
+              <li key={l} className="small">
+                {l}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       <button type="button" className="btn-quiet small" data-autofocus onClick={onClose}>
         Close
       </button>

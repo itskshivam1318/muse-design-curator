@@ -4,7 +4,7 @@ export function cand(id: string, state: CandidateView['state'], over: Partial<Ca
   return {
     id, corpus_item_id: `cx_${id}`, image_url: `/api/corpus/cx_${id}/image`, width: 400, height: 500,
     provenance: { credit: 'Photo by A', landing_url: 'https://example.org/p', license_code: 'CC-BY-4.0', creator_name: 'A' },
-    state, rank: state === 'validated' ? 1 : null, scores: null, checks: [], observed_target_value: 'navy',
+    origin: 'corpus', source: 'commons', state, rank: state === 'validated' ? 1 : null, scores: null, checks: [], observed_target_value: 'navy',
     decision: null, decisions: [], ...over,
   }
 }
