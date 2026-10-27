@@ -14,6 +14,7 @@ const mockBackendEnv: Record<string, string> = {
   MODEL_API_KEY: '',
   BASETEN_API_KEY: '',
   PEXELS_ENABLED: '0',
+  LIVE_SEARCH: '0', // the offline suite never calls a licensed source
   JOBS_SYNC: '0',
   DATA_DIR: './data/e2e',
   DATABASE_URL: 'sqlite:///./data/e2e/dle.sqlite',

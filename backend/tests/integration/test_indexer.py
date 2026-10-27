@@ -11,8 +11,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import jobs
-from app.corpus import hashing
 from app.config import get_settings
+from app.corpus import hashing
 from app.corpus import indexer as indexer_module
 from app.corpus.indexer import embeddings_path, index_corpus
 from app.db.models import Board, BoardItem, CorpusAttribute, CorpusItem
