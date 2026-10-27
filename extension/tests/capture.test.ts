@@ -78,6 +78,14 @@ describe('popup', () => {
     expect(root.textContent).toContain('Enter the 6-digit code shown in the app')
     expect(root.querySelector('button#add-page')).toBeNull()
   })
+  it('pairing screen shows the configured apiBase and the host_permissions note', () => {
+    renderPopup(root, { ...DEFAULTS, apiBase: 'http://localhost:8000', token: null }, { boards: [], status: null }, {} as never)
+    const note = root.querySelector('#api-note')
+    expect(note?.textContent).toContain('http://localhost:8000')
+    expect(note?.textContent).toContain(
+      'This build talks to http://localhost:8000. To use another address, edit manifest.json host_permissions.',
+    )
+  })
   it('paired extension shows Add this page', () => {
     renderPopup(root, { ...DEFAULTS, token: 't' }, { boards: [{ id: 'b', title: 'Mood', updated_at: '' }], status: null }, {} as never)
     expect(root.textContent).toContain('Add this page')
