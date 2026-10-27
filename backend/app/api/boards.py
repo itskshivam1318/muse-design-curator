@@ -50,7 +50,7 @@ def patch_board(board_id: str, body: BoardPatch, session: SessionDep) -> dict[st
     assert board is not None
     if fields.get("domain"):
         # choosing a curated domain attaches its lens now and releases items waiting for one
-        lens_service.ensure_board_lens(session, board_id)
+        lens_service.ensure_board_lens(session, board_id, prune=False)  # pruned by its parse jobs
     return board_to_dict(board)
 
 

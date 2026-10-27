@@ -1,10 +1,16 @@
-"""Board-driven lens selection: curated when the domain is known, else proposed then confirmed."""
+"""Board-driven lens selection: curated when the domain is known, else proposed then confirmed.
 
+Both kinds are pruned per board: a SAM part found in under half of up to 10 board images falls back
+to whole-image grounding in that board's lens version (noted in `lens.notes`).
+"""
+
+import io
 import logging
 from functools import partial
 from typing import Any
 
 import numpy as np
+from PIL import Image
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -17,10 +23,12 @@ from app.db.models import Board, BoardItem, Lens
 from app.db.repos import boards as boards_repo
 from app.db.repos import items as items_repo
 from app.db.repos import lenses as lenses_repo
+from app.db.repos import masks as masks_repo
 from app.db.session import after_commit
 from app.domain.lens import LensSpec, load_curated_lens, validate_lens
 from app.errors import AppError
 from app.providers import get_reasoning, get_segmentation
+from app.providers.reliability import ModelError
 from app.storage import files
 
 log = logging.getLogger(__name__)
@@ -29,6 +37,8 @@ MIN_ITEMS = 5
 MAX_SAMPLE = 20
 MAX_PRUNE_IMAGES = 10
 MIN_PART_HIT_RATE = 0.5
+MIN_PRUNE_IMAGES = MIN_ITEMS  # a curated lens is judged on at least this many board images
+CHECKED_NOTE = "Parts checked against"
 FALLBACK_DOMAIN = "custom"
 LENS_ITEM_STATUSES = ("completed", "pending_lens")
 
@@ -73,22 +83,30 @@ def board_lens_row(session: Session, board: Board) -> Lens | None:
     return session.scalars(q).first()
 
 
-def ensure_board_lens(session: Session, board_id: str) -> LensSpec | None:
+def ensure_board_lens(session: Session, board_id: str, *, prune: bool = True) -> LensSpec | None:
+    """The board's lens, attaching the curated one for its domain (or proposing one) if needed.
+
+    A curated lens is pruned on the board's images when it is attached; with fewer than
+    MIN_PRUNE_IMAGES images (or `prune=False`, for request handlers) it is attached as shipped and
+    pruned by a later call, once. Pruning runs SAM through the mask cache the items' parsing uses.
+    """
     board = _require_board(session, board_id)
     if board.lens_id:
         row = lenses_repo.get(session, board.lens_id)
         if row is not None:
-            return LensSpec.model_validate(row.spec_json)
+            spec = LensSpec.model_validate(row.spec_json)
+            if prune and row.origin == "curated" and _needs_check(spec):
+                pruned = _prune_curated(session, board, spec)
+                if pruned is not None:
+                    return _attach_curated(session, board, pruned, current=row.id)
+            return spec
     if board.domain:
         curated = curated_lens(board.domain)
         if curated is not None:
-            row = lenses_repo.save(
-                session, board.id, board.domain, "curated",
-                curated.model_dump(mode="json"), status="confirmed",
-            )  # fmt: skip
-            board.lens_id = row.id
-            _release_pending(session, board.id)
-            return curated
+            spec = curated
+            if prune and _needs_check(curated):
+                spec = _prune_curated(session, board, curated) or curated
+            return _attach_curated(session, board, spec, current=None)
     if lenses_repo.latest(session, board.id, _domain_key(board)) is not None:
         return None  # already proposed, awaiting confirmation
     eligible = _eligible(session, board.id)
@@ -158,7 +176,22 @@ def _image_bytes(item: BoardItem) -> bytes | None:
     return path.read_bytes() if path.is_file() else None
 
 
-def prune_parts(lens: LensSpec, images: list[bytes]) -> LensSpec:
+def _found(session: Session | None, seg: Any, image: bytes, sha: str, prompt: str) -> bool:
+    """Whether SAM finds the part; with a session, through the (image sha, prompt) mask cache."""
+    if session is None:
+        return bool(seg.localize(image, sha, prompt).found)
+    from app.extraction.service import _part_mask  # the extraction service imports this module
+
+    row = masks_repo.get(session, sha, prompt)
+    if row is None:
+        with Image.open(io.BytesIO(image)) as im:
+            width, height = im.size
+        _part_mask(session, seg, image, sha, prompt, (height, width))  # commits the new row
+        row = masks_repo.get(session, sha, prompt)
+    return bool(row is not None and row.found)
+
+
+def prune_parts(lens: LensSpec, images: list[bytes], session: Session | None = None) -> LensSpec:
     """Parts SAM finds in under half the sample images fall back to whole-image grounding."""
     sample = images[:MAX_PRUNE_IMAGES]
     if not sample or not lens.parts:
@@ -168,8 +201,11 @@ def prune_parts(lens: LensSpec, images: list[bytes]) -> LensSpec:
     parts = []
     notes = list(lens.notes)
     for part in lens.parts:
-        hits = sum(seg.localize(b, s, part.sam_prompt).found for b, s in zip(sample, shas))
-        if part.grounding == "sam" and hits / len(sample) < MIN_PART_HIT_RATE:
+        if part.grounding != "sam":
+            parts.append(part)
+            continue
+        hits = sum(_found(session, seg, b, s, part.sam_prompt) for b, s in zip(sample, shas))
+        if hits / len(sample) < MIN_PART_HIT_RATE:
             parts.append(part.model_copy(update={"grounding": "whole_image"}))
             notes.append(
                 f"Part {part.id} was found in {hits} of {len(sample)} sample images; "
@@ -178,6 +214,52 @@ def prune_parts(lens: LensSpec, images: list[bytes]) -> LensSpec:
         else:
             parts.append(part)
     return lens.model_copy(update={"parts": parts, "notes": notes})
+
+
+def _needs_check(spec: LensSpec) -> bool:
+    return any(p.grounding == "sam" for p in spec.parts) and not any(
+        n.startswith(CHECKED_NOTE) for n in spec.notes
+    )
+
+
+def _board_images(session: Session, board_id: str) -> list[bytes]:
+    sampled = sample_diverse(items_repo.list_active(session, board_id), MAX_PRUNE_IMAGES)
+    return [b for b in (_image_bytes(i) for i in sampled) if b is not None]
+
+
+def _prune_curated(session: Session, board: Board, spec: LensSpec) -> LensSpec | None:
+    """The curated lens pruned on this board's images; None when there are too few to judge yet
+    (or SAM failed: a later call tries again)."""
+    images = _board_images(session, board.id)
+    if len(images) < MIN_PRUNE_IMAGES:
+        return None
+    try:
+        pruned = prune_parts(spec, images, session=session)
+    except ModelError as exc:
+        log.warning("pruning the curated lens of board %s failed: %s", board.id, exc.code)
+        return None
+    note = f"{CHECKED_NOTE} {len(images)} board images."
+    return pruned.model_copy(update={"notes": [*pruned.notes, note]})
+
+
+def _attach_curated(
+    session: Session, board: Board, spec: LensSpec, *, current: str | None
+) -> LensSpec:
+    """Save `spec` as the board's next curated lens version, unless another worker attached a
+    lens while this one was pruning (pruning commits mask rows and can take a while)."""
+    now = session.scalar(select(Board.lens_id).where(Board.id == board.id))
+    if now is not None and now != current:
+        row = lenses_repo.get(session, now)
+        if row is not None:
+            board.lens_id = now
+            return LensSpec.model_validate(row.spec_json)
+    row = lenses_repo.save(
+        session, board.id, spec.domain, "curated", spec.model_dump(mode="json"),
+        status="confirmed",
+    )  # fmt: skip
+    board.lens_id = row.id
+    _release_pending(session, board.id)
+    return spec
 
 
 def propose_lens(session: Session, board_id: str) -> LensSpec:

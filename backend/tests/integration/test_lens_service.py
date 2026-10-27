@@ -416,3 +416,101 @@ def test_lens_side_effects_wait_for_commit_and_skip_on_rollback(
     assert rec == []
     session.commit()
     assert rec.count("publish") == 1 and rec.count("enqueue") == len(items)
+
+
+class CountingSeg:
+    """Finds every part, except `rare` which it finds only in the first `rare_hits` images."""
+
+    id = "count"
+    is_mock = True
+
+    def __init__(self, rare: str = "bezel", rare_hits: int = 0) -> None:
+        self.mock, self.rare, self.rare_hits = MockSegmentationProvider(), rare, rare_hits
+        self.calls: list[tuple[str, str]] = []
+        self.order: dict[str, int] = {}
+
+    def localize(self, image: bytes, sha256: str, noun: str) -> SegResult:
+        self.calls.append((sha256, noun))
+        idx = self.order.setdefault(sha256, len(self.order))
+        if noun == self.rare and idx >= self.rare_hits:
+            return SegResult()
+        return self.mock.localize(image, sha256, noun)
+
+
+def _parts(spec: LensSpec) -> dict[str, str]:
+    return {p.id: p.grounding for p in spec.parts}
+
+
+def test_curated_lens_parts_pruned_per_board_on_first_attach(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seg = CountingSeg("bezel", rare_hits=2)  # bezel found in 2 of 6 images
+    monkeypatch.setattr(lens_service, "get_segmentation", lambda _s: seg)
+    board, _ = make_board(session, 6, domain="watch")
+    spec = lens_service.ensure_board_lens(session, board.id)
+    assert spec is not None and spec.origin == "curated"
+    curated = lens_service.curated_lens("watch")
+    assert curated is not None and _parts(curated)["bezel"] == "sam"  # the shipped lens untouched
+    assert _parts(spec)["bezel"] == "whole_image"
+    assert {k: v for k, v in _parts(spec).items() if k != "bezel"} == {
+        p.id: "sam" for p in curated.parts if p.id != "bezel"
+    }
+    assert any("bezel" in n and "2 of 6" in n for n in spec.notes)
+    row = lenses_repo.get(session, board.lens_id)
+    assert row is not None and row.origin == "curated" and row.status == "confirmed"
+    assert LensSpec.model_validate(row.spec_json) == spec
+    assert len(seg.calls) == 6 * len(curated.parts)
+    # the masks are cached for the items' own parsing; attaching again does no SAM work
+    assert lens_service.ensure_board_lens(session, board.id) == spec
+    assert len(seg.calls) == 6 * len(curated.parts)
+
+
+def test_curated_prune_samples_at_most_10_board_items(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seg = CountingSeg()
+    monkeypatch.setattr(lens_service, "get_segmentation", lambda _s: seg)
+    board, _ = make_board(session, 14, domain="watch")
+    spec = lens_service.ensure_board_lens(session, board.id)
+    assert spec is not None
+    assert len({sha for sha, _ in seg.calls}) == 10
+    assert _parts(spec)["bezel"] == "whole_image"  # never found
+    assert all(g == "sam" for k, g in _parts(spec).items() if k != "bezel")
+
+
+def test_curated_prune_waits_for_enough_board_items(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seg = CountingSeg()
+    monkeypatch.setattr(lens_service, "get_segmentation", lambda _s: seg)
+    board, _ = make_board(session, 2, domain="watch")
+    first = lens_service.ensure_board_lens(session, board.id)
+    assert first == lens_service.curated_lens("watch")  # too few images to judge: unpruned
+    assert seg.calls == []
+    v1 = board.lens_id
+    more = [image_bytes(seed=100 + i, size=(300, 300)) for i in range(3)]
+    for data in more:
+        sha = files.sha256_hex(data)
+        items_repo.create(
+            session, board_id=board.id, kind="image", origin="upload", sha256=sha,
+            storage_path=files.save_original(data, sha, "png"), parse_status="completed",
+        )  # fmt: skip
+    session.flush()
+    later = lens_service.ensure_board_lens(session, board.id)
+    assert later is not None and _parts(later)["bezel"] == "whole_image"
+    assert board.lens_id != v1
+    row = lenses_repo.get(session, board.lens_id)
+    assert row is not None and row.version == 2 and row.origin == "curated"
+    calls = len(seg.calls)
+    assert lens_service.ensure_board_lens(session, board.id) == later  # checked once only
+    assert len(seg.calls) == calls
+
+
+def test_whole_image_curated_lens_needs_no_sam(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seg = CountingSeg()
+    monkeypatch.setattr(lens_service, "get_segmentation", lambda _s: seg)
+    board, _ = make_board(session, 6, domain="ui")
+    assert lens_service.ensure_board_lens(session, board.id) == lens_service.curated_lens("ui")
+    assert seg.calls == []
