@@ -74,7 +74,8 @@ Keys live only in `.env` (git-ignored) and are read server-side; the frontend an
 
 Every corpus item carries provenance (`source`, `source_id`, `landing_url`, `creator_name`,
 `license_code`, `license_url`, `attribution_text`, `fetched_at`) and its credit is shown on every
-candidate. Items whose licence is not on the allow-list are never downloaded or sent to a model.
+candidate and, on the canvas, under every licensed image you hover or select (and in its Inspect
+panel). Items whose licence is not on the allow-list are never downloaded or sent to a model.
 
 | Source | Licence | Used for |
 |---|---|---|
@@ -110,8 +111,9 @@ indexing takes about 40 s per item, so the demo indexes an evenly spaced subset 
 State of the committed demo (2026-10-27): the Commons queries ran (watch 378, fashion 58, interior
 79, ui 140 manifest lines), Smithsonian, AIC (HTTP 403), Met and Rijksmuseum failed from the build
 machine and were skipped, and live indexing was stopped early: watch 80, fashion 40, ui 24 and
-interior 2 items are indexed. The interior board therefore holds just those 2 items and its candidate
-pool is empty until live search (a later task) or `make index DOMAIN=interior` supplies more.
+interior 2 items are indexed. The interior board therefore holds just those 2 items; its indexed
+pool is empty, so its Vary runs rely on live search (below) until `make index DOMAIN=interior`
+supplies more.
 `backend/scripts/seed.py --no-index` seeds from what is already indexed.
 
 ## Importing real photos
@@ -153,17 +155,25 @@ The extension talks to `http://localhost:8000` only (its host permission); it is
    become board items; originals are stored unmodified, videos yield key frames.
 2. **Lens**: a domain's curated lens (≤8 parts, ≤20 attributes of seven kinds: enum, ordinal, number,
    boolean, color, text, shape) or, for an unknown domain, a lens Spark proposes from ≤20 diverse items for you to review.
-3. **Kinds**: colours and numbers are *measured* from SAM part masks (Lab palettes, ΔE2000); the rest
-   is *read* by Spark with confidence and evidence. Unknown stays unknown.
+3. **Kinds**: colours are *measured* from SAM part masks (Lab palettes, ΔE2000), as are numbers the
+   lens computes from masks or palettes (`measure: mask_ratio | palette_count`); everything else,
+   including model-read numbers (`measure: model`, e.g. a watch's case diameter), is *read* by Spark
+   with confidence and evidence. A value below the reliable confidence
+   counts as unknown, and unknown never matches.
 4. **Board profile**: per-attribute distributions → signals (≥3 known, ≥60 % agree), tensions (two
    values ≥30 % each) and counter-signals from "not this" items; updates stream over SSE.
-5. **Retrieval**: pool from the domain's indexed corpus, excluding source, invalid provenance,
+5. **Live search**: while the pool loads, one Spark call writes a few short queries and the engine
+   searches the licensed sources (Commons, Openverse and the open-access museums) for up to
+   `LIVE_TIMEOUT_S`; allow-listed results are downloaded through the same SSRF guard as links and
+   *quick-indexed* (embedding and palette, no attributes) into the corpus, so they compete with
+   indexed items. A source that refuses or times out cools down; the corpus alone still answers.
+6. **Retrieval**: pool from the domain's indexed corpus, excluding source, invalid provenance,
    unusable, duplicates (dHash), items already on the board, and anything breaking the request; ranked
    by `rank-2026.10-c` (target .35, preservation .35, relevance .20, diversity .10; `validated: false`).
-6. **Validation**: each shortlisted candidate is checked (provenance, duplicate, the target change,
+7. **Validation**: each shortlisted candidate is checked (provenance, duplicate, the target change,
    every protected attribute) by per-kind comparators; uncertain checks go to one batched Spark
    verify. A candidate is *validated* only if every check passes with evidence; ≤6 are returned.
-7. **Feedback**: Keep places the candidate on the canvas with a lineage link to its source; Reject
+8. **Feedback**: Keep places the candidate on the canvas with a lineage link to its source; Reject
    records a reason and can add it as a "not this" counter-example.
 
 ## Testing
@@ -176,7 +186,7 @@ cd extension && npm test    # extension unit tests (vitest)
 make e2e            # Playwright: builds the extension, runs the full demo flow and the extension flow
 ```
 
-Current counts (2026-10-27): backend **432 passed**, frontend **83 passed**, extension **13 passed**,
+Current counts (2026-10-27): backend **558 passed**, frontend **109 passed**, extension **14 passed**,
 e2e **2 passed** (`demo-flow.spec.ts`, `extension.spec.ts`).
 
 `make e2e` is fully offline and ignores the providers in `.env`: Playwright starts a mock-provider
@@ -260,17 +270,23 @@ Nothing is deployed by this repository; these are the commands to run yourself. 
 Docker Space serves the API (`/api`) and the built app (`/`) from the root `Dockerfile` on port 7860.
 The app calls the API on its own origin. `VITE_API_URL` exists only for hosting the frontend elsewhere.
 
-**1. Build the data snapshot** with the providers the Space will use, because embeddings from
-different embedders cannot be mixed. Stop `make dev` first so SQLite's WAL is folded into
-`data/dle.sqlite`:
+**1. Snapshot the existing `data/`.** The Space serves the real-photo corpus and demo boards in
+`data/`, indexed with the providers the Space will use (embeddings from different embedders cannot
+be mixed). Do not delete it: it took hours and real API spend to build. If you have no `data/` yet,
+build it once with `make demo-data` (live providers, capped; see above). Then stop `make dev` so
+SQLite's WAL is folded into `data/dle.sqlite`, and check it:
 
 ```sh
-rm -rf data && make seed      # fixture corpus + the four demo boards, with the providers in .env
+sqlite3 data/dle.sqlite "PRAGMA wal_checkpoint(TRUNCATE);"
+# must print 0: only seeded corpus images and kept licensed candidates may be on the boards
+sqlite3 data/dle.sqlite "SELECT count(*) FROM board_items WHERE origin NOT IN ('seed', 'candidate');"
 ```
 
-With the live `.env` this sends the 37 fixture images through Spark and SAM once (roughly a dollar
-at the published prices; my estimate). For a real corpus, use `make import` / `make index` and
-`scripts/seed.py` without `--fixtures` (see above).
+> **`data/` becomes public.** Everything pushed to a public Space repo can be downloaded by anyone:
+> the SQLite database (boards, decisions, the model-response cache), `embeddings.npy`, masks,
+> thumbnails and every file in `data/uploads/`. Push only the licensed corpus and the demo boards.
+> Never push a `data/` that has held your own uploads, links or extension captures (their files
+> share `data/uploads/` with corpus images); rebuild it from `make demo-data` instead.
 
 **2. Optional: check the image locally** (needs Docker):
 
@@ -299,7 +315,7 @@ rsync -a --exclude node_modules --exclude dist --exclude test-results --exclude 
   --exclude '.env*' "$SRC/frontend" .
 rsync -a --exclude .venv --exclude tests --exclude __pycache__ --exclude '.*_cache' --exclude '.env*' \
   "$SRC/backend" "$SRC/corpus" .
-rsync -a --exclude e2e "$SRC/data" .
+rsync -a --exclude e2e --exclude "*.sqlite-wal" --exclude "*.sqlite-shm" "$SRC/data" .
 cp "$SRC/Dockerfile" "$SRC/.dockerignore" .
 printf -- '---\ntitle: Design Language Engine\nsdk: docker\napp_port: 7860\n---\n' > README.md
 git add -A && git commit -m "Deploy Design Language Engine" && git push

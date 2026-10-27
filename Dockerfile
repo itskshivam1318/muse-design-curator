@@ -5,8 +5,9 @@
 #   docker run --rm -p 7860:7860 --env-file .env dle        # http://localhost:7860
 #
 # Secrets are never baked in; pass them as environment variables (Space settings -> Variables and
-# secrets): MODEL_API_KEY, DEMO_PASSCODE, DEMO_SECRET. With no provider variables set, every
-# provider is the mock.
+# secrets): MODEL_API_KEY, DEMO_PASSCODE, DEMO_SECRET. The provider defaults are LIVE (muse-spark,
+# sam-3.1, siglip2); set REASONING_PROVIDER=mock SEGMENTATION_PROVIDER=mock EMBEDDER=mock for an
+# offline container.
 
 # ---- 1. the frontend, built same-origin (no VITE_API_URL) ----
 FROM node:22-slim AS web
