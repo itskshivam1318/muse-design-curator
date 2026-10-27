@@ -14,7 +14,7 @@ from app.providers.reasoning import (
 from app.providers.reliability import ModelError
 from app.providers.segmentation import MockSegmentationProvider, Sam31Provider, SegmentationProvider
 
-__all__ = ["ModelError", "get_embedder", "get_reasoning", "get_segmentation"]
+__all__ = ["ModelError", "embedder_id", "get_embedder", "get_reasoning", "get_segmentation"]
 
 
 def _need(value: str | None, name: str, who: str) -> str:
@@ -68,3 +68,14 @@ def get_embedder(settings: Settings) -> Embedder:
     if name == "pe-core":
         return PECoreEmbedder()
     raise ModelError("PROVIDER_MISCONFIGURED", message=f"unknown EMBEDDER {name!r}")
+
+
+def embedder_id(settings: Settings) -> str:
+    """The configured embedder's id without loading its weights."""
+    name = settings.EMBEDDER.replace("_", "-")
+    classes: dict[str, type[Embedder]] = {
+        "mock": MockEmbedder, "siglip2": SigLIP2Embedder, "pe-core": PECoreEmbedder,
+    }  # fmt: skip
+    if name not in classes:
+        raise ModelError("PROVIDER_MISCONFIGURED", message=f"unknown EMBEDDER {name!r}")
+    return str(classes[name].id)

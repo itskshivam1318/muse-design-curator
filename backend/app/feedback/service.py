@@ -21,6 +21,9 @@ from app.db.repos import idempotency as idem_repo
 from app.db.repos import items as items_repo
 from app.db.repos import lenses as lenses_repo
 from app.db.repos import runs as runs_repo
+from app.config import get_settings
+from app.corpus.embedding_lock import load_matrix
+from app.corpus.indexer import embeddings_path
 from app.db.session import after_commit
 from app.domain.attributes import RELIABLE_CONFIDENCE
 from app.domain.lens import LensSpec
@@ -28,6 +31,8 @@ from app.errors import AppError
 from app.ingest.common import GAP, default_size
 from app.ingest.images import existing_by_sha
 from app.ingest.sniff import sniff_image
+from app.measure.palette import masked_palette, to_rgb_array
+from app.providers import embedder_id
 from app.storage import files
 
 REJECT_REASONS = [
@@ -123,6 +128,17 @@ def place_beside(
     return x0, y0
 
 
+def _corpus_embedding(cx: CorpusItem) -> list[float] | None:
+    """The corpus row's vector (same embedder as board items), read under the embeddings lock."""
+    path = embeddings_path()
+    if cx.embedding_row is None or not path.is_file():
+        return None
+    matrix = load_matrix(path)
+    if matrix.ndim != 2 or not 0 <= cx.embedding_row < matrix.shape[0]:
+        return None
+    return [float(x) for x in matrix[cx.embedding_row]]
+
+
 def _create_item(
     session: Session, run: VariationRun, cx: CorpusItem, role: str
 ) -> tuple[BoardItem, bool]:
@@ -158,6 +174,14 @@ def _create_item(
         x=x, y=y, w=w, h=h, z=z, source_url=cx.image_url, page_url=cx.landing_url,
         creator_handle=cx.creator_name,
     )  # fmt: skip
+    # Copy the signals a parse would produce so the kept item can be varied straight away and
+    # counts towards the board centroid and votes.
+    vector = _corpus_embedding(cx)
+    if vector is not None:
+        item.embedding_json = vector
+        item.embedder_id = embedder_id(get_settings())
+    item.palette_json = cx.palette_json or masked_palette(to_rgb_array(data), None)
+    session.flush()
     lens_row = lenses_repo.get(session, run.lens_id)
     if lens_row is not None:
         _copy_attributes(session, item, cx, LensSpec.model_validate(lens_row.spec_json))

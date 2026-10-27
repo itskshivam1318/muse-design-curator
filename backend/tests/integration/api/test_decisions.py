@@ -216,3 +216,39 @@ def test_empty_string_reason_or_note_on_keep_is_400(client, world) -> None:  # t
     assert decide(client, rid, top["id"], decision="keep", reason_code="").status_code == 400
     assert decide(client, rid, top["id"], decision="keep", note="").status_code == 400
     assert decide(client, rid, top["id"], decision="keep").status_code == 201
+
+
+def test_kept_item_carries_corpus_embedding_and_palette(client, world) -> None:  # type: ignore[no-untyped-def]
+    import numpy as np
+
+    from app.corpus.embedding_lock import load_matrix
+    from app.corpus.indexer import embeddings_path
+
+    rid, top = setup(client, world)
+    item = decide(client, rid, top["id"], decision="keep").json()["item"]
+    s = world["session"]
+    s.expire_all()
+    row = s.get(BoardItem, item["id"])
+    cx = s.get(CorpusItem, top["corpus_item_id"])
+    assert row.embedding_json and row.palette_json
+    expected = load_matrix(embeddings_path())[cx.embedding_row]
+    assert np.allclose(np.asarray(row.embedding_json), expected, atol=1e-6)
+
+
+def test_kept_item_can_be_varied(client, world) -> None:  # type: ignore[no-untyped-def]
+    rid, top = setup(client, world)
+    item = decide(client, rid, top["id"], decision="keep").json()["item"]
+    r = client.post(
+        f"/api/boards/{world['watch']}/runs",
+        json={"source_item_id": item["id"], "target_key": "dial_color", "mode": "explore"},
+    )
+    assert r.status_code == 202, r.json()
+
+
+def test_not_this_item_carries_corpus_embedding(client, world) -> None:  # type: ignore[no-untyped-def]
+    rid, top = setup(client, world)
+    r = decide(client, rid, top["id"], decision="reject", reason_code="other", mark_not_this=True)
+    s = world["session"]
+    s.expire_all()
+    row = s.get(BoardItem, r.json()["item"]["id"])
+    assert row.embedding_json and row.palette_json
