@@ -107,7 +107,7 @@ def test_uncertain_only_in_needs_review(world, monkeypatch) -> None:  # type: ig
 
 def test_run_stores_versions_and_snapshot(world) -> None:  # type: ignore[no-untyped-def]
     run = make_run(world, world["watch"])
-    assert run.ranking_version == "rank-2026.10-c" and run.validator_version == "val-3"
+    assert run.ranking_version == "rank-2026.10-c" and run.validator_version == "val-4"
     assert run.board_profile_version >= 1
     assert run.ranking_config_json["weights"]["target"] == 0.35
     assert run.providers_json["reasoning"]["is_mock"] is True
@@ -293,3 +293,42 @@ def test_vary_on_seeded_board_returns_candidate(world) -> None:  # type: ignore[
     assert run.status == "completed", run.error_code
     got = [c for c in cands(world, run) if c.state in ("validated", "uncertain")]
     assert got and all(c.corpus_item_id not in on_board for c in got)
+
+
+def test_an_unpruned_curated_lens_is_pruned_in_the_background_once(world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from app import jobs, lens_service
+    from app.db.repos import boards as boards_repo
+    from app.db.repos import lenses as lenses_repo
+    from app.domain.lens import LensSpec
+
+    s = world["session"]
+    board = boards_repo.get(s, world["watch"])
+    # an older board: its curated lens was attached before per-board pruning existed
+    shipped = lens_service.curated_lens("watch")
+    assert shipped is not None and lens_service.needs_part_check(shipped)
+    old = lenses_repo.save(s, board.id, "watch", "curated", shipped.model_dump(mode="json"),
+                           status="confirmed")  # fmt: skip
+    board.lens_id = old.id
+    s.commit()
+    jobs.register(lens_service.PRUNE_JOB, lens_service.prune_board_lens_job, queue="background")
+    monkeypatch.setattr(lens_service, "MIN_PRUNE_IMAGES", 3)  # the fixture board holds 3 images
+    queued: list[str] = []
+    real = jobs.enqueue
+
+    def spy(name: str, **kw: Any) -> None:
+        queued.append(name)
+        real(name, **kw)
+
+    monkeypatch.setattr(jobs, "enqueue", spy)
+    first = make_run(world, world["watch"])
+    assert first.status == "completed", first.error_code
+    assert first.lens_id == old.id  # the run used the lens as it was
+    assert queued.count(lens_service.PRUNE_JOB) == 1
+    s.expire_all()
+    board = boards_repo.get(s, world["watch"])
+    assert board.lens_id != old.id
+    pruned = LensSpec.model_validate(lenses_repo.get(s, board.lens_id).spec_json)
+    assert not lens_service.needs_part_check(pruned)
+    second = make_run(world, world["watch"], protected_keys=["strap_color"])
+    assert second.status == "completed", second.error_code
+    assert queued.count(lens_service.PRUNE_JOB) == 1  # not again once pruned

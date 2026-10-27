@@ -95,7 +95,7 @@ def ensure_board_lens(session: Session, board_id: str, *, prune: bool = True) ->
         row = lenses_repo.get(session, board.lens_id)
         if row is not None:
             spec = LensSpec.model_validate(row.spec_json)
-            if prune and row.origin == "curated" and _needs_check(spec):
+            if prune and row.origin == "curated" and needs_part_check(spec):
                 pruned = _prune_curated(session, board, spec)
                 if pruned is not None:
                     return _attach_curated(session, board, pruned, current=row.id)
@@ -104,7 +104,7 @@ def ensure_board_lens(session: Session, board_id: str, *, prune: bool = True) ->
         curated = curated_lens(board.domain)
         if curated is not None:
             spec = curated
-            if prune and _needs_check(curated):
+            if prune and needs_part_check(curated):
                 spec = _prune_curated(session, board, curated) or curated
             return _attach_curated(session, board, spec, current=None)
     if lenses_repo.latest(session, board.id, _domain_key(board)) is not None:
@@ -216,7 +216,8 @@ def prune_parts(lens: LensSpec, images: list[bytes], session: Session | None = N
     return lens.model_copy(update={"parts": parts, "notes": notes})
 
 
-def _needs_check(spec: LensSpec) -> bool:
+def needs_part_check(spec: LensSpec) -> bool:
+    """A lens with SAM parts that has not been checked against its board's images yet."""
     return any(p.grounding == "sam" for p in spec.parts) and not any(
         n.startswith(CHECKED_NOTE) for n in spec.notes
     )
@@ -260,6 +261,26 @@ def _attach_curated(
     board.lens_id = row.id
     _release_pending(session, board.id)
     return spec
+
+
+PRUNE_JOB = "prune_board_lens"
+
+
+def prune_board_lens_job(board_id: str) -> None:
+    """Background job: prune the board's curated lens if it has not been checked yet (boards whose
+    lens was attached before per-board pruning, or attached with too few images)."""
+    from app.api import deps
+
+    with deps._factory()() as session:
+        try:
+            ensure_board_lens(session, board_id, prune=True)
+            session.commit()
+        except Exception:
+            session.rollback()
+            log.exception("pruning the lens of board %s failed", board_id)
+
+
+jobs.register(PRUNE_JOB, prune_board_lens_job, queue="background")
 
 
 def propose_lens(session: Session, board_id: str) -> LensSpec:

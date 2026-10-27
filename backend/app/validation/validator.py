@@ -11,6 +11,7 @@ deterministic templates; model text lives in `evidence`.
 from __future__ import annotations
 
 import io
+import logging
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -40,7 +41,9 @@ from app.storage import files
 from app.validation import comparators
 from app.validation.comparators import AttrValue, compare
 
-VALIDATOR_VERSION = "val-3"
+log = logging.getLogger(__name__)
+
+VALIDATOR_VERSION = "val-4"
 
 MAX_CANDIDATES_PER_CALL = 8
 MAX_IMAGES_PER_CALL = 50
@@ -370,6 +373,9 @@ class _Images:
                 return seg.localize(files.abs_path(path).read_bytes(), sha, prompt)
             except ModelError as e:
                 return e
+            except Exception:  # one broken call degrades only its own checks
+                log.exception("SAM localize failed for %s / %s", sha, prompt)
+                return ModelError("INTERNAL_ERROR")
 
         with ThreadPoolExecutor(
             max_workers=max(1, min(SAM_CONCURRENCY, len(todo))), thread_name_prefix="sam"
@@ -458,7 +464,13 @@ class _LazySeg:
     def localize(self, image: bytes, sha: str, noun: str) -> Any:
         pre = self._images.take(sha, noun)
         if pre is None:
-            return self._images.seg().localize(image, sha, noun)
+            try:
+                return self._images.seg().localize(image, sha, noun)
+            except ModelError:
+                raise
+            except Exception as exc:  # degrades only the checks on this image
+                log.exception("SAM localize failed for %s / %s", sha, noun)
+                raise ModelError("INTERNAL_ERROR") from exc
         if isinstance(pre, ModelError):
             raise pre
         return pre
@@ -822,6 +834,8 @@ def validate_shortlist(
             part = images.part(part_id)
             if part is None or part.grounding == "whole_image":
                 continue
+            if ck.result.verdict == "fail":
+                continue  # decided from reliable evidence; localisation cannot change that
             png, status = images.crop(
                 c.pool.item.local_path, c.pool.item.sha256, part_id
             )  # fmt: skip
@@ -892,12 +906,20 @@ def validate_shortlist(
             ) as ex:
                 # each batch resolves only its own checks, so completion order cannot matter
                 futures = {
-                    ex.submit(_verify_batch, reasoning, images, spec, source_item, b, cfg): len(b)
+                    ex.submit(_verify_batch, reasoning, images, spec, source_item, b, cfg): b
                     for b in batches
                 }  # fmt: skip
                 for fut in as_completed(futures):
-                    fut.result()
-                    pending -= futures[fut]
+                    batch = futures[fut]
+                    try:
+                        fut.result()
+                    except Exception:  # one broken batch must not sink the rest
+                        log.exception("a verify batch failed")
+                        for _, cks in batch:
+                            for ck in cks:
+                                if ck.ask:
+                                    _unavailable(ck, "INTERNAL_ERROR")
+                    pending -= len(batch)
                     if on_progress is not None:
                         on_progress(len(cands) - pending)
 

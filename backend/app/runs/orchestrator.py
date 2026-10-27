@@ -16,7 +16,7 @@ from typing import Any
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
-from app import events, jobs
+from app import events, jobs, lens_service
 from app.config import get_settings
 from app.db.models import VariationRun
 from app.db.repos import attributes as attrs_repo
@@ -157,6 +157,10 @@ def create_run(
     if idempotency_key:
         idem_repo.put(session, idempotency_key, route, digest, 202, {"run_id": run.id})
     after_commit(session, partial(jobs.enqueue, JOB, run_id=run.id))
+    if lens_row.origin == "curated" and lens_service.needs_part_check(lens):
+        # an older board's curated lens was never pruned on its images: do it in the background
+        # (this run uses the lens as it is)
+        after_commit(session, partial(jobs.enqueue, lens_service.PRUNE_JOB, board_id=board_id))
     return run
 
 

@@ -173,3 +173,45 @@ def test_progress_is_reported_as_verify_batches_finish(data_dir) -> None:  # typ
     assert seen == sorted(seen) and seen[-1] == len(out) == 20
     assert len(seen) == 3
 
+
+
+class FlakyReasoning(FakeReasoning):
+    """The first verify batch crashes with a non-model error; the others answer."""
+
+    def verify(self, images, schema, prompt):  # type: ignore[no-untyped-def]
+        self.calls.append((len(images), prompt))
+        if "[c00 /" in prompt:
+            raise RuntimeError("provider bug")
+        return {"checks": self.answers}
+
+
+def test_a_crashing_verify_batch_degrades_only_its_own_checks(data_dir) -> None:  # type: ignore[no-untyped-def]
+    sp, src, cands, answers = _world()
+    with _fresh_session() as s:
+        out = validate_shortlist(
+            s, sp, src, cands, LENS, CFG, Providers(FlakyReasoning(answers), SlowSeg(0))
+        )
+    first = next(c for c in out["c00"].checks if c.attribute_key == "tx")
+    assert first.verdict == "uncertain"
+    assert first.reason == "verification unavailable (INTERNAL_ERROR)"
+    later = next(c for c in out["c10"].checks if c.attribute_key == "tx")
+    assert later.evidence["source"] == "verify" and later.verdict == "pass"
+
+
+class CrashingSeg(SlowSeg):
+    def localize(self, image: bytes, sha: str, noun: str) -> SegResult:
+        if sha == "sha-c03":
+            raise RuntimeError("segmenter bug")
+        return super().localize(image, sha, noun)
+
+
+def test_a_crashing_sam_call_degrades_only_that_image(data_dir) -> None:  # type: ignore[no-untyped-def]
+    sp, src, cands, answers = _world()
+    with _fresh_session() as s:
+        out = validate_shortlist(
+            s, sp, src, cands, LENS, CFG, Providers(FakeReasoning(answers), CrashingSeg(0))
+        )
+    broken = next(c for c in out["c03"].checks if c.attribute_key == "pd")
+    assert broken.verdict == "uncertain" and "INTERNAL_ERROR" in broken.reason
+    fine = next(c for c in out["c04"].checks if c.attribute_key == "pd")
+    assert fine.verdict == "pass"

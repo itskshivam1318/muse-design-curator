@@ -118,7 +118,7 @@ def ans(c, key, answer="same", conf=0.9, steps=None):
 
 
 def test_version():
-    assert VALIDATOR_VERSION == "val-3"
+    assert VALIDATOR_VERSION == "val-4"
 
 
 def test_validated_only_when_all_pass(session, data_dir):
@@ -361,3 +361,17 @@ def test_low_confidence_number_nudge_goes_to_verify(session, data_dir):
     assert len(rs.calls) == 1
     ok = run(session, sp, src, [c], FakeReasoning([ans("c1", "n", "more", 0.9, 1)]))
     assert ok["c1"].overall == "validated"
+
+
+def test_a_reliable_comparator_fail_stays_fail_when_the_part_is_not_localised(session, data_dir):
+    sp = spec(protected=[(PROT_PART, "x")])
+    src = source({"t": av("a"), "pp": av("x")})
+    c = cand("c1", {"t": av("b"), "pp": av("y")})  # reliable mismatch
+    put_mask(session, "sha-src")
+    put_mask(session, "sha-c1", found=False)
+    rs = FakeReasoning([ans("c1", "pp", "same")])
+    out = run(session, sp, src, [c], rs)
+    pc = next(x for x in out["c1"].checks if x.check == "protected")
+    assert pc.verdict == "fail" and out["c1"].overall == "rejected"
+    assert pc.evidence["source"] == "corpus_index" and NOTE not in pc.reason
+    assert rs.calls == []  # not re-asked
