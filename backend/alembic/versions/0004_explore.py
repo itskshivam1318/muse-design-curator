@@ -46,6 +46,7 @@ def upgrade() -> None:
         sa.Column("edit_prompt", sa.String(), nullable=False),
         sa.Column("status", sa.String(), nullable=False),
         sa.Column("last_error", sa.String()),
+        sa.Column("visualize_claimed_at", sa.String()),
         sa.Column("x", sa.Float()),
         sa.Column("y", sa.Float()),
         sa.Column("created_at", sa.String(), nullable=False),

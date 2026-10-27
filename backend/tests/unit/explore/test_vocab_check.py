@@ -78,6 +78,29 @@ def test_open_vocab_unchanged(session: Session, board: str) -> None:
     assert len(lenses_repo.versions(session, board, "watch")) == 1
 
 
+def test_stale_lens_id_keeps_both_tokens(session: Session, board: str) -> None:
+    first = boards_repo.get(session, board).lens_id  # type: ignore[union-attr]
+    assert add_vocabulary(session, board, "markers", "devanagari") is True
+    # another job's view: the board still points at the first lens
+    boards_repo.get(session, board).lens_id = first  # type: ignore[union-attr]
+    session.flush()
+    assert add_vocabulary(session, board, "markers", "kanji") is True
+    assert lens_vocab(session, board, "markers")[-2:] == ["devanagari", "kanji"]
+    rows = lenses_repo.versions(session, board, "watch")
+    assert [r.version for r in rows] == [1, 2, 3]
+    assert all(r.spec_json["id"] == f"watch@{r.version}" for r in rows[1:])
+
+
+def test_spec_id_follows_the_saved_version(session: Session, board: str) -> None:
+    lens = load_curated_lens("watch", shape_enabled=False)
+    assert lens is not None
+    # a proposal takes version 2 without becoming the board's lens
+    lenses_repo.save(session, board, "watch", "proposed", lens.model_dump(mode="json"))
+    assert add_vocabulary(session, board, "markers", "devanagari") is True
+    row = lenses_repo.get(session, boards_repo.get(session, board).lens_id)  # type: ignore[arg-type,union-attr]
+    assert row is not None and row.version == 3 and row.spec_json["id"] == "watch@3"
+
+
 def test_board_without_lens_is_a_no_op(session: Session, data_dir: Path) -> None:
     b = boards_repo.create(session, "Empty")
     assert add_vocabulary(session, b.id, "markers", "devanagari") is False
@@ -137,7 +160,7 @@ def test_check_counts_only_reliable_keeps(
     # bezel_style: unreliable on the source -> not counted at all
     attr(session, src, "bezel_style", "enum", "fluted", confidence=0.3)
     attr(session, gen, "bezel_style", "enum", "smooth")
-    # dial_finish: reliable on source, generated value unreliable -> unknown: counted, neither
+    # dial_finish: reliable on source, generated value unreliable -> unknown, not in `of`
     attr(session, src, "dial_finish", "enum", "sunburst")
     attr(session, gen, "dial_finish", "enum", "matte", confidence=0.2)
     # strap_material: reliable on source, missing on the generated item -> unknown
@@ -151,7 +174,8 @@ def test_check_counts_only_reliable_keeps(
 
     got = check_generated(session, src, gen, o)
 
-    assert got["kept"] == 1 and got["of"] == 4 and got["drifted"] == ["case_finish"]
+    assert got["kept"] == 1 and got["drifted"] == ["case_finish"]
+    assert got["of"] == 2 and got["unknown"] == 2  # of = decidable keeps only
     assert got["target"] == YES
 
 
@@ -180,7 +204,7 @@ def test_check_tolerates_an_option_without_value(
     o = make_option(session, board, src, value_json=None, keeps_json=None)
     monkeypatch.setattr(check, "get_reasoning", lambda _s: Checker(YES))
     got = check_generated(session, src, gen, o)
-    assert (got["kept"], got["of"], got["drifted"]) == (0, 0, [])
+    assert (got["kept"], got["of"], got["drifted"], got["unknown"]) == (0, 0, [], 0)
 
 
 @pytest.mark.parametrize(

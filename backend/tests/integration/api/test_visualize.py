@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app import demo, events
+from app.db.ids import now_iso
 from app.db.models import BoardItem, ExploreOption
 from app.db.repos import boards as boards_repo
 from app.db.repos import items as items_repo
@@ -85,15 +86,13 @@ def test_generated_item_dict_has_generation_and_no_licence(client: TestClient, w
     assert d["licence"] is None and d["origin"] == "generated"
     assert d["rights_status"] == "generated" and d["explore_option_id"] == opt["id"]
     assert d["generation"]["model"] == "mock-image"
-    assert set(d["check"]) == {"target", "kept", "of", "drifted"}
+    assert set(d["check"]) == {"target", "kept", "of", "drifted", "unknown"}
     assert d["check"]["target"]["answer"] in ("yes", "no", "unclear")
 
 
 def test_second_visualize_while_running_409(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
     opt = first_option(client, world)
-    s = world["session"]
-    option_row(world, opt["id"]).status = "visualizing"
-    s.commit()
+    _stuck(world, opt["id"], now_iso())  # a live claim
     r = run(client, opt["id"])
     assert r.status_code == 409 and error(r) == "VISUALIZE_IN_PROGRESS"
     assert generated(world, opt["id"]) == []
@@ -283,3 +282,93 @@ def test_demo_mode_locks_visualize(demo_on, client: TestClient, world) -> None: 
     assert generated(world, opt["id"]) == []
     assert client.post("/api/demo/unlock", json={"passcode": "open sesame"}).status_code == 200
     assert run(client, opt["id"]).status_code == 202
+
+
+def test_vocabulary_failure_still_parses_and_checks(client: TestClient, world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def boom(*_a: Any, **_k: Any) -> bool:
+        raise RuntimeError("lens store down")
+
+    monkeypatch.setattr(visualize, "add_vocabulary", boom)
+    opt = first_option(client, world)
+    run(client, opt["id"])
+    (item,) = generated(world, opt["id"])
+    assert item.parse_status == "completed" and "target" in item.check_json
+    o = option_row(world, opt["id"])
+    assert o.status == "visualized" and o.last_error is None
+
+
+def test_unexpected_error_settles_the_option(client: TestClient, world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def boom(*_a: Any, **_k: Any) -> Any:
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(visualize, "_ingest", boom)
+    opt = first_option(client, world)
+    assert run(client, opt["id"]).status_code == 202
+    o = option_row(world, opt["id"])
+    assert o.status == "open" and o.last_error == "VISUALIZE_ERROR"
+    assert o.visualize_claimed_at is None
+    assert generated(world, opt["id"]) == []
+    assert run(client, opt["id"]).status_code == 202  # not stuck
+
+
+def test_unexpected_check_error_is_stored_on_the_item(
+    client: TestClient, world, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    def boom(*_a: Any, **_k: Any) -> Any:
+        raise RuntimeError("bug")
+
+    monkeypatch.setattr(visualize, "check_generated", boom)
+    opt = first_option(client, world)
+    run(client, opt["id"])
+    (item,) = generated(world, opt["id"])
+    assert item.check_json == {"error": "CHECK_ERROR"}
+    assert option_row(world, opt["id"]).status == "visualized"
+
+
+def _stuck(world: dict[str, Any], option_id: str, claimed_at: str | None) -> None:
+    o = option_row(world, option_id)
+    o.status, o.visualize_claimed_at = "visualizing", claimed_at
+    world["session"].commit()
+
+
+def test_stale_claim_is_reclaimed(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    from datetime import UTC, datetime, timedelta
+
+    opt = first_option(client, world)
+    recent = (datetime.now(UTC) - timedelta(seconds=60)).isoformat(timespec="milliseconds")
+    _stuck(world, opt["id"], recent)
+    assert run(client, opt["id"]).status_code == 409
+    old = (datetime.now(UTC) - timedelta(seconds=301)).isoformat(timespec="milliseconds")
+    _stuck(world, opt["id"], old)
+    assert run(client, opt["id"]).status_code == 202
+    assert len(generated(world, opt["id"])) == 1
+    assert option_row(world, opt["id"]).status == "visualized"
+
+
+def test_claim_is_stamped_and_cleared(client: TestClient, world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    seen: list[str | None] = []
+    real = visualize.visualize
+
+    def spy(session: Any, option_id: str) -> None:
+        seen.append(session.get(ExploreOption, option_id).visualize_claimed_at)
+        real(session, option_id)
+
+    monkeypatch.setattr(visualize, "visualize", spy)
+    opt = first_option(client, world)
+    run(client, opt["id"])
+    assert seen[0] is not None and seen[0].endswith("+00:00")
+    assert option_row(world, opt["id"]).visualize_claimed_at is None
+
+
+def test_startup_resets_options_left_visualizing(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    from app.main import app
+
+    first, second = explore(client, source(world)).json()["options"][:2]
+    run(client, first["id"])  # has an image
+    _stuck(world, first["id"], "2026-01-01T00:00:00.000+00:00")
+    _stuck(world, second["id"], None)
+    with TestClient(app):  # a new process start runs the lifespan
+        pass
+    assert option_row(world, first["id"]).status == "visualized"
+    assert option_row(world, second["id"]).status == "open"
+    assert option_row(world, second["id"]).visualize_claimed_at is None

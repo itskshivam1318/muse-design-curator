@@ -8,17 +8,19 @@ the option back. After that the item stays: a parse or check failure is stored o
 import io
 import logging
 import uuid
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from typing import Any
 
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
-from sqlalchemy import update
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from app import events, jobs
 from app.api.schemas import item_to_dict
 from app.config import get_settings
+from app.db.ids import now_iso
 from app.db.models import BoardItem, Exploration, ExploreOption
 from app.db.repos import explore as explore_repo
 from app.db.session import after_commit
@@ -38,6 +40,7 @@ log = logging.getLogger(__name__)
 JOB = "visualize_option"
 NOTE_GAP = 40  # source edge to the option's note when the note has no saved position
 NOTE_WIDTH = 260  # the generated item sits past the note
+CLAIM_TTL_S = 300  # a visualize claim older than this is from a job that died
 
 
 def _exploration(session: Session, o: ExploreOption) -> Exploration:
@@ -46,18 +49,31 @@ def _exploration(session: Session, o: ExploreOption) -> Exploration:
     return e
 
 
+def _iso(t: datetime) -> str:
+    return t.isoformat(timespec="milliseconds")  # the same shape as now_iso: comparable text
+
+
 def request_visualize(session: Session, option_id: str) -> None:
-    """Mark the option visualizing and queue the job; 409 while it is already visualizing."""
+    """Mark the option visualizing and queue the job. 409 while it is already visualizing,
+    unless that claim is older than CLAIM_TTL_S (its job died with the process)."""
     require_enabled()
     o = explore_repo.get_option(session, option_id)
     if o is None:
         raise AppError(404, "OPTION_NOT_FOUND", "Option not found")
     e = _exploration(session, o)
     _require_item(session, e.item_id)
+    stale = _iso(datetime.now(UTC) - timedelta(seconds=CLAIM_TTL_S))
     claimed = session.execute(
         update(ExploreOption)
-        .where(ExploreOption.id == option_id, ExploreOption.status != "visualizing")
-        .values(status="visualizing", last_error=None)
+        .where(
+            ExploreOption.id == option_id,
+            or_(
+                ExploreOption.status != "visualizing",
+                ExploreOption.visualize_claimed_at.is_(None),
+                ExploreOption.visualize_claimed_at < stale,
+            ),
+        )
+        .values(status="visualizing", last_error=None, visualize_claimed_at=now_iso())
     )  # fmt: skip
     if not claimed.rowcount:  # type: ignore[attr-defined]
         raise AppError(409, "VISUALIZE_IN_PROGRESS", "This option is already being visualized")
@@ -108,6 +124,7 @@ def _settle(session: Session, option_id: str, error: str | None) -> None:
         return
     if o.status == "visualizing":
         o.status = resting_status(session, o.id)
+    o.visualize_claimed_at = None
     o.last_error = error
     session.flush()
     publish_later(session, _exploration(session, o))
@@ -127,6 +144,9 @@ def _check(session: Session, source_id: str, item_id: str, o: ExploreOption) -> 
         return check_generated(session, source_id, item_id, o)
     except (ModelError, AppError) as exc:
         return {"error": exc.code}
+    except Exception:
+        log.exception("checking generated item %s failed", item_id)
+        return {"error": "CHECK_ERROR"}
 
 
 def visualize(session: Session, option_id: str) -> None:
@@ -134,8 +154,8 @@ def visualize(session: Session, option_id: str) -> None:
     if o is None:
         return
     e = _exploration(session, o)
-    provider = get_image_provider(get_settings())
     try:
+        provider = get_image_provider(get_settings())
         source = _require_item(session, e.item_id)
         image, _sha = _image_for(session, source)
         edited = provider.edit(image, o.edit_prompt)
@@ -149,8 +169,12 @@ def visualize(session: Session, option_id: str) -> None:
     after_commit(session, partial(events.publish, item.board_id, "item.added", added))
     session.commit()
 
-    add_vocabulary(session, e.board_id, e.key, o.value_json)
-    session.commit()
+    try:  # a lens that could not grow never costs the user the image or its check
+        add_vocabulary(session, e.board_id, e.key, o.value_json)
+        session.commit()
+    except Exception:
+        session.rollback()
+        log.exception("adding %r to %s on board %s failed", o.value_json, e.key, e.board_id)
 
     check = _check(session, source.id, item.id, o)
     item = _require_item(session, item.id)
@@ -173,6 +197,18 @@ def visualize_job(option_id: str) -> None:
             log.exception("visualizing option %s failed", option_id)
             _settle(session, option_id, "VISUALIZE_ERROR")
             session.commit()
+
+
+def recover_stuck(session: Session) -> int:
+    """Startup: no job survives a restart, so `visualizing` options go back to rest."""
+    stuck = list(
+        session.scalars(select(ExploreOption).where(ExploreOption.status == "visualizing"))
+    )
+    for o in stuck:
+        o.status = resting_status(session, o.id)
+        o.visualize_claimed_at = None
+    session.flush()
+    return len(stuck)
 
 
 jobs.register(JOB, visualize_job)

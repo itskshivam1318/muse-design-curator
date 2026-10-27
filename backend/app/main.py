@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
@@ -14,6 +15,8 @@ from app.extraction import service as _extraction  # noqa: F401  (registers the 
 from app.runs import orchestrator as _runs  # noqa: F401  (registers the run_variation job)
 from app.spa import spa_router
 
+log = logging.getLogger(__name__)
+
 
 def cors_origins() -> list[str]:
     settings = get_settings()
@@ -23,9 +26,24 @@ def cors_origins() -> list[str]:
     return origins
 
 
+def _recover_visualizing() -> None:
+    """Options left `visualizing` by a previous process go back to rest (their job is gone)."""
+    from app.api import deps
+    from app.explore.visualize import recover_stuck
+
+    try:
+        with deps.new_session() as session:
+            if n := recover_stuck(session):
+                log.info("reset %d options left visualizing", n)
+            session.commit()
+    except Exception:
+        log.exception("could not reset options left visualizing")
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     demo.check_settings(get_settings())
+    _recover_visualizing()
     yield
 
 

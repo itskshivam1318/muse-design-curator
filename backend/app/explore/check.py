@@ -2,7 +2,8 @@
 
 The target is a direct visual question to the reasoning provider (re-parsing alone misses new
 values). Kept attributes use the validator's comparators against the source; only keys whose
-source value is reliable count, and an "unknown" verdict is neither kept nor drifted.
+source value is reliable are judged; `of` counts the decidable ones (kept + drifted) and the
+ones the comparator calls "unknown" are counted apart.
 """
 
 import math
@@ -61,7 +62,9 @@ def _missing() -> AttrValue:
 def check_generated(
     session: Session, source_id: str, generated_id: str, option: ExploreOption
 ) -> dict[str, Any]:
-    """{"target": {answer, confidence, box, note}, "kept": n, "of": m, "drifted": [keys]}."""
+    """{"target": {answer, confidence, box, note}, "kept": n, "of": m, "drifted": [keys],
+    "unknown": k}: `of` is the decidable keeps (kept + drifted), `unknown` the ones the
+    comparator could not judge."""
     e = session.get(Exploration, option.exploration_id)
     assert e is not None
     gen = _require_item(session, generated_id)
@@ -77,7 +80,7 @@ def check_generated(
 
     before: dict[str, AttributeRecord] = {r.key: r for r in source_records(session, source_id)}
     after: dict[str, AttributeRecord] = {r.key: r for r in source_records(session, generated_id)}
-    kept, of, drifted = 0, 0, []
+    kept, unknown, drifted = 0, 0, []
     for key in option.keeps_json or []:
         spec, src = specs.get(key), before.get(key)
         if spec is None or src is None:
@@ -86,10 +89,14 @@ def check_generated(
         if not a.reliable(RANKING_CONFIG):
             continue
         b = AttrValue.from_record(after[key]) if key in after else _missing()
-        of += 1
         verdict = compare(spec, a, b, RANKING_CONFIG)
         if verdict == "same":
             kept += 1
         elif verdict == "different":
             drifted.append(key)
-    return {"target": target, "kept": kept, "of": of, "drifted": drifted}
+        else:
+            unknown += 1
+    return {
+        "target": target, "kept": kept, "of": kept + len(drifted), "drifted": drifted,
+        "unknown": unknown,
+    }  # fmt: skip

@@ -185,6 +185,7 @@ class ExploreOption(Base):
     edit_prompt: Mapped[str] = mapped_column(String, default="")
     status: Mapped[str] = mapped_column(String, default="open")
     last_error: Mapped[str | None] = mapped_column(String)
+    visualize_claimed_at: Mapped[str | None] = mapped_column(String)
     x: Mapped[float | None] = mapped_column(Float)
     y: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[str] = _created()
