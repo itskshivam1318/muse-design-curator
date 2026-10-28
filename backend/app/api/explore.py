@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from app.api.boards import require_board
 from app.api.deps import SessionDep
+from app.config import get_settings
 from app.db.repos import explore as explore_repo
 from app.explore import service, visualize
 
@@ -24,6 +25,13 @@ class OptionPatch(BaseModel):
     y: float | None = None
 
 
+class VisualizeBody(BaseModel):
+    """Where the browser drew the option's note; saved on the option before placing the image."""
+
+    x: float
+    y: float
+
+
 @router.post("/items/{item_id}/explore")
 def explore_item(item_id: str, body: ExploreBody, session: SessionDep) -> dict[str, Any]:
     e, opts = service.explore(
@@ -36,6 +44,8 @@ def explore_item(item_id: str, body: ExploreBody, session: SessionDep) -> dict[s
 @router.get("/boards/{board_id}/explorations")
 def board_explorations(board_id: str, session: SessionDep) -> dict[str, Any]:
     require_board(session, board_id)
+    if not get_settings().EXPLORE_ENABLED:
+        return {"explorations": []}
     return {
         "explorations": [
             explore_repo.exploration_to_dict(e, opts)
@@ -51,6 +61,9 @@ def patch_option(option_id: str, body: OptionPatch, session: SessionDep) -> dict
 
 
 @router.post("/options/{option_id}/visualize", status_code=202)
-def visualize_option(option_id: str, session: SessionDep) -> dict[str, Any]:
-    visualize.request_visualize(session, option_id)
+def visualize_option(
+    option_id: str, session: SessionDep, body: VisualizeBody | None = None
+) -> dict[str, Any]:
+    at = (body.x, body.y) if body else None
+    visualize.request_visualize(session, option_id, at=at)
     return {"option_id": option_id, "status": "visualizing"}

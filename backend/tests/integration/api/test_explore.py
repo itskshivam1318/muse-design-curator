@@ -198,6 +198,19 @@ def test_missing_edit_prompt_gets_a_default(client: TestClient, world, monkeypat
     )
 
 
+def test_model_edit_prompt_ends_with_the_keep_sentence(
+    client: TestClient, world, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    keep = "Keep everything else exactly the same."
+    fake(monkeypatch, [opt("A", edit_prompt="Replace only the markers with A."),
+                       opt("B", edit_prompt="Replace only the markers with B"),
+                       opt("C", edit_prompt=f"Change the markers to C. {keep}")])  # fmt: skip
+    a, b, c = explore(client, source(world)).json()["options"]
+    assert a["edit_prompt"] == f"Replace only the markers with A. {keep}"
+    assert b["edit_prompt"] == f"Replace only the markers with B. {keep}"
+    assert c["edit_prompt"] == f"Change the markers to C. {keep}"
+
+
 def test_unparsed_item_still_explores(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
     s = world["session"]
     item = source(world)
@@ -325,6 +338,8 @@ def test_feature_off_503(client: TestClient, world, monkeypatch) -> None:  # typ
     assert r.status_code == 503 and error(r) == "FEATURE_OFF"
     r = client.patch(f"/api/options/{first['id']}", json={"x": 1})
     assert r.status_code == 503 and error(r) == "FEATURE_OFF"
+    r = client.get(f"/api/boards/{world['watch']}/explorations")
+    assert r.status_code == 200 and r.json() == {"explorations": []}
 
 
 @pytest.fixture

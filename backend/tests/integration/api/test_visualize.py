@@ -23,8 +23,10 @@ def first_option(client: TestClient, world: dict[str, Any]) -> dict[str, Any]:
     return r.json()["options"][0]  # type: ignore[no-any-return]
 
 
-def run(client: TestClient, option_id: str):  # type: ignore[no-untyped-def]
-    return client.post(f"/api/options/{option_id}/visualize")
+def run(client: TestClient, option_id: str, at: dict[str, float] | None = None):  # type: ignore[no-untyped-def]
+    if at is None:
+        return client.post(f"/api/options/{option_id}/visualize")
+    return client.post(f"/api/options/{option_id}/visualize", json=at)
 
 
 def generated(world: dict[str, Any], option_id: str) -> list[BoardItem]:
@@ -62,8 +64,9 @@ def test_visualize_creates_generated_item_with_lineage(client: TestClient, world
     assert item.generation_json == {
         "model": "mock-image", "prompt": opt["edit_prompt"], "option_id": opt["id"]
     }  # fmt: skip
-    # the option has no saved position: the fallback is right of the source, then past the note
-    assert item.x == src.x + src.w + 40 + 260 and item.y == src.y
+    # no saved or drawn position: the note's first fan column, then past the note
+    assert item.x == src.x + src.w + 60 + 220 + 40 and item.y == src.y
+    assert item.original_filename == f"{opt['name']}.png"
     assert item.parse_status == "completed"
     assert option_row(world, opt["id"]).status == "visualized"
     listed = next(o for o in board_list(client, world)[0]["options"] if o["id"] == opt["id"])
@@ -76,6 +79,37 @@ def test_generated_item_sits_right_of_a_placed_note(client: TestClient, world) -
     assert run(client, opt["id"]).status_code == 202
     (item,) = generated(world, opt["id"])
     assert (item.x, item.y) == (360, -50)
+
+
+def test_drawn_position_is_saved_and_repeats_do_not_stack(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    opt = first_option(client, world)  # never dragged: the browser sends where it drew the note
+    assert run(client, opt["id"], {"x": 500, "y": 80}).status_code == 202
+    o = option_row(world, opt["id"])
+    assert (o.x, o.y) == (500, 80)
+    assert run(client, opt["id"], {"x": 500, "y": 80}).status_code == 202
+    a, b = generated(world, opt["id"])
+    assert (a.x, a.y) == (500 + 220 + 40, 80)
+    assert b.x == a.x and b.y == a.y + a.h + 24
+    overlap = a.x < b.x + b.w and b.x < a.x + a.w and a.y < b.y + b.h and b.y < a.y + a.h
+    assert not overlap
+
+
+def test_never_dragged_repeats_do_not_stack_without_a_body(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    opt = first_option(client, world)
+    run(client, opt["id"])
+    run(client, opt["id"])
+    a, b = generated(world, opt["id"])
+    assert a.x == b.x and b.y >= a.y + a.h
+
+
+def test_generated_title_is_sanitised(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    opt = first_option(client, world)
+    o = option_row(world, opt["id"])
+    o.name = 'A/B: "odd" <name>'
+    world["session"].commit()
+    run(client, opt["id"])
+    (item,) = generated(world, opt["id"])
+    assert item.original_filename == "A-B- -odd- -name-.png"
 
 
 def test_generated_item_dict_has_generation_and_no_licence(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
@@ -253,6 +287,19 @@ def test_reopened_option_whose_images_were_removed_is_open(client: TestClient, w
     assert r.json()["status"] == "open"
 
 
+def test_reopen_while_visualizing_stays_visualizing(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    opt = first_option(client, world)
+    _stuck(world, opt["id"], now_iso())  # a job is running
+    r = client.patch(f"/api/options/{opt['id']}", json={"status": "open"})
+    assert r.json()["status"] == "visualizing"
+    # dismissed mid-job, then undone: the claim still holds
+    client.patch(f"/api/options/{opt['id']}", json={"status": "dismissed"})
+    r = client.patch(f"/api/options/{opt['id']}", json={"status": "open"})
+    assert r.json()["status"] == "visualizing"
+    assert option_row(world, opt["id"]).visualize_claimed_at is not None
+    assert run(client, opt["id"]).status_code == 409
+
+
 def test_unknown_option_404(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
     r = run(client, "opt_missing")
     assert r.status_code == 404 and error(r) == "OPTION_NOT_FOUND"
@@ -372,3 +419,20 @@ def test_startup_resets_options_left_visualizing(client: TestClient, world) -> N
     assert option_row(world, first["id"]).status == "visualized"
     assert option_row(world, second["id"]).status == "open"
     assert option_row(world, second["id"]).visualize_claimed_at is None
+
+
+def test_startup_marks_unchecked_items_interrupted(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    from app.main import app
+
+    opt = first_option(client, world)
+    run(client, opt["id"])
+    run(client, opt["id"])
+    a, b = generated(world, opt["id"])
+    a.check_json = None  # its check never finished
+    world["session"].commit()
+    kept = b.check_json
+    with TestClient(app):
+        pass
+    a, b = generated(world, opt["id"])
+    assert a.check_json == {"error": "INTERRUPTED"}
+    assert b.check_json == kept

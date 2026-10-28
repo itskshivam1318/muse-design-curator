@@ -7,6 +7,7 @@ the option back. After that the item stays: a parse or check failure is stored o
 
 import io
 import logging
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 from functools import partial
@@ -38,8 +39,11 @@ from app.storage import files
 log = logging.getLogger(__name__)
 
 JOB = "visualize_option"
-NOTE_GAP = 40  # source edge to the option's note when the note has no saved position
-NOTE_WIDTH = 260  # the generated item sits past the note
+NOTE_OFFSET = 60  # source edge to the note's first fan column (the browser's OFFSET_X)
+NOTE_WIDTH = 220  # the browser's NOTE_W
+IMAGE_GAP = 40  # note edge to the generated item
+STACK_GAP = 24  # between images generated from the same option
+UNSAFE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 CLAIM_TTL_S = 300  # a visualize claim older than this is from a job that died
 
 
@@ -53,9 +57,14 @@ def _iso(t: datetime) -> str:
     return t.isoformat(timespec="milliseconds")  # the same shape as now_iso: comparable text
 
 
-def request_visualize(session: Session, option_id: str) -> None:
+def request_visualize(
+    session: Session, option_id: str, *, at: tuple[float, float] | None = None
+) -> None:
     """Mark the option visualizing and queue the job. 409 while it is already visualizing,
-    unless that claim is older than CLAIM_TTL_S (its job died with the process)."""
+    unless that claim is older than CLAIM_TTL_S (its job died with the process).
+
+    `at` is where the browser drew the note (a never-dragged note's spot is computed there);
+    it is saved on the option so the image lands beside it."""
     require_enabled()
     o = explore_repo.get_option(session, option_id)
     if o is None:
@@ -73,7 +82,10 @@ def request_visualize(session: Session, option_id: str) -> None:
                 ExploreOption.visualize_claimed_at < stale,
             ),
         )
-        .values(status="visualizing", last_error=None, visualize_claimed_at=now_iso())
+        .values(
+            status="visualizing", last_error=None, visualize_claimed_at=now_iso(),
+            **({"x": at[0], "y": at[1]} if at else {}),
+        )
     )  # fmt: skip
     if not claimed.rowcount:  # type: ignore[attr-defined]
         raise AppError(409, "VISUALIZE_IN_PROGRESS", "This option is already being visualized")
@@ -96,6 +108,12 @@ def _stamped(img: Image.Image, model: str, option_id: str) -> bytes:
     return buf.getvalue()
 
 
+def _title(name: str) -> str:
+    """A readable file name for the generated item: the option's name, made safe."""
+    safe = UNSAFE.sub("-", name).strip(" .")[:120]
+    return f"{safe or 'generated'}.png"
+
+
 def _ingest(
     session: Session, source: BoardItem, o: ExploreOption, data: bytes, model: str
 ) -> BoardItem:
@@ -106,10 +124,14 @@ def _ingest(
     storage = files.save_original(data, sha, "png")
     thumb = files.save_thumb(img, sha)
     w, h = default_size(*img.size)
-    x = (o.x if o.x is not None else source.x + source.w + NOTE_GAP) + NOTE_WIDTH
-    y = o.y if o.y is not None else source.y
+    # right of the option's note; each repeat below the one before, so they never stack
+    note_x = o.x if o.x is not None else source.x + source.w + NOTE_OFFSET
+    note_y = o.y if o.y is not None else source.y
+    done = explore_repo.generated_count(session, o.id)
+    x, y = note_x + NOTE_WIDTH + IMAGE_GAP, note_y + done * (h + STACK_GAP)
+    meta = ItemMeta(origin="generated", filename=_title(o.name), x=x, y=y)
     return create_item(
-        session, source.board_id, ItemMeta(origin="generated", x=x, y=y),
+        session, source.board_id, meta,
         kind="image", sha256=sha, storage_path=storage, thumb_path=thumb, mime="image/png",
         width=img.size[0], height=img.size[1], w=w, h=h, rights_status="generated",
         parent_item_id=source.id, explore_option_id=o.id,
@@ -200,13 +222,19 @@ def visualize_job(option_id: str) -> None:
 
 
 def recover_stuck(session: Session) -> int:
-    """Startup: no job survives a restart, so `visualizing` options go back to rest."""
+    """Startup: no job survives a restart, so `visualizing` options go back to rest, every
+    claim is freed, and a generated item whose check never finished is marked INTERRUPTED."""
     stuck = list(
         session.scalars(select(ExploreOption).where(ExploreOption.status == "visualizing"))
     )
     for o in stuck:
         o.status = resting_status(session, o.id)
-        o.visualize_claimed_at = None
+    claimed = select(ExploreOption).where(ExploreOption.visualize_claimed_at.is_not(None))
+    for o in session.scalars(claimed):
+        o.visualize_claimed_at = None  # also options dismissed mid-job
+    for item in session.scalars(select(BoardItem).where(BoardItem.origin == "generated")):
+        if item.check_json is None:
+            item.check_json = {"error": "INTERRUPTED"}
     session.flush()
     return len(stuck)
 

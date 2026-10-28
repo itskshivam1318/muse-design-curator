@@ -36,6 +36,7 @@ Mode = Literal["initial", "more", "further"]
 DISTANCES = ("near", "bold", "wild")
 MAX_OPTIONS = 10
 EVENT = "explore.updated"
+KEEP_REST = "Keep everything else exactly the same."
 
 
 def require_enabled() -> None:
@@ -75,6 +76,13 @@ def _text(raw: Any) -> str:
     return " ".join(raw.split()) if isinstance(raw, str) else ""
 
 
+def _with_keep(prompt: str) -> str:
+    """The edit prompt ending with KEEP_REST: without it image models restyle the whole image."""
+    if prompt.endswith(KEEP_REST):
+        return prompt
+    return f"{prompt.rstrip()}{'' if prompt.endswith(('.', '!', '?')) else '.'} {KEEP_REST}"
+
+
 def _clean(
     raw: Any, spec: AttributeSpec, current: Value, known: set[str], seen: set[str]
 ) -> list[dict[str, Any]]:
@@ -99,9 +107,7 @@ def _clean(
         description = _text(o.get("description"))
         # the description's own full stop would double the sentence's
         detail = f"{name}: {description.rstrip('.')}" if description.rstrip(".") else name
-        edit = _text(o.get("edit_prompt")) or (
-            f"Change only {spec.label} to {detail}. Keep everything else exactly the same."
-        )
+        edit = _with_keep(_text(o.get("edit_prompt")) or f"Change only {spec.label} to {detail}.")
         seen.add(name.lower())
         out.append({
             "name": name, "description": description, "distance": distance,
@@ -198,13 +204,19 @@ def resting_status(session: Session, option_id: str) -> str:
 
 
 def update_option(session: Session, option_id: str, **fields: Any) -> ExploreOption:
-    """Dismiss, restore or move an option; publishes the exploration."""
+    """Dismiss, restore or move an option; publishes the exploration.
+
+    Restoring an option whose visualize job still holds its claim (it was dismissed mid-job, or
+    is still running) keeps it `visualizing`, so the claim is not freed for a second job."""
     require_enabled()
-    if fields.get("status") == "open":
-        fields["status"] = resting_status(session, option_id)
-    o = explore_repo.update_option(session, option_id, **fields)
+    o = explore_repo.get_option(session, option_id)
     if o is None:
         raise AppError(404, "OPTION_NOT_FOUND", "Option not found")
+    if fields.get("status") == "open":
+        busy = o.status == "visualizing" or o.visualize_claimed_at is not None
+        fields["status"] = "visualizing" if busy else resting_status(session, option_id)
+    o = explore_repo.update_option(session, option_id, **fields)
+    assert o is not None
     e = session.get(Exploration, o.exploration_id)
     assert e is not None
     publish_later(session, e)
