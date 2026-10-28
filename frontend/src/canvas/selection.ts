@@ -4,6 +4,7 @@
  * with `registerDrawerPanel` in panels/RightDrawer.tsx.
  */
 import { useSyncExternalStore } from 'react'
+import { track } from '../telemetry'
 
 export interface DrawerState {
   kind: string
@@ -59,9 +60,12 @@ export const selection = {
     if (d && !existing.has(d.itemId)) selectionStore.set({ drawer: null })
   },
   openDrawer(kind: string, itemId: string, params?: Record<string, unknown>) {
+    track('drawer.open', { itemId, detail: { kind } })
     selectionStore.set({ drawer: { kind, itemId, ...(params ? { params } : {}) } })
   },
   closeDrawer() {
+    const d = selectionStore.get().drawer
+    if (d) track('drawer.close', { itemId: d.itemId, detail: { kind: d.kind } })
     selectionStore.set({ drawer: null })
   },
   reset() {

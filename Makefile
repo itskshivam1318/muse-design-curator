@@ -9,9 +9,11 @@ install:
 	cd extension && npm install
 	@test -f .env || (cp .env.example .env && echo "Created .env from .env.example — add MODEL_API_KEY")
 
+# Backgrounded jobs ignore SIGINT, so without the trap Ctrl-C orphans uvicorn on :8000.
 dev:
-	cd backend && uv run uvicorn app.main:app --reload --port 8000 & \
-	cd frontend && npm run dev -- --port 5173 & \
+	@trap 'trap - INT TERM EXIT; kill 0' INT TERM EXIT; \
+	(cd backend && uv run uvicorn app.main:app --reload --port 8000) & \
+	(cd frontend && npm run dev -- --port 5173) & \
 	wait
 
 test:

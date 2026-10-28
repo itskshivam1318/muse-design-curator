@@ -1,10 +1,11 @@
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { type CandidateView, corpusImageUrl, type Item, type LiveSummary } from '../api'
 import { useRun } from '../queries'
-import { barState, progressText, runFailureText, shortfallText, sourceName, sourceStatusLines } from '../vary/logic'
+import { barState, findMoreLinks, progressText, runFailureText, shortfallText, sourceName, sourceStatusLines } from '../vary/logic'
 import { runStore, useRunState } from '../vary/runStore'
 import { startRun } from '../vary/startRun'
 import { useDialog } from '../ui/useDialog'
+import { track } from '../telemetry'
 
 const CandidatePopover = lazy(() => import('./CandidatePopover').then((m) => ({ default: m.CandidatePopover })))
 
@@ -21,6 +22,17 @@ export function MaybeStrip({ boardId, streamOpen, onKept }: Props) {
   const runQ = useRun(active && active.boardId === boardId ? active.runId : null, streamOpen)
   const [why, setWhy] = useState(false)
   const [retryError, setRetryError] = useState<string | null>(null)
+  const shownRunId = active && active.boardId === boardId && runQ.data?.run.status === 'completed' ? active.runId : null
+  const shownLogged = useRef<string | null>(null)
+  const shownData = shownRunId ? runQ.data : undefined
+  useEffect(() => {
+    if (!shownRunId || !shownData || shownLogged.current === shownRunId) return
+    shownLogged.current = shownRunId // once per completed run
+    track('run.shown', {
+      runId: shownRunId,
+      detail: { results: shownData.results?.length ?? 0, needs_review: shownData.needs_review?.length ?? 0 },
+    })
+  }, [shownRunId, shownData])
   if (!active || active.boardId !== boardId) return null
 
   const data = runQ.data
@@ -30,6 +42,7 @@ export function MaybeStrip({ boardId, streamOpen, onKept }: Props) {
   const results = data?.results ?? []
   const review = data?.needs_review ?? []
   const short = shortfallText(data?.summary)
+  const findMore = findMoreLinks(data?.summary?.live?.queries)
   const all = [...results, ...review]
   const liveSources = Object.entries(data?.summary?.live?.sources ?? data?.progress?.live?.sources ?? {})
   const open = all.find((c) => c.id === openCandidate) ?? null
@@ -84,9 +97,30 @@ export function MaybeStrip({ boardId, streamOpen, onKept }: Props) {
           </span>
         )}
         {done && short.link && all.length > 0 && (
-          <button type="button" className="link-btn" aria-expanded={why} onClick={() => setWhy((w) => !w)}>
+          <button type="button" className="link-btn" aria-expanded={why} onClick={() => {
+              if (!why) track('run.why_only', { runId: active?.runId, detail: { returned: data?.summary?.returned ?? null } })
+              setWhy((w) => !w)
+            }}>
             {short.link}
           </button>
+        )}
+        {done && findMore.length > 0 && (
+          <span className="find-more small" title="Opens in a new tab. Save what you like with the Chrome extension; it stays a private reference on this board.">
+            Find more:{' '}
+            {findMore.map((l, i) => (
+              <span key={l.site}>
+                {i > 0 && ' · '}
+                <a
+                  href={l.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => track('run.find_more', { runId: active?.runId, detail: { site: l.site } })}
+                >
+                  {l.site} ↗
+                </a>
+              </span>
+            ))}
+          </span>
         )}
         <button type="button" className="icon-btn" aria-label="Close Maybe strip" onClick={() => runStore.clear()}>
           ×

@@ -65,6 +65,15 @@ def validate_lens(spec: LensSpec, shape_enabled: bool) -> LensSpec:
     return spec
 
 
+def curated_depicts(domain: str) -> list[str]:
+    """Wikidata ids the domain's subject is tagged with on Commons (lenses/search/depicts.json)."""
+    path = LENS_DIR / "search" / "depicts.json"
+    if not path.is_file():
+        return []
+    entry = json.loads(path.read_text(encoding="utf-8")).get(domain)
+    return [q for q in entry if re.fullmatch(r"Q\d+", q)] if isinstance(entry, dict) else []
+
+
 def load_curated_lens(domain: str, shape_enabled: bool) -> LensSpec | None:
     try:
         check_snake(domain)

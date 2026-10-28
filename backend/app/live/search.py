@@ -32,12 +32,15 @@ log = logging.getLogger(__name__)
 _clock = time.monotonic  # the cooldown clock (tests replace it)
 
 # Licensed APIs only. Pexels stays disabled; no web or image search engines.
-LIVE_ALLOWED = ("commons", "openverse", "met", "aic", "smithsonian")
+LIVE_ALLOWED = (
+    "commons", "openverse", "met", "aic", "smithsonian", "europeana", "cleveland",
+)  # fmt: skip
 MAX_WORKERS = 16
 
 DISPLAY_NAMES = {
     "commons": "Wikimedia Commons", "openverse": "Openverse", "met": "the Met",
     "aic": "the Art Institute of Chicago", "smithsonian": "the Smithsonian",
+    "europeana": "Europeana", "cleveland": "the Cleveland Museum of Art",
 }  # fmt: skip
 
 SourceFactory = Callable[[str, str], Source]
@@ -117,6 +120,17 @@ def parse_sources(value: str) -> list[str]:
         if name in LIVE_ALLOWED and name not in out:
             out.append(name)
     return out
+
+
+def configured(names: list[str]) -> list[str]:
+    """The sources that can answer a live search with the current settings.
+
+    Smithsonian without an API key would read its bulk files, which never finish in time;
+    Europeana answers nothing without one.
+    """
+    s = get_settings()
+    keys = {"smithsonian": s.SMITHSONIAN_API_KEY, "europeana": s.EUROPEANA_API_KEY}
+    return [n for n in names if n not in keys or keys[n]]
 
 
 def make_source(name: str, domain: str) -> Source:

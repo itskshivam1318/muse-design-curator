@@ -250,7 +250,7 @@ def _live_enabled(board: Any) -> list[str]:
     s = get_settings()
     if not s.LIVE_SEARCH or not board.domain:
         return []
-    return live_search.parse_sources(s.LIVE_SOURCES)
+    return live_search.configured(live_search.parse_sources(s.LIVE_SOURCES))
 
 
 def _live_queries(
@@ -259,13 +259,15 @@ def _live_queries(
 ) -> list[str]:  # fmt: skip
     if providers.reasoning is not None:
         try:
-            return live_queries.write_queries(
+            written = live_queries.write_queries(
                 spec, source_attrs, lens, board.context or "", providers.reasoning, session=session,
                 timeout=QUERY_TIMEOUT_S,
             )  # fmt: skip
+            return live_queries.with_broad(written, spec, lens)
         except Exception as exc:  # noqa: BLE001 - live search never fails the run
             log.warning("live query writing failed (%s); using fallback queries", exc)
-    return live_queries.fallback_queries(spec, lens)[: get_settings().LIVE_QUERY_COUNT]
+    fallback = live_queries.fallback_queries(spec, lens)[: get_settings().LIVE_QUERY_COUNT]
+    return live_queries.with_broad(fallback, spec, lens)
 
 
 def _live_info(found: live_search.LiveItems, queries: list[str], indexed: int) -> dict[str, Any]:

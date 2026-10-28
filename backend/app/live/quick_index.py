@@ -28,7 +28,7 @@ from app.corpus import hashing
 from app.corpus.embedding_lock import EMBEDDINGS_LOCK
 from app.corpus.indexer import EmbeddingStore, embeddings_path, store_attributes
 from app.corpus.provenance import check_provenance
-from app.corpus.sources.base import ManifestItem, user_agent
+from app.corpus.sources.base import ManifestItem, source_headers
 from app.db.models import CorpusItem
 from app.db.repos import corpus as corpus_repo
 from app.ingest import links
@@ -62,7 +62,7 @@ def _download(client: httpx.Client | None, url: str, limit: int) -> bytes:
         own = None
         if client is None:
             own = httpx.Client(
-                timeout=15, headers={"User-Agent": user_agent(get_settings())},
+                timeout=15, headers=source_headers(get_settings()),
                 follow_redirects=False, trust_env=False, transport=links.pinned_transport(ip),
             )  # fmt: skip
         http = client or own

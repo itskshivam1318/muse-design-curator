@@ -44,7 +44,7 @@ def test_result_is_cached_and_prompt_names_target(session) -> None:  # type: ign
     queries.write_queries(spec, {}, lens, "", p, session=session)
     assert len(calls) == 1
     assert "dial" in calls[0].lower() and "case" in calls[0].lower()
-    assert queries.PROMPT_VERSION == "live-queries-v1"
+    assert queries.PROMPT_VERSION == "live-queries-v2"
 
 
 def test_schema_rejects_other_shapes() -> None:
@@ -76,3 +76,20 @@ def test_fallback_queries_name_target_and_protected() -> None:
     fb = queries.fallback_queries(spec, lens)
     assert 3 <= len(fb) <= 5
     assert any("red" in q for q in fb)
+
+
+def test_broad_queries_name_the_target_part_and_target() -> None:
+    spec, lens = make_spec()
+    assert queries.broad_queries(spec, lens) == ["watch dial", "watch dial colour"]
+
+
+def test_broad_queries_use_the_preferred_value() -> None:
+    spec, lens = make_spec("prefer", ("dark_blue",))
+    assert queries.broad_queries(spec, lens)[1] == "watch dark blue"
+
+
+def test_with_broad_appends_only_new_queries() -> None:
+    spec, lens = make_spec()
+    assert queries.with_broad(["Watch Dial", "black dial pilot"], spec, lens) == [
+        "Watch Dial", "black dial pilot", "watch dial colour",
+    ]  # fmt: skip

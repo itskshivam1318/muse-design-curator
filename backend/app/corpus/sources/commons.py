@@ -9,6 +9,7 @@ import httpx
 from app.config import Settings
 from app.corpus.sources.base import BaseSource, ManifestItem, Throttle, strip_html
 from app.corpus.sources.licenses import spdx_from_text
+from app.domain.lens import curated_depicts
 
 API = "https://commons.wikimedia.org/w/api.php"
 MIN_INTERVAL_S = 60 / 200  # Wikimedia allows 200 requests/min with a descriptive User-Agent
@@ -57,9 +58,27 @@ class CommonsSource(BaseSource):
         )  # fmt: skip
 
     def search(self, query: str, limit: int) -> Iterator[ManifestItem]:
+        """Files tagged as depicting the domain's subject first (precise), then any file whose
+        title or caption matches (broad); each file once."""
+        seen: set[str] = set()
+        qids = curated_depicts(self.domain)
+        searches = [f"filetype:bitmap {query}"]
+        if qids:
+            tagged = "|".join(f"P180={q}" for q in qids)
+            searches.insert(0, f"filetype:bitmap haswbstatement:{tagged} {query}")
+        for gsr in searches:
+            for item in self._search(gsr, limit - len(seen)):
+                if item.id in seen:
+                    continue
+                seen.add(item.id)
+                yield item
+                if len(seen) >= limit:
+                    return
+
+    def _search(self, gsrsearch: str, limit: int) -> Iterator[ManifestItem]:
         params: dict[str, Any] = {
             "action": "query", "format": "json", "formatversion": 2, "generator": "search",
-            "gsrsearch": f"filetype:bitmap {query}", "gsrnamespace": 6,
+            "gsrsearch": gsrsearch, "gsrnamespace": 6,
             "gsrlimit": PAGE_SIZE, "prop": "imageinfo", "iiprop": "url|extmetadata|size",
             "iiurlwidth": 1600,
         }  # fmt: skip

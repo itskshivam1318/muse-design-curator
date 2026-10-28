@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { setBoard as setTelemetryBoard } from '../telemetry'
 import {
   ApiError,
   type Board,
@@ -66,7 +67,12 @@ export function BoardPage({ boardId }: { boardId: string }) {
   useEffect(() => {
     selection.reset()
     runStore.clear()
-    return connectBoardEvents(boardId, qc, { onStatus: setLive })
+    setTelemetryBoard(boardId)
+    const disconnect = connectBoardEvents(boardId, qc, { onStatus: setLive })
+    return () => {
+      disconnect()
+      setTelemetryBoard(null)
+    }
   }, [boardId, qc])
 
   // Keep: the candidate flies from the popover onto the canvas next to its source, then is selected

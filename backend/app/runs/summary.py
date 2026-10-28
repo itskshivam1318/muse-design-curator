@@ -14,7 +14,8 @@ from app.retrieval.config import RankingConfig
 
 SHORTFALL_ORDER = (
     "protected_changed", "target_not_met", "uncertain", "no_target_change", "avoided_value",
-    "on_board", "duplicate_source", "duplicate_other", "provenance", "unusable", "no_candidates",
+    "on_board", "duplicate_source", "duplicate_other", "provenance", "unusable", "not_subject",
+    "no_candidates",
     "source_failed",
 )  # fmt: skip
 
@@ -106,6 +107,8 @@ def summarize_run(session: Session, run: VariationRun, lens: LensSpec) -> dict[s
                 count["provenance"] += 1
             elif r == "unusable":
                 count["unusable"] += 1
+            elif r == "not_subject":
+                count["not_subject"] += 1
         elif c.state in ("rejected", "uncertain"):
             checks = runs_repo.validations(session, c.id)
             if c.state == "uncertain":
@@ -150,6 +153,7 @@ def summarize_run(session: Session, run: VariationRun, lens: LensSpec) -> dict[s
         "duplicate_other": lambda n: f"{n} near-duplicates of other results",
         "provenance": lambda n: f"{n} licensed images were excluded for invalid provenance",
         "unusable": lambda n: f"{n} images were unusable",
+        "not_subject": lambda n: f"{n} images didn't clearly show the subject",
         "no_candidates": lambda n: "No licensed candidates were available for this board",
         "source_failed": lambda n: f"{_names(down)} didn't respond",
     }

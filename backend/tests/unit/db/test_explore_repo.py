@@ -207,7 +207,7 @@ def test_migration_downgrade_is_clean(tmp_path: Path) -> None:
     with engine.begin() as conn:
         assert conn.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
         cfg.attributes["connection"] = conn
-        command.downgrade(cfg, "0003")
+        command.downgrade(cfg, "0005")
     names = set(inspect(engine).get_table_names())
     assert "explorations" not in names and "explore_options" not in names
     with engine.connect() as c:
@@ -224,7 +224,7 @@ def test_migration_keeps_referenced_items_with_fks_on(tmp_path: Path) -> None:
     def _fk_on(dbapi, _rec):  # type: ignore[no-untyped-def]
         dbapi.execute("PRAGMA foreign_keys=ON")
 
-    run_migrations(engine, "0003")
+    run_migrations(engine, "0005")
     with engine.begin() as c:
         c.execute(
             text(
@@ -278,12 +278,12 @@ def test_migration_keeps_referenced_items_with_fks_on(tmp_path: Path) -> None:
     cfg = alembic_config()
     with migration_transaction(engine) as conn:
         cfg.attributes["connection"] = conn
-        command.downgrade(cfg, "0003")
+        command.downgrade(cfg, "0005")
     assert counts() == before
     with engine.connect() as c:
         assert c.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
         assert c.exec_driver_sql("PRAGMA foreign_key_check").fetchall() == []
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0003"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0005"
         table_sql = c.execute(
             text("SELECT sql FROM sqlite_master WHERE name='board_items'")
         ).scalar()
@@ -310,32 +310,32 @@ def test_failure_after_0004_leaves_0003_with_its_version_stamp(tmp_path: Path) -
     script = tmp_path / "alembic"
     shutil.copytree(BACKEND_DIR / "alembic", script, ignore=shutil.ignore_patterns("__pycache__"))
     (script / "versions" / "9999_boom.py").write_text(
-        'revision = "9999_boom"\ndown_revision = "0004_explore"\n\n\n'
+        'revision = "9999_boom"\ndown_revision = "0006_explore"\n\n\n'
         "def upgrade() -> None:\n    raise RuntimeError('boom')\n\n\n"
         "def downgrade() -> None:\n    pass\n"
     )
     engine = _one_conn_engine()
-    run_migrations(engine, "0003")
+    run_migrations(engine, "0005")
     cfg = alembic_config()
     cfg.set_main_option("script_location", str(script))
     with pytest.raises(RuntimeError, match="boom"), migration_transaction(engine) as conn:
         cfg.attributes["connection"] = conn
         command.upgrade(cfg, "head")
     version, tables, fks = _state(engine)
-    assert version == "0003"
+    assert version == "0005"
     assert not {"explorations", "explore_options"} & tables
     assert fks == 1
     with engine.connect() as c:
         cols = {r[1] for r in c.exec_driver_sql("PRAGMA table_info(board_items)")}
     assert "explore_option_id" not in cols
     run_migrations(engine)  # and the run can simply be retried
-    assert _state(engine)[0] == "0004_explore"
+    assert _state(engine)[0] == "0006_explore"
     engine.dispose()
 
 
 def test_foreign_key_violation_fails_the_run_and_leaves_0003() -> None:
     engine = _one_conn_engine()
-    run_migrations(engine, "0003")
+    run_migrations(engine, "0005")
     with engine.connect() as c:
         c.exec_driver_sql("PRAGMA foreign_keys=OFF")
         c.execute(
@@ -351,7 +351,7 @@ def test_foreign_key_violation_fails_the_run_and_leaves_0003() -> None:
     with pytest.raises(RuntimeError, match="foreign key violations"):
         run_migrations(engine)
     version, tables, fks = _state(engine)
-    assert version == "0003"
+    assert version == "0005"
     assert not {"explorations", "explore_options"} & tables
     assert fks == 1
     engine.dispose()
@@ -361,5 +361,5 @@ def test_foreign_keys_back_on_after_a_successful_run() -> None:
     engine = _one_conn_engine()
     run_migrations(engine)
     version, _, fks = _state(engine)
-    assert version == "0004_explore" and fks == 1
+    assert version == "0006_explore" and fks == 1
     engine.dispose()

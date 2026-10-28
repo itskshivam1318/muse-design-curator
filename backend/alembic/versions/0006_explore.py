@@ -1,7 +1,7 @@
 """explore: explorations, options, generated board items"""
 
-revision = "0004_explore"
-down_revision = "0003"
+revision = "0006_explore"
+down_revision = "0005"
 
 import sqlalchemy as sa
 

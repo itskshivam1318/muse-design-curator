@@ -76,6 +76,15 @@ def test_counts_never_fetched_invalid_and_excludes_them(session: Session, data_d
     assert pool.meta.invalid_unindexed == 1 and len(pool) == 3
 
 
+def test_images_without_the_subject_never_enter_the_pool(session: Session, data_dir: Path) -> None:
+    board, ids = _setup(session, data_dir)
+    session.get(CorpusItem, ids[3]).subject_status = "absent"
+    session.get(CorpusItem, ids[0]).subject_status = "present"
+    session.flush()
+    pool = build_pool(session, board, [1, 0, 0, 0], None, CFG)
+    assert [p.item.id for p in pool] == [ids[0], ids[1]]  # NULL (not yet read) stays in
+
+
 def test_no_embeddings_file_gives_empty_pool(session: Session, data_dir: Path) -> None:
     board = Board(title="b", domain="d")
     session.add(board)

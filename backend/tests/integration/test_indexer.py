@@ -58,6 +58,7 @@ def test_fixture_corpus_indexes_with_mock_providers_quickly(
     assert ok.sha256 and ok.dhash and len(ok.dhash) == 16 and (ok.width, ok.height) == (256, 256)
     assert ok.local_path and (data_dir / ok.local_path).is_file()
     assert session.scalars(select(CorpusAttribute).where(CorpusAttribute.item_id == ok.id)).first()
+    assert ok.subject_status == "present"
 
     # no rights, no processing: pending + invalid, never fetched, no embedding, no attributes
     for sid, issue in (
@@ -251,7 +252,9 @@ def test_batch_index_and_quick_index_never_share_an_embedding_row(
                     license_code="CC0-1.0", attribution_text="credit",
                 )  # fmt: skip
                 body = image_bytes("PNG", (300, 200), 77)
-                client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, content=body)))
+                client = httpx.Client(
+                    transport=httpx.MockTransport(lambda r: httpx.Response(200, content=body))
+                )
                 qi.quick_index(session, [live], "watch", client=client)
             return self.inner.embed_images(images)
 
@@ -321,7 +324,9 @@ def test_two_threads_two_sessions_do_not_deadlock_on_the_lock_and_the_database(
                 license_code="CC0-1.0", attribution_text="credit",
             )  # fmt: skip
             body = image_bytes("PNG", (300, 200), 91)
-            client = httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, content=body)))
+            client = httpx.Client(
+                transport=httpx.MockTransport(lambda r: httpx.Response(200, content=body))
+            )
             barrier.wait()
             with SqlSession(engine_b) as s:
                 assert len(qi.quick_index(s, [item], "watch", client=client)) == 1

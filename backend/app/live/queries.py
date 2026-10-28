@@ -13,7 +13,7 @@ from app.domain.variation import VariationSpec
 from app.providers.cache import cached_call
 from app.validation.comparators import AttrValue
 
-PROMPT_VERSION = "live-queries-v1"
+PROMPT_VERSION = "live-queries-v2"
 MIN_QUERIES, MAX_QUERIES = 3, 5
 
 QUERIES_SCHEMA: dict[str, Any] = {
@@ -76,7 +76,7 @@ def build_prompt(
     protected = _protected_text(spec, source_attrs)
     lines = [
         (
-            f"Write {MIN_QUERIES} to {MAX_QUERIES} short image-search queries (2 to 6 words "
+            f"Write {MIN_QUERIES} to {MAX_QUERIES} short image-search queries (2 to 4 words "
             "each) for openly licensed image archives (Wikimedia Commons, Openverse, museums)."
         ),
         f"The reference is a '{lens.label}' image. We want images with: {_target_text(spec)}.",
@@ -89,7 +89,9 @@ def build_prompt(
     if board_context.strip():
         lines.append(f"Board context: {board_context.strip()}")
     lines.append(
-        "Each query names the target change plus one or two of the protected cues. "
+        "Each query names the target change plus at most one protected cue. "
+        "These archives match words in photo titles and captions, so use everyday words a "
+        "photographer would write, not specialist jargon. "
         "Plain words only: no quotes, no operators, no site names."
     )
     return "\n".join(lines)
@@ -112,6 +114,26 @@ def fallback_queries(spec: VariationSpec, lens: LensSpec) -> list[str]:
     while len(seen) < MIN_QUERIES:
         seen.append(extra if extra not in seen else f"{extra} photo")
     return seen[:MAX_QUERIES]
+
+
+def broad_queries(spec: VariationSpec, lens: LensSpec) -> list[str]:
+    """Two plain 2-3 word searches that keyword archives reliably answer.
+
+    Model-written queries can be too specific for a title/caption search and return nothing;
+    these keep the live pool from coming back empty.
+    """
+    noun = lens.label.lower()
+    t = spec.target_spec
+    part = next((p.sam_prompt for p in lens.parts if p.id == t.part), None) if t.part else None
+    first = _human(spec.values[0]) if spec.request.mode == "prefer" and spec.values else None
+    out = [part or noun, f"{noun} {first or t.label.lower()}"]
+    return list(dict.fromkeys(q.strip() for q in out if q.strip()))
+
+
+def with_broad(queries: list[str], spec: VariationSpec, lens: LensSpec) -> list[str]:
+    """The given queries, then the broad ones not already among them (case-insensitive)."""
+    seen = {q.lower() for q in queries}
+    return queries + [q for q in broad_queries(spec, lens) if q.lower() not in seen]
 
 
 def write_queries(

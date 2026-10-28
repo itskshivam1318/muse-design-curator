@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.corpus.embedding_lock import load_matrix
 from app.corpus.indexer import embeddings_path
+from app.corpus.subject import ABSENT
 from app.db.models import CorpusAttribute, CorpusItem
 from app.retrieval.config import RankingConfig
 from app.validation.comparators import AttrValue
@@ -72,6 +73,7 @@ def build_pool(
         CorpusItem.domain == domain,
         CorpusItem.indexing_status == "indexed",
         CorpusItem.embedding_row.is_not(None),
+        CorpusItem.subject_status.is_distinct_from(ABSENT),
     )
     scored = _score_rows(list(session.scalars(q)), matrix, source_vec, centroid_vec, cfg)
     top = scored[: cfg.pool_size]

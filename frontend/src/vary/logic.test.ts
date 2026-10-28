@@ -3,6 +3,7 @@ import type { AttributeSpec, ItemAttribute, RunSummary } from '../api'
 import fixtureJson from '../../../backend/tests/fixtures/protected_defaults.json'
 import { makeProfile } from '../test/fixtures'
 import {
+  findMoreLinks,
   barState,
   canNudge,
   compareDiff,
@@ -191,5 +192,18 @@ describe('live search copy', () => {
     expect(originLabel({ origin: 'live', source: 'newsite' })).toBe('Found live on newsite')
     expect(originLabel({ origin: 'corpus', source: 'commons' })).toBe('From your library')
     expect(originLabel({})).toBe('From your library')
+  })
+})
+
+describe('findMoreLinks', () => {
+  it('uses the first non-blank query, encoded', () => {
+    expect(findMoreLinks(['  ', 'a & b']).map((l) => l.url)).toEqual([
+      'https://www.pinterest.com/search/pins/?q=a%20%26%20b',
+      'https://www.google.com/search?udm=2&q=a%20%26%20b',
+    ])
+  })
+  it('offers nothing without a query', () => {
+    expect(findMoreLinks(undefined)).toEqual([])
+    expect(findMoreLinks([])).toEqual([])
   })
 })
