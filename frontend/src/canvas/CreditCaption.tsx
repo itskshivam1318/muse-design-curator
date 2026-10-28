@@ -55,7 +55,7 @@ export function CreditCaption({ item, screen, verdict }: { item: Item; screen: B
             generated · {item.generation.model}
           </p>
           {verdict && (
-            <p className={`verdict verdict-${verdict.tone}`} role="status">
+            <p className={`verdict verdict-${verdict.tone}`}>
               {verdict.text}
             </p>
           )}

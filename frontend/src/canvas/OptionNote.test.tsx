@@ -25,14 +25,14 @@ const option: ExploreOption = {
   status: 'open', last_error: null, x: 300, y: 40,
 }
 
-function setup(over: { editable?: boolean } = {}) {
+function setup(over: { editable?: boolean; option?: Partial<ExploreOption> } = {}) {
   stubCanvasContext()
   const stage = createRef<Konva.Stage>()
   const props = { onOpen: vi.fn(), onMove: vi.fn(), onDragMove: vi.fn(), onDismiss: vi.fn() }
   render(
     <Stage ref={stage} width={800} height={600}>
       <Layer>
-        <OptionNote option={option} x={300} y={40} scale={1} palette={palette} editable={over.editable ?? true} {...props} />
+        <OptionNote option={{ ...option, ...over.option }} x={300} y={40} scale={1} palette={palette} editable={over.editable ?? true} {...props} />
       </Layer>
     </Stage>,
   )
@@ -41,6 +41,18 @@ function setup(over: { editable?: boolean } = {}) {
 }
 
 describe('OptionNote', () => {
+  it('shows a one-line state while visualizing and after a failure', () => {
+    expect(setup().find<Konva.Text>('note-state')).toBeUndefined()
+    cleanup()
+    const busy = setup({ option: { status: 'visualizing' } }).find<Konva.Text>('note-state')!
+    expect(busy.text()).toBe('visualizing…')
+    expect(busy.fill()).toBe(palette.muted)
+    cleanup()
+    const failed = setup({ option: { last_error: 'MODEL_UNAVAILABLE' } }).find<Konva.Text>('note-state')!
+    expect(failed.text()).toBe("couldn't visualize")
+    expect(failed.fill()).toBe(palette.bad)
+  })
+
   it('OptionNote renders name and distance', () => {
     const { find } = setup()
     expect(find<Konva.Text>('note-name')?.text()).toBe('Brushed steel')

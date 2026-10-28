@@ -2,6 +2,7 @@ import Konva from 'konva'
 import { useEffect, useRef, useState } from 'react'
 import { Circle, Group, Image as KImage, Label, Rect, Tag, Text } from 'react-konva'
 import { type Item, itemImageUrl } from '../api'
+import type { VerdictTone } from '../explore/verdict'
 import { hostOf } from '../format'
 import type { Bounds } from './geometry'
 import {
@@ -18,6 +19,10 @@ import type { CanvasPalette } from './palette'
 import { useImage } from './useImage'
 
 const KEPT_W = 38 // screen px
+const GENERATED_W = 66 // screen px
+
+const toneColor = (tone: VerdictTone | undefined, p: CanvasPalette) =>
+  tone === 'ok' ? p.ok : tone === 'warn' ? p.warn : tone === 'error' ? p.bad : p.muted
 
 type KEvent<E extends Event = MouseEvent> = Konva.KonvaEventObject<E>
 
@@ -149,10 +154,12 @@ interface DecorProps {
   selected: boolean
   reduced: boolean
   palette: CanvasPalette
+  /** A generated item's check so far: tints its "generated" badge. */
+  verdictTone?: VerdictTone
 }
 
 /** Everything drawn around an item: outline, status dot, handles, shimmer and small badges. */
-export function ItemDecorations({ item, bounds, scale, hovered, selected, reduced, palette }: DecorProps) {
+export function ItemDecorations({ item, bounds, scale, hovered, selected, reduced, palette, verdictTone }: DecorProps) {
   const picture = item.kind !== 'link'
   const parsing = picture && isParsing(item.parse_status)
   const showDot = picture && (hovered || item.parse_status !== 'completed')
@@ -180,6 +187,12 @@ export function ItemDecorations({ item, bounds, scale, hovered, selected, reduce
         <Label x={bounds.x + inset} y={bounds.y + inset} listening={false}>
           <Tag fill={palette.bad} cornerRadius={8 / scale} />
           <Text text="Not this" fontSize={badgeFont} padding={badgePad} fill="#ffffff" />
+        </Label>
+      )}
+      {item.origin === 'generated' && (
+        <Label name="generated-badge" x={bounds.x + bounds.width - inset - GENERATED_W / scale} y={bounds.y + inset} listening={false}>
+          <Tag fill={toneColor(verdictTone, palette)} cornerRadius={8 / scale} />
+          <Text text="generated" width={GENERATED_W / scale} align="center" fontSize={badgeFont} padding={badgePad} fill="#ffffff" />
         </Label>
       )}
       {item.origin === 'candidate' && (

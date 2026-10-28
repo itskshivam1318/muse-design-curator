@@ -3,6 +3,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, keys, type Exploration, type ExploreOption, type ItemAttributes } from '../api'
 import { undoHistory } from '../canvas/history'
+import { itemBounds } from '../canvas/nodeProps'
+import { fanPositions } from '../canvas/notes'
 import { hoverStore, setHoveredOption } from '../explore/hover'
 import { makeAttrs } from '../test/attrs'
 import { makeItem, makeProfile } from '../test/fixtures'
@@ -109,7 +111,9 @@ describe('ExplorePanel', () => {
     const { qc } = setup({ params: { key: 'case_finish' }, explorations: [exploration([opt({ id: 'o1' })])] })
     expect(screen.queryByRole('status', { name: 'Visualizing' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Visualize Option o1' }))
-    await waitFor(() => expect(visualizeOption).toHaveBeenCalledWith('o1'))
+    // sends where the canvas draws the never-dragged note, so the image lands beside it
+    const at = fanPositions(itemBounds(makeItem({ id: 'i1' })), 1, 0)[0]
+    await waitFor(() => expect(visualizeOption).toHaveBeenCalledWith('o1', at))
     expect(await screen.findByRole('status', { name: 'Visualizing' })).toBeTruthy()
     // the server's event ends it with an error: the spinner goes and the row says so
     act(() => qc.setQueryData(keys.explorations('b1'), [exploration([opt({ id: 'o1', last_error: 'GENERATION_FAILED' })])]))

@@ -45,4 +45,27 @@ describe('Canvas notes', () => {
     expect(onOpenPanel).toHaveBeenCalledWith('explore', 'src', { key: 'case_finish', optionId: 'o3' })
     vi.unstubAllGlobals()
   })
+
+  it('draws no notes when explore is off', () => {
+    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
+    const qc = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } })
+    qc.setQueryData(keys.demo, { demo_mode: false, explore_enabled: false })
+    qc.setQueryData(keys.explorations('b1'), [
+      { id: 'e1', board_id: 'b1', item_id: 'src', key: 'case_finish', options: [opt({ id: 'o1' })] },
+    ])
+    render(
+      <QueryClientProvider client={qc}>
+        <Canvas
+          boardId="b1"
+          items={[makeItem({ id: 'src', board_id: 'b1' })]}
+          actions={{} as ItemActions}
+          onFiles={vi.fn()}
+          onOpenPanel={vi.fn()}
+          spaceDown={false}
+        />
+      </QueryClientProvider>,
+    )
+    expect(screen.queryAllByTestId('option-note')).toEqual([])
+    vi.unstubAllGlobals()
+  })
 })

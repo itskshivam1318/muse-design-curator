@@ -525,8 +525,9 @@ export const patchOption = (
   optionId: string,
   body: { status?: 'dismissed' | 'open'; x?: number; y?: number },
 ) => request<ExploreOption>(`/options/${enc(optionId)}`, { method: 'PATCH', json: body })
-export const visualizeOption = (optionId: string) =>
-  request<void>(`/options/${enc(optionId)}/visualize`, { method: 'POST' })
+/** `at` is where the canvas draws the option's note; the server saves it and places the image beside it. */
+export const visualizeOption = (optionId: string, at?: Point) =>
+  request<void>(`/options/${enc(optionId)}/visualize`, { method: 'POST', ...(at ? { json: at } : {}) })
 
 export const pairCode = () =>
   request<{ code: string; expires_at: string }>('/extension/pair-code', { method: 'POST' })

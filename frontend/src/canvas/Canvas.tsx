@@ -350,8 +350,10 @@ export function Canvas({ boardId, items, actions, onFiles, onOpenPanel, spaceDow
     return [{ id: child.id, points: lineagePoints(itemBounds(positioned(parent)), itemBounds(positioned(child))) }]
   })
   const shownItems = ordered.map(positioned)
-  const notes = placedNotes(explorations ?? [], shownItems)
-  const noteLinks = noteLines(withDraggedNote(explorations ?? [], noteDrag), shownItems)
+  // explore off: the notes are not drawn (the server lists no explorations either)
+  const shownExplorations = exploreEnabled ? (explorations ?? []) : []
+  const notes = placedNotes(shownExplorations, shownItems)
+  const noteLinks = noteLines(withDraggedNote(shownExplorations, noteDrag), shownItems)
   const openNote = (n: PlacedNote) =>
     onOpenPanel('explore', n.exploration.item_id, { key: n.exploration.key, optionId: n.option.id })
   const gridStep = GRID * view.scale * (view.scale < 0.5 ? 4 : view.scale < 1 ? 2 : 1)
@@ -458,6 +460,7 @@ export function Canvas({ boardId, items, actions, onFiles, onOpenPanel, spaceDow
                   selected={selected.includes(i.id)}
                   reduced={reduced}
                   palette={palette}
+                  verdictTone={itemVerdict(it, explorations, labels)?.tone}
                 />
               )
             })}

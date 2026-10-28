@@ -52,7 +52,7 @@ test('explore option then visualize', async ({ page }) => {
     .not.toBe('')
   await expectItemCount(page, 6)
 
-  // select the generated item by id (its button label falls back to the id when it has no name)
+  // select the generated item by its name (the option name)
   const gen = (await boardItems(boardId)).find((i) => i.id === generatedId)!
   const label = gen.original_filename ?? gen.page_title ?? gen.page_url ?? gen.id
   await page.keyboard.press('Escape')

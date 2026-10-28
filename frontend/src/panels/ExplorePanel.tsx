@@ -7,8 +7,10 @@ import {
   type ExploreOption,
   exploreItem,
   keys,
+  type Point,
   visualizeOption,
 } from '../api'
+import { placedNotes } from '../canvas/notes'
 import { setHoveredOption, hoverStore, useHoveredOption } from '../explore/hover'
 import { canFindReal, findRealRequest, optionTree, withExploration, withOption } from '../explore/logic'
 import { dismissOption } from '../explore/optionActions'
@@ -33,8 +35,14 @@ export function ExplorePanel({ boardId, itemId, params, onClose, locked = false 
   const preset = (params ?? {}) as ExploreParams
   const attrsQ = useAttributes(itemId)
   const profile = useProfile(boardId).data?.profile
-  const item = useItems(boardId).data?.find((i) => i.id === itemId)
+  const items = useItems(boardId).data
+  const item = items?.find((i) => i.id === itemId)
   const explorations = useExplorations(boardId).data
+  // where the canvas draws each note (a never-dragged one's spot is only computed here)
+  const drawn = useMemo(
+    () => new Map(placedNotes(explorations ?? [], items ?? []).map((n) => [n.option.id, { x: n.x, y: n.y }])),
+    [explorations, items],
+  )
   const lens = attrsQ.data?.lens ?? null
   const records = useMemo(() => attrsQ.data?.attributes ?? [], [attrsQ.data])
   const byKey = useMemo(() => new Map(records.map((r) => [r.key, r])), [records])
@@ -91,6 +99,7 @@ export function ExplorePanel({ boardId, itemId, params, onClose, locked = false 
                         exploration={exploration}
                         labels={labels}
                         focusId={preset.key === a.key ? preset.optionId : undefined}
+                        drawnAt={(id) => drawn.get(id)}
                         locked={locked}
                       />
                     )}
@@ -114,6 +123,7 @@ function Dimension({
   labels,
   focusId,
   locked,
+  drawnAt,
 }: {
   boardId: string
   itemId: string
@@ -122,6 +132,7 @@ function Dimension({
   labels: Map<string, string>
   focusId?: string
   locked: boolean
+  drawnAt: (optionId: string) => Point | undefined
 }) {
   const qc = useQueryClient()
   const hovered = useHoveredOption()
@@ -166,7 +177,7 @@ function Dimension({
         })
       set('visualizing', null)
       try {
-        await visualizeOption(o.id)
+        await visualizeOption(o.id, drawnAt(o.id))
       } catch (e) {
         set(o.status, o.last_error)
         throw e

@@ -54,6 +54,7 @@ describe('generated caption', () => {
     )
     expect(screen.getByText('generated · gpt-image-1')).toBeTruthy()
     expect(screen.getByText('Checking…')).toBeTruthy()
+    expect(screen.queryByRole('status')).toBeNull() // shown on every hover: not re-announced
     expect(screen.queryByRole('note', { name: 'Image credit' })).toBeNull()
     expect(screen.queryByText(/Ana B/)).toBeNull()
   })

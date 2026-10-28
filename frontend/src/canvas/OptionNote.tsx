@@ -97,6 +97,20 @@ export function OptionNote({ option, x, y, scale, palette, editable, panning = f
         fill={distanceColor(option.distance, palette)}
         listening={false}
       />
+      {(option.status === 'visualizing' || option.last_error) && (
+        <Text
+          name="note-state"
+          x={PAD}
+          y={PAD + 19}
+          width={NOTE_W - PAD * 2}
+          align="right"
+          text={option.status === 'visualizing' ? 'visualizing…' : "couldn't visualize"}
+          fontSize={10}
+          fill={option.status === 'visualizing' ? palette.muted : palette.bad}
+          wrap="none"
+          listening={false}
+        />
+      )}
       <Text
         name="note-desc"
         x={PAD}
