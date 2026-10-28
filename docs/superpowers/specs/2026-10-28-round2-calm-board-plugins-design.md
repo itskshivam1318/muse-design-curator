@@ -1,6 +1,6 @@
 # Round 2: calm board, text-first axis, notes, plugin nodes (design)
 
-Date: 2026-10-28. Status: draft for approval. Branch `feat/round2-calm-board-plugins`, worktree `../muse-round2`, based on `feat/explore-visualize` at `d881f44`.
+Date: 2026-10-28. Status: draft for approval. Branch `feat/round2-calm-board-plugins`, worktree `../muse-round2`, based on `main` at `12fbb91` (explore-visualize merged).
 
 Source of the UI: the "Muse Spark — app interface" design canvas, Round 2 row (artboards `BoardCalm`, `NoteNode`, `ActionNodes`, `Plugins`), and the design chat that produced it. The artboards are the visual reference; this document is the behaviour.
 
@@ -161,7 +161,7 @@ The user's model, in their words from the design chat:
 
 ## Constraints
 
-- All existing tests keep passing (backend ~660, frontend ~165 at the base commit; record exact counts at the start), plus the e2e suite with mock providers.
+- All existing tests keep passing (690 backend, 177 frontend, e2e 3/3 at `12fbb91`), plus the e2e suite with mock providers.
 - Image model only through the provider setting (Muse Image is dev-only from India; the user swaps the model for the demo).
 - Demo mode: Visualize, Run and note Visualize require the passcode unlock when `DEMO_MODE=1`, like option visualize today. User plugins never load in demo mode.
 - No new frontend runtime dependencies unless a task justifies one in review.
@@ -173,7 +173,7 @@ Tests first for backend logic (manifest validation, discovery, runner dispatch, 
 
 ## Settled after the builder check
 
-- **Merge `main` first.** `main` has `b5e1d6d` (board UI event log, subject filter, more live sources) and `59306b3`, which this branch's base lacks. Task 0 merges `main` into this branch. Migrations: `main` has `0004_corpus_subject_status` → `0005_ui_events`, the base has `0004_explore`, all after `0003`. Add an Alembic merge revision (`0006_merge_main_explore`, `down_revision = ("0005_ui_events", "0004_explore")`), then this round's migration `0007_round2` on top. The populated-database test runs the full chain on a copy seeded at `0003`.
+- **Base is `main` at `12fbb91`.** The explore branch was merged into `main` (with the board UI event log and live sources), and this branch is rebased onto it. Alembic has one head, `0006_explore` (after `0005`); this round's migration is `0007_round2` on top. The populated-database test runs the full chain on a copy seeded at `0006_explore` with explore data present. Baseline suites at `12fbb91`: 690 backend, 177 frontend, e2e 3/3.
 - **Agent card source.** The browser merges two streams: the UI event log (`main`, browser-side actions) and the board SSE stream (server events: visualize, keep, `plugin_run.*`). The card shows the newest of either as one sentence; the expanded view lists both, newest first. Server events are not written into `ui_events`.
 - **Axes persist and stack.** An axis is the drawn form of an exploration; it exists while its exploration has non-dismissed options. Every axis of a visible image is drawn, stacked downward from the image's right side, one row per attribute, in exploration creation order; the selected one uses the accent colour, others grey. Axis geometry is computed from the source item's position (no new position columns), so axes and their kept items move with the source. Kept items are positioned in their card slot when kept and follow the source when it moves (the browser moves them with the source in the same undoable move; the server stores the new positions). After reload every axis comes back.
 - **Plugin attributes.** Plugins never overwrite an attribute whose `source` is `user` or whose status is confirmed/edited; such a write is skipped and reported in the run's output. Otherwise upsert with `source="plugin"`, `source_detail=<plugin id>`, `category="plugin"`, `kind` inferred from the value (str→text, int/float→number, bool→boolean), status the same value extraction uses for fresh model values. Values stay scalar: list-like results are stored as text (palette = `"#e6d7b4, #d9a85c, …"`). Re-extraction treats `source="plugin"` like user values (does not overwrite). Migration `0007` adds `plugin` to the `attribute_events.actor` constraint and logs plugin writes with actor `plugin`.
@@ -196,4 +196,4 @@ Tests first for backend logic (manifest validation, discovery, runner dispatch, 
 - Built-in working plugins: **Image, Palette, Critique**. Everything else is a placeholder card.
 - The agent card shows the latest board event and a disabled input; Vocabulary is "coming soon".
 - The explore branch's option notes are replaced by axis cards.
-- Rebase onto `feat/explore-visualize` if it moves; this branch merges after it.
+- Rebase onto `main` if it moves.
