@@ -1,10 +1,12 @@
+import shutil
 from pathlib import Path
 
 import pytest
 from alembic.config import Config
-from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy import Engine, create_engine, event, inspect, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
 from alembic import command
 from app.db.models import (
@@ -16,7 +18,13 @@ from app.db.models import (
     VariationRun,
 )
 from app.db.repos import boards, explore, items
-from app.db.session import BACKEND_DIR, run_migrations
+from app.db.session import (
+    BACKEND_DIR,
+    alembic_config,
+    make_engine,
+    migration_transaction,
+    run_migrations,
+)
 
 
 def _setup(session: Session) -> tuple[str, str]:
@@ -267,9 +275,8 @@ def test_migration_keeps_referenced_items_with_fks_on(tmp_path: Path) -> None:
             text("SELECT sql FROM sqlite_master WHERE name='board_items'")
         ).scalar()
         assert "ck_item_licensed_iff_corpus" in table_sql
-    cfg = Config(str(BACKEND_DIR / "alembic.ini"))
-    cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
-    with engine.begin() as conn:
+    cfg = alembic_config()
+    with migration_transaction(engine) as conn:
         cfg.attributes["connection"] = conn
         command.downgrade(cfg, "0003")
     assert counts() == before
@@ -282,4 +289,77 @@ def test_migration_keeps_referenced_items_with_fks_on(tmp_path: Path) -> None:
         ).scalar()
         assert "explore_option_id" not in table_sql
         assert "ck_item_licensed_iff_corpus" in table_sql
+    engine.dispose()
+
+
+def _one_conn_engine() -> Engine:
+    # a single pooled connection, with the app's pragmas (foreign_keys=ON)
+    return make_engine("sqlite://", poolclass=StaticPool)
+
+
+def _state(engine: Engine) -> tuple[str, set[str], int]:
+    with engine.connect() as c:
+        version = c.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+        fks = c.exec_driver_sql("PRAGMA foreign_keys").scalar_one()
+    return version, set(inspect(engine).get_table_names()), fks
+
+
+def test_failure_after_0004_leaves_0003_with_its_version_stamp(tmp_path: Path) -> None:
+    # 0004's schema change and its version stamp commit together: a later revision
+    # failing in the same run must leave no explore tables behind
+    script = tmp_path / "alembic"
+    shutil.copytree(BACKEND_DIR / "alembic", script, ignore=shutil.ignore_patterns("__pycache__"))
+    (script / "versions" / "9999_boom.py").write_text(
+        'revision = "9999_boom"\ndown_revision = "0004_explore"\n\n\n'
+        "def upgrade() -> None:\n    raise RuntimeError('boom')\n\n\n"
+        "def downgrade() -> None:\n    pass\n"
+    )
+    engine = _one_conn_engine()
+    run_migrations(engine, "0003")
+    cfg = alembic_config()
+    cfg.set_main_option("script_location", str(script))
+    with pytest.raises(RuntimeError, match="boom"), migration_transaction(engine) as conn:
+        cfg.attributes["connection"] = conn
+        command.upgrade(cfg, "head")
+    version, tables, fks = _state(engine)
+    assert version == "0003"
+    assert not {"explorations", "explore_options"} & tables
+    assert fks == 1
+    with engine.connect() as c:
+        cols = {r[1] for r in c.exec_driver_sql("PRAGMA table_info(board_items)")}
+    assert "explore_option_id" not in cols
+    run_migrations(engine)  # and the run can simply be retried
+    assert _state(engine)[0] == "0004_explore"
+    engine.dispose()
+
+
+def test_foreign_key_violation_fails_the_run_and_leaves_0003() -> None:
+    engine = _one_conn_engine()
+    run_migrations(engine, "0003")
+    with engine.connect() as c:
+        c.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        c.execute(
+            text(
+                "INSERT INTO item_attributes (id, item_id, key, label, category, kind, "
+                "confidence, status, source, source_detail, enabled, updated_at) "
+                "VALUES ('att_x', 'itm_missing', 'k', 'K', 'c', 'k', 0.9, 'confirmed', "
+                "'model', '', 1, 't')"
+            )
+        )
+        c.commit()
+        c.exec_driver_sql("PRAGMA foreign_keys=ON")
+    with pytest.raises(RuntimeError, match="foreign key violations"):
+        run_migrations(engine)
+    version, tables, fks = _state(engine)
+    assert version == "0003"
+    assert not {"explorations", "explore_options"} & tables
+    assert fks == 1
+    engine.dispose()
+
+
+def test_foreign_keys_back_on_after_a_successful_run() -> None:
+    engine = _one_conn_engine()
+    run_migrations(engine)
+    version, _, fks = _state(engine)
+    assert version == "0004_explore" and fks == 1
     engine.dispose()

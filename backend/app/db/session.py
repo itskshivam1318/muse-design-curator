@@ -1,10 +1,11 @@
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 from alembic.config import Config
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Connection, Engine, create_engine, event
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -49,10 +50,46 @@ def make_session_factory(engine: Engine) -> sessionmaker[Session]:
     return sessionmaker(engine, expire_on_commit=False)
 
 
-def run_migrations(engine: Engine, revision: str = "head") -> None:
+@contextmanager
+def migration_transaction(engine: Engine) -> Iterator[Connection]:
+    """One transaction for a whole migration run, so each revision's schema change
+    commits together with its alembic_version stamp.
+
+    On SQLite, batch migrations rebuild tables that other rows reference, and the
+    DROP of the old table fails under foreign_keys=ON. So enforcement is turned
+    off before the transaction starts (the pragma is a no-op inside one), checked
+    with foreign_key_check before commit, and restored before the connection goes
+    back to the pool. The explicit BEGIN keeps pysqlite from autocommitting DDL.
+    """
+    with engine.connect() as conn:
+        if engine.url.get_backend_name() != "sqlite":
+            with conn.begin():
+                yield conn
+            return
+        raw = conn.connection.driver_connection
+        assert raw is not None
+        was_on = bool(raw.execute("PRAGMA foreign_keys").fetchone()[0])
+        raw.execute("PRAGMA foreign_keys=OFF")
+        try:
+            with conn.begin():
+                raw.execute("BEGIN")
+                yield conn
+                bad = raw.execute("PRAGMA foreign_key_check").fetchall()
+                if bad:
+                    raise RuntimeError(f"foreign key violations after migrating: {bad[:20]}")
+        finally:
+            raw.execute(f"PRAGMA foreign_keys={'ON' if was_on else 'OFF'}")
+
+
+def alembic_config() -> Config:
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
-    with engine.begin() as conn:
+    return cfg
+
+
+def run_migrations(engine: Engine, revision: str = "head") -> None:
+    cfg = alembic_config()
+    with migration_transaction(engine) as conn:
         cfg.attributes["connection"] = conn
         command.upgrade(cfg, revision)
 

@@ -3,10 +3,6 @@
 revision = "0004_explore"
 down_revision = "0003"
 
-from collections.abc import Iterator
-from contextlib import contextmanager
-from typing import Any
-
 import sqlalchemy as sa
 
 from alembic import op
@@ -24,55 +20,7 @@ def _ensure_sha_index() -> None:
     )
 
 
-def _set_fks(raw: Any, on: bool) -> None:
-    # the pragma is a no-op inside a transaction, so end the open one first
-    if raw.in_transaction:
-        raw.commit()
-    raw.execute(f"PRAGMA foreign_keys={'ON' if on else 'OFF'}")
-
-
-@contextmanager
-def _fk_checks_deferred() -> Iterator[None]:
-    """Run this revision with SQLite FK enforcement off, then check integrity.
-
-    The batch recreate drops board_items while item_attributes, attribute_events,
-    item_frames, variation_runs and child items still reference it; with
-    foreign_keys=ON (as the app's engine sets) that DROP fails. Work done by the
-    earlier revisions is committed before the pragma is switched; this revision then
-    runs in its own explicit transaction (pysqlite would autocommit its DDL) so a
-    failure leaves the database as it was.
-    """
-    bind = op.get_bind()
-    if bind.dialect.name != "sqlite":
-        yield
-        return
-    raw = bind.connection.driver_connection
-    was_on = bool(raw.execute("PRAGMA foreign_keys").fetchone()[0])
-    _set_fks(raw, False)
-    raw.execute("BEGIN")
-    try:
-        yield
-        bad = raw.execute("PRAGMA foreign_key_check").fetchall()
-        if bad:
-            raise RuntimeError(f"foreign key violations after rebuilding board_items: {bad[:20]}")
-    except BaseException:
-        raw.rollback()
-        raise
-    finally:
-        _set_fks(raw, was_on)
-
-
 def upgrade() -> None:
-    with _fk_checks_deferred():
-        _upgrade()
-
-
-def downgrade() -> None:
-    with _fk_checks_deferred():
-        _downgrade()
-
-
-def _upgrade() -> None:
     op.create_table(
         "explorations",
         sa.Column("id", sa.String(), primary_key=True),
@@ -122,7 +70,7 @@ def _upgrade() -> None:
     _ensure_sha_index()
 
 
-def _downgrade() -> None:
+def downgrade() -> None:
     # explorations reference board_items, so they go first; then the generated items'
     # dependents, then the items themselves
     op.drop_table("explore_options")
