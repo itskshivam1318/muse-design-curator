@@ -38,16 +38,25 @@ test('explore option then visualize', async ({ page }) => {
   expect(n).toBeGreaterThanOrEqual(6)
   await expect(page.getByTestId('option-note')).toHaveCount(n)
 
+  const knownIds = new Set((await boardItems(boardId)).map((i) => i.id))
   await rows.first().getByRole('button', { name: /^Visualize / }).click()
-  const before = (await boardItems(boardId)).length
-  await expect.poll(async () => (await boardItems(boardId)).length, { timeout: 10_000 }).toBe(before + 1)
+  let generatedId = ''
+  await expect
+    .poll(
+      async () => {
+        generatedId = (await boardItems(boardId)).find((i) => !knownIds.has(i.id))?.id ?? ''
+        return generatedId
+      },
+      { timeout: 10_000 },
+    )
+    .not.toBe('')
   await expectItemCount(page, 6)
 
-  // select the generated item (the newest) and read the caption and verdict
-  const items = await boardItems(boardId)
-  const gen = items[items.length - 1]
+  // select the generated item by id (its button label falls back to the id when it has no name)
+  const gen = (await boardItems(boardId)).find((i) => i.id === generatedId)!
+  const label = gen.original_filename ?? gen.page_title ?? gen.page_url ?? gen.id
   await page.keyboard.press('Escape')
-  await selectItem(page, new RegExp(`${gen.original_filename ?? gen.page_title ?? gen.id}`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  await selectItem(page, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   await expect(page.getByRole('note', { name: 'Generated image' })).toHaveText(
     'generated · mock-image',
     { timeout: 10_000 },
