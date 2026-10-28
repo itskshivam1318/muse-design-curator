@@ -205,3 +205,81 @@ def test_migration_downgrade_is_clean(tmp_path: Path) -> None:
     with engine.connect() as c:
         assert c.execute(text("SELECT count(*) FROM board_items")).scalar() == 0
     engine.dispose()
+
+
+def test_migration_keeps_referenced_items_with_fks_on(tmp_path: Path) -> None:
+    # board_items is rebuilt by 0004; rows elsewhere point at it, and the app's engine
+    # runs with foreign_keys=ON, so the rebuild's DROP TABLE must not trip the FKs
+    engine = create_engine(f"sqlite:///{tmp_path / 'fk.sqlite'}")
+
+    @event.listens_for(engine, "connect")
+    def _fk_on(dbapi, _rec):  # type: ignore[no-untyped-def]
+        dbapi.execute("PRAGMA foreign_keys=ON")
+
+    run_migrations(engine, "0003")
+    with engine.begin() as c:
+        c.execute(
+            text(
+                "INSERT INTO boards (id, title, context, created_at, updated_at) "
+                "VALUES ('brd_x', 't', '', 't', 't')"
+            )
+        )
+        _insert(c, origin="upload", rights_status="user_supplied", sha256="a" * 64)
+        _insert(
+            c,
+            id="itm_child",
+            origin="upload",
+            rights_status="user_supplied",
+            parent_item_id="itm_x",
+        )
+        c.execute(
+            text(
+                "INSERT INTO item_attributes (id, item_id, key, label, category, kind, "
+                "confidence, status, source, source_detail, enabled, updated_at) "
+                "VALUES ('att_x', 'itm_x', 'palette', 'Palette', 'colour', 'palette', "
+                "0.9, 'confirmed', 'model', '', 1, 't')"
+            )
+        )
+
+    def counts() -> dict[str, int]:
+        with engine.connect() as c:
+            return {
+                t: c.execute(text(f"SELECT count(*) FROM {t}")).scalar_one()
+                for t in ("boards", "board_items", "item_attributes")
+            }
+
+    before = counts()
+    assert before == {"boards": 1, "board_items": 2, "item_attributes": 1}
+    run_migrations(engine)
+    assert counts() == before
+    with engine.connect() as c:
+        assert c.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+        assert c.exec_driver_sql("PRAGMA foreign_key_check").fetchall() == []
+        parent = c.execute(
+            text("SELECT parent_item_id FROM board_items WHERE id = 'itm_child'")
+        ).scalar()
+        assert parent == "itm_x"
+        idx = c.execute(
+            text("SELECT sql FROM sqlite_master WHERE name='uq_board_items_active_sha256'")
+        ).scalar()
+        assert idx and "WHERE" in idx
+        table_sql = c.execute(
+            text("SELECT sql FROM sqlite_master WHERE name='board_items'")
+        ).scalar()
+        assert "ck_item_licensed_iff_corpus" in table_sql
+    cfg = Config(str(BACKEND_DIR / "alembic.ini"))
+    cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
+    with engine.begin() as conn:
+        cfg.attributes["connection"] = conn
+        command.downgrade(cfg, "0003")
+    assert counts() == before
+    with engine.connect() as c:
+        assert c.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+        assert c.exec_driver_sql("PRAGMA foreign_key_check").fetchall() == []
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0003"
+        table_sql = c.execute(
+            text("SELECT sql FROM sqlite_master WHERE name='board_items'")
+        ).scalar()
+        assert "explore_option_id" not in table_sql
+        assert "ck_item_licensed_iff_corpus" in table_sql
+    engine.dispose()
