@@ -1729,3 +1729,405 @@ button.onboarding-step:hover {
 .verdict-warn { color: var(--warn, #a15c00); }
 .verdict-error { color: var(--bad, #b3261e); }
 .verdict-pending { color: var(--muted); }
+
+/* ---- explore axes: text cards along a line from the source (HTML over the canvas) ---- */
+.mark.is-kept {
+  color: var(--ok);
+  border-color: currentColor;
+}
+.axis-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 3;
+}
+.axis-world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+}
+.axis-row > * {
+  position: absolute;
+}
+.axis-label {
+  font: 500 12.5px/16px var(--f-body);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.axis-row.is-active .axis-label {
+  color: var(--accent);
+}
+.axis-line {
+  height: 1.5px;
+  background: #9aa3b0;
+}
+.axis-line[data-active='true'] {
+  background: var(--accent);
+}
+.axis-end {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 2px solid #9aa3b0;
+  border-radius: 50%;
+  background: var(--raised);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.axis-row.is-active .axis-end,
+.axis-end[aria-expanded='true'] {
+  border-color: var(--accent);
+}
+.axis-card {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--raised);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(20, 24, 30, 0.1);
+  text-align: left;
+  font-family: var(--f-body);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.axis-card.is-kept {
+  padding: 5px 10px 0;
+}
+.axis-card.is-hovered {
+  box-shadow: 0 0 0 1.5px var(--ink), 0 1px 2px rgba(20, 24, 30, 0.1);
+}
+.axis-card.is-open {
+  box-shadow: 0 0 0 2px var(--ink), 0 4px 14px rgba(20, 24, 30, 0.2);
+}
+.axis-card.is-text.is-open {
+  background: var(--ink);
+  color: var(--raised);
+}
+.axis-card-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.axis-card-desc {
+  font-size: 11.5px;
+  line-height: 1.35;
+  opacity: 0.8;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.axis-card-status {
+  font-size: 11px;
+  color: var(--muted);
+}
+.axis-card.is-open .axis-card-status {
+  color: inherit;
+}
+.axis-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #9aa3b0;
+}
+.axis-dot[data-distance='bold'] {
+  background: var(--muted);
+}
+.axis-dot[data-distance='wild'] {
+  background: var(--ink);
+}
+.axis-card.is-open .axis-dot[data-distance='wild'] {
+  background: var(--raised);
+}
+.axis-thumb {
+  display: block;
+  width: 84px;
+  height: 84px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--paper);
+}
+.axis-kept-name {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.axis-kept-tag {
+  color: var(--ok);
+}
+.axis-pop-anchor {
+  position: absolute;
+  pointer-events: auto;
+  z-index: 8;
+}
+.axis-popover {
+  position: relative;
+  box-sizing: border-box;
+  width: 236px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--raised);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(20, 24, 30, 0.08), 0 8px 24px rgba(20, 24, 30, 0.12);
+  font-size: 13px;
+  user-select: text;
+}
+.axis-popover p {
+  margin: 0;
+}
+.axis-pop-keeps {
+  font-size: 12px;
+  color: var(--muted);
+}
+.axis-pop-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.axis-pop-progress .spinner {
+  margin-left: 0;
+}
+.axis-pop-primary,
+.axis-pop-keep,
+.axis-pop-regen {
+  min-height: 44px;
+  flex: 1;
+  border: 0;
+  border-radius: 8px;
+  font: 600 13px var(--f-body);
+  cursor: pointer;
+}
+.axis-pop-primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.axis-pop-keep {
+  background: var(--ink);
+  color: var(--raised);
+}
+.axis-pop-keep.is-kept {
+  background: #2c7a4b;
+  color: #ffffff;
+}
+.axis-pop-regen {
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 500;
+}
+.axis-popover button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.axis-pop-row {
+  display: flex;
+  gap: 6px;
+}
+.axis-take {
+  position: relative;
+  height: 150px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--paper);
+}
+.axis-take img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.axis-take-caption {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #14181e;
+  font-size: 11px;
+}
+.axis-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+}
+.axis-pager button,
+.axis-pop-back {
+  min-width: 36px;
+  min-height: 32px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 16px;
+  cursor: pointer;
+}
+.axis-pager button:hover:not(:disabled),
+.axis-pop-back:hover {
+  background: var(--paper);
+}
+.axis-pop-back {
+  align-self: flex-start;
+  font-size: 12.5px;
+  padding: 0 8px;
+  color: var(--muted);
+}
+.axis-pop-verdict {
+  font-size: 12px;
+}
+.axis-branches {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--rule);
+  padding-top: 8px;
+}
+.axis-branches button {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.axis-branches button:hover {
+  background: var(--paper);
+}
+.axis-branch-name {
+  font-weight: 600;
+  font-size: 12.5px;
+}
+.axis-branch-desc {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.axis-pop-more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.axis-picker {
+  position: absolute;
+  z-index: 8;
+}
+.axis-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.axis-picker-list button {
+  width: 100%;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.axis-picker-list button:hover:not(:disabled) {
+  background: var(--paper);
+}
+
+/* ---- attribute chips under the selected image, each marked with its value's source ---- */
+.item-chips {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.item-chip {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--raised);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(20, 24, 30, 0.1);
+  font: 12.5px var(--f-body);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.item-chip:hover:not(:disabled) {
+  box-shadow: 0 0 0 1.5px var(--ink);
+}
+.item-chip:disabled {
+  cursor: default;
+}
+.chip-label {
+  color: var(--muted);
+}
+.chip-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.chip-mark {
+  flex: none;
+  box-sizing: border-box;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+.chip-mark[data-source='measured'] {
+  background: #2c7a4b;
+}
+.chip-mark[data-source='read'] {
+  border: 1.5px solid #2a4aae;
+}
+.chip-mark[data-source='estimated'] {
+  border: 1.5px dashed #9a6110;
+}
+.chip-mark[data-source='web'] {
+  background: #dfe5f6;
+  border: 1.5px solid #2a4aae;
+  border-radius: 50%;
+}
+.chip-mark[data-source='you'] {
+  background: var(--ink);
+  border-radius: 50%;
+}
+.chip-mark[data-source='unknown'] {
+  border: 1.5px solid #9aa3b0;
+  border-radius: 50%;
+}

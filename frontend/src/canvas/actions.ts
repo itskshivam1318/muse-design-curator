@@ -4,15 +4,12 @@ import {
   ApiError,
   createNote,
   deleteItem,
-  type ExploreOption,
   type Item,
   keys,
   patchItem,
-  type Point,
   visualizeNote,
 } from '../api'
 import { setVisualizing, upsertItems } from '../events'
-import { dismissOption, moveOption } from '../explore/optionActions'
 import { type Move, undoHistory as history } from './history'
 import { selection } from './selection'
 import { track } from '../telemetry'
@@ -97,14 +94,6 @@ export function useItemActions(boardId: string) {
         if (last.kind === 'moves') applyPositions(last.moves, 'from')
         else last.revert()
         return true
-      },
-      /** Drop an explore note at a new spot; a refused save puts it back. Undoable. */
-      moveOption(optionId: string, from: Point, to: Point) {
-        moveOption(qc, boardId, optionId, from, to).catch(report('Could not save note position'))
-      },
-      /** The note's ×: same as Dismiss in the drawer. Undoable. */
-      dismissOption(option: ExploreOption) {
-        dismissOption(qc, boardId, option).catch(report('Could not dismiss'))
       },
       remove(ids: readonly string[]) {
         if (ids.length === 0) return

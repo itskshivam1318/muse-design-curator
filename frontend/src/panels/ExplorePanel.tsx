@@ -7,10 +7,8 @@ import {
   type ExploreOption,
   exploreItem,
   keys,
-  type Point,
   visualizeOption,
 } from '../api'
-import { placedNotes } from '../canvas/notes'
 import { setHoveredOption, hoverStore, useHoveredOption } from '../explore/hover'
 import { canFindReal, findRealRequest, optionTree, withExploration, withOption } from '../explore/logic'
 import { dismissOption } from '../explore/optionActions'
@@ -22,7 +20,7 @@ import { ValueText } from './AttrBits'
 import type { DrawerPanelProps } from './drawerRegistry'
 import { PanelHead } from './PanelHead'
 
-/** Canvas notes open the panel focused on one attribute and option. */
+/** Opened focused on one attribute and option (e.g. from a canvas action). */
 interface ExploreParams {
   key?: string
   optionId?: string
@@ -30,7 +28,7 @@ interface ExploreParams {
 
 const errorText = (e: unknown, fallback: string) => (e instanceof ApiError || e instanceof Error ? e.message : fallback)
 
-/** Explore: pick an attribute; its options list under it ("in the dimension"), with the same actions as the canvas notes. */
+/** Explore: pick an attribute; its options list under it ("in the dimension"), with the same actions as the axis cards on the canvas. */
 export function ExplorePanel({ boardId, itemId, params, onClose, locked = false }: DrawerPanelProps) {
   const preset = (params ?? {}) as ExploreParams
   const attrsQ = useAttributes(itemId)
@@ -38,11 +36,6 @@ export function ExplorePanel({ boardId, itemId, params, onClose, locked = false 
   const items = useItems(boardId).data
   const item = items?.find((i) => i.id === itemId)
   const explorations = useExplorations(boardId).data
-  // where the canvas draws each note (a never-dragged one's spot is only computed here)
-  const drawn = useMemo(
-    () => new Map(placedNotes(explorations ?? [], items ?? []).map((n) => [n.option.id, { x: n.x, y: n.y }])),
-    [explorations, items],
-  )
   const lens = attrsQ.data?.lens ?? null
   const records = useMemo(() => attrsQ.data?.attributes ?? [], [attrsQ.data])
   const byKey = useMemo(() => new Map(records.map((r) => [r.key, r])), [records])
@@ -99,7 +92,6 @@ export function ExplorePanel({ boardId, itemId, params, onClose, locked = false 
                         exploration={exploration}
                         labels={labels}
                         focusId={preset.key === a.key ? preset.optionId : undefined}
-                        drawnAt={(id) => drawn.get(id)}
                         locked={locked}
                       />
                     )}
@@ -123,7 +115,6 @@ function Dimension({
   labels,
   focusId,
   locked,
-  drawnAt,
 }: {
   boardId: string
   itemId: string
@@ -132,7 +123,6 @@ function Dimension({
   labels: Map<string, string>
   focusId?: string
   locked: boolean
-  drawnAt: (optionId: string) => Point | undefined
 }) {
   const qc = useQueryClient()
   const hovered = useHoveredOption()
@@ -177,7 +167,7 @@ function Dimension({
         })
       set('visualizing', null)
       try {
-        await visualizeOption(o.id, drawnAt(o.id))
+        await visualizeOption(o.id)
       } catch (e) {
         set(o.status, o.last_error)
         throw e
@@ -248,6 +238,7 @@ function Dimension({
               <div className="explore-option-head">
                 <span className="explore-option-name">{o.name}</span>
                 <span className={`mark is-${o.distance}`}>{o.distance}</span>
+                {o.kept_item_id && <span className="mark is-kept">kept</span>}
                 {working && <span className="spinner" role="status" aria-label="Visualizing" />}
               </div>
               {o.description && <p className="explore-option-desc">{o.description}</p>}
