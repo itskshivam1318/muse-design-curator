@@ -134,7 +134,8 @@ def test_cookie_expiry_and_tamper(clock: Clock) -> None:
     assert not demo.cookie_valid("other-secret", good)
     expiry, sig = good.split(".")
     assert not demo.cookie_valid(SECRET, f"{int(expiry) + 3600}.{sig}")  # extended expiry
-    assert not demo.cookie_valid(SECRET, f"{expiry}.{sig[:-1]}0")
+    flipped = "1" if sig[-1] == "0" else "0"  # always a different last character
+    assert not demo.cookie_valid(SECRET, f"{expiry}.{sig[:-1]}{flipped}")
     assert not demo.cookie_valid(SECRET, "garbage")
     assert not demo.cookie_valid(SECRET, None)
     clock.t += 61

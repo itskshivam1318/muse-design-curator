@@ -44,6 +44,7 @@ interface Opts {
   node?: PluginNode
   run?: PluginRun
   readOnly?: boolean
+  added?: string[]
   wrap?: (card: ReactNode) => ReactNode
 }
 
@@ -53,7 +54,7 @@ function setup(opts: Opts = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } })
   qc.setQueryData(keys.demo, { demo_mode: false, unlocked: false, plugins_enabled: true })
   qc.setQueryData(keys.plugins(), [plugin])
-  qc.setQueryData(keys.boardPlugins('b1'), [plugin.id])
+  qc.setQueryData(keys.boardPlugins('b1'), opts.added ?? [plugin.id])
   qc.setQueryData(keys.items('b1'), [...items.values()])
   qc.setQueryData<NodesResponse>(keys.nodes('b1'), { nodes: [node], runs: opts.run ? { [node.id]: opts.run } : {} })
   function Live() {
@@ -154,6 +155,12 @@ describe('NodeCard', () => {
     setup()
     expect(insideOverlay(runButton())).toBe(true)
     expect(insideOverlay(screen.getByRole('button', { name: 'Remove input watch.png' }))).toBe(true)
+  })
+
+  it('a node whose plugin was taken off the board cannot run and says why', () => {
+    setup({ added: [] })
+    expect(runButton().disabled).toBe(true)
+    expect(screen.getByText('Add this plugin to the board to run it')).toBeTruthy()
   })
 
   it('Run is disabled with the reason when there are no inputs', () => {

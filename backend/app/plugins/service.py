@@ -175,6 +175,8 @@ def request_run(session: Session, node_id: str) -> PluginRun:
         if prev.claimed_at is not None and prev.claimed_at >= stale:
             raise AppError(409, "NODE_RUNNING", "This node is already running")
         _fail(prev, "PLUGIN_INTERRUPTED", "The run stopped before it finished")
+    if session.get(BoardPlugin, (node.board_id, node.plugin_id)) is None:
+        raise AppError(400, "PLUGIN_NOT_ADDED", "Add this plugin to the board to run it")
     if status(p) != "available":
         raise AppError(400, "PLUGIN_NOT_CONNECTED", f"{p.manifest.name} is not connected")
     _check_live_inputs(session, node, p)

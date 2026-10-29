@@ -14,8 +14,14 @@ const GAP = 8
 /** Room for the credit or "generated" caption that sits under such an image. */
 const CAPTION_H = 30
 
-/** The attributes an image can be explored on: enabled, never shapes, in lens order. */
-const explorable = (records: readonly ItemAttribute[]) => records.filter((r) => r.enabled && r.kind !== 'shape')
+/**
+ * The attributes an image can be explored on: the lens's own (a plugin's extra attributes stay
+ * in Inspect, the server refuses to explore them), enabled, never shapes, in lens order.
+ */
+const explorable = (records: readonly ItemAttribute[], lens: readonly AttributeSpec[] | undefined) => {
+  const keys = new Set((lens ?? []).map((s) => s.key))
+  return records.filter((r) => keys.has(r.key) && r.enabled && r.kind !== 'shape')
+}
 
 const errorText = (e: unknown) => (e instanceof ApiError || e instanceof Error ? e.message : 'Could not explore')
 
@@ -86,7 +92,7 @@ export function ItemChips({ item, screen, locked = false }: { item: Item; screen
   const specs = new Map((data?.lens?.attributes ?? []).map((s) => [s.key, s]))
   const { busy, error, explore } = useExploreKey(item)
   if (!sole || !records) return null
-  const chips = explorable(records).slice(0, MAX_CHIPS)
+  const chips = explorable(records, data?.lens?.attributes).slice(0, MAX_CHIPS)
   if (chips.length === 0) return null
   const below = item.licence || item.origin === 'generated' ? CAPTION_H : 0
   return (
@@ -137,7 +143,7 @@ export function AxisPicker({
     e.stopPropagation()
     onDone()
   }
-  const options = explorable(records ?? [])
+  const options = explorable(records ?? [], q.data?.lens?.attributes)
   const specs = new Map((q.data?.lens?.attributes ?? []).map((s) => [s.key, s]))
   return (
     <div

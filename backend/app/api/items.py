@@ -16,6 +16,7 @@ from app.db.models import BoardItem
 from app.db.repos import items as items_repo
 from app.db.session import after_commit
 from app.errors import AppError
+from app.explore.keep import forget_deleted_take
 from app.extraction import service as extraction
 from app.ingest.capture import ingest_capture_frames, ingest_capture_image
 from app.ingest.common import GAP, IngestResult, ItemMeta
@@ -186,6 +187,7 @@ def patch_item(
 def delete_item(item_id: str, session: SessionDep) -> None:
     item = _require_item(session, item_id)
     items_repo.soft_delete(session, item_id)
+    forget_deleted_take(session, item)
     board_id = item.board_id
     after_commit(session, lambda: events.publish(board_id, "item.removed", {"id": item_id}))
     after_commit(session, lambda: profile_hook.request_recompute(board_id))

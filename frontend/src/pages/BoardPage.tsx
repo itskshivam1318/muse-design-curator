@@ -33,7 +33,7 @@ import { KeepFlight } from '../panels/KeepFlight'
 import { MaybeStrip } from '../panels/MaybeStrip'
 import '../panels/registerPanels'
 import { UploadStatus } from '../panels/UploadStatus'
-import { useBoard, useBoardLens, useItems, useProfile } from '../queries'
+import { countedItems, useBoard, useBoardLens, useItems, useProfile } from '../queries'
 import { Link } from '../Link'
 import { BoardShell } from '../shell/BoardShell'
 import { closeRail, noteLensProposal, openRail, railStore, setTool } from '../shell/tools'
@@ -285,7 +285,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
           <>
             {items.isSuccess && (
               <Onboarding
-                itemCount={list.length}
+                itemCount={countedItems(list).length}
                 onFocusContext={() => contextBar.current?.focus()}
                 onOpenAdd={() => openRail('library')}
               />

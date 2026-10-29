@@ -3,14 +3,14 @@ import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { keys } from '../api'
 import { applyEvent } from '../events'
-import { makeProfile } from '../test/fixtures'
+import { makeItem, makeProfile } from '../test/fixtures'
 import { BoardSignals } from './BoardSignals'
 
 afterEach(cleanup)
 
-function setup() {
+function setup(items = [] as ReturnType<typeof makeItem>[]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
-  qc.setQueryData(keys.items('b1'), [])
+  qc.setQueryData(keys.items('b1'), items)
   qc.setQueryData(keys.lens('b1'), null)
   qc.setQueryData(keys.profile('b1'), {
     version: 1,
@@ -28,6 +28,15 @@ function setup() {
 }
 
 describe('BoardSignals', () => {
+  it('counts board images only: never staged takes or notes', () => {
+    setup([
+      makeItem({ id: 'a', board_id: 'b1' }),
+      makeItem({ id: 'b', board_id: 'b1', staged: true }),
+      makeItem({ id: 'n', board_id: 'b1', kind: 'note', note_text: 'oak' }),
+    ])
+    expect(screen.getByText('Board · 1 item')).toBeTruthy()
+  })
+
   it('renders signals as "value · n of N" rows', () => {
     setup()
     expect(screen.getByText('Brushed steel')).toBeTruthy()

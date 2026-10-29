@@ -249,17 +249,35 @@ export async function addToNode(qc: QueryClient, nodeId: string, itemIds: readon
   return { added: taken.length, notice }
 }
 
-/** Remove a node from the board. */
-export async function removeNode(qc: QueryClient, nodeId: string): Promise<void> {
+/**
+ * Remove a node from the board. With `undoable`, ⌘Z makes it again from its plugin, place, inputs
+ * (those still on the board) and params; its old run is not brought back.
+ */
+export async function removeNode(qc: QueryClient, nodeId: string, opts: { undoable?: boolean } = {}): Promise<void> {
   const found = findNode(qc, nodeId)
   if (!found) return
-  setNode(qc, found.boardId, nodeId, () => null)
+  const { boardId, node } = found
+  setNode(qc, boardId, nodeId, () => null)
   try {
     await deleteNode(nodeId)
   } catch (e) {
-    void qc.invalidateQueries({ queryKey: keys.nodes(found.boardId) })
+    void qc.invalidateQueries({ queryKey: keys.nodes(boardId) })
     throw e
   }
+  if (opts.undoable) undoHistory.pushRevert(() => void recreateNode(qc, boardId, node).catch(() => {}))
+}
+
+async function recreateNode(qc: QueryClient, boardId: string, old: PluginNode): Promise<void> {
+  const onBoard = new Set(boardItems(qc, boardId).filter((i) => !i.staged).map((i) => i.id))
+  const made = await createNode(boardId, {
+    plugin_id: old.plugin_id,
+    x: Math.round(old.x),
+    y: Math.round(old.y),
+    input_item_ids: old.input_item_ids.filter((id) => onBoard.has(id)),
+  })
+  const params = old.params ?? {}
+  const node = Object.keys(params).length > 0 ? ((await patchNode(made.id, { params })) ?? made) : made
+  cacheNode(qc, boardId, node)
 }
 
 function cacheNode(qc: QueryClient, boardId: string, node: PluginNode) {
@@ -269,7 +287,7 @@ function cacheNode(qc: QueryClient, boardId: string, node: PluginNode) {
   })
 }
 
-/** Make a node of `plugin` at `at` with the given items (those it reads, up to its max) as inputs. */
+/** Make a node of `plugin` at `at` with the given items (those it reads, up to its max) as inputs; ⌘Z removes it. */
 export async function createNodeWith(
   qc: QueryClient,
   boardId: string,
@@ -286,6 +304,7 @@ export async function createNodeWith(
     .slice(0, plugin.inputs.max)
   const node = await createNode(boardId, { plugin_id: plugin.id, x: Math.round(at.x), y: Math.round(at.y), input_item_ids })
   cacheNode(qc, boardId, node)
+  undoHistory.pushRevert(() => void removeNode(qc, node.id).catch(() => {}))
   return node
 }
 

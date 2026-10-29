@@ -16,7 +16,7 @@ from app.db.models import BoardItem, Exploration, ExploreOption
 from app.db.repos import explore as explore_repo
 from app.db.session import after_commit
 from app.errors import AppError
-from app.explore.service import publish_later, require_enabled
+from app.explore.service import publish_later, require_enabled, resting_status
 
 
 def _option(session: Session, option_id: str) -> ExploreOption:
@@ -117,3 +117,17 @@ def _exploration_board(session: Session, o: ExploreOption) -> str:
     e = session.get(Exploration, o.exploration_id)
     assert e is not None
     return e.board_id
+
+
+def forget_deleted_take(session: Session, item: BoardItem) -> None:
+    """After `item` is deleted: if it was its option's kept take, the option no longer keeps
+    anything and rests at visualized (other takes remain) or open."""
+    if item.explore_option_id is None:
+        return
+    o = explore_repo.get_option(session, item.explore_option_id)
+    if o is None or o.kept_item_id != item.id:
+        return
+    o.kept_item_id = None
+    if o.status == "kept":
+        o.status = resting_status(session, o.id)
+    _finish(session, o, item.board_id)

@@ -361,7 +361,8 @@ _TOKEN = re.compile(r"\{\{\s*([A-Za-z0-9_.]+)\s*\}\}")
 def render_prompt(
     template: str, params: dict[str, Any], inputs: list[RunInput], board: BoardCtx
 ) -> str:
-    notes = [i.note_text for i in inputs if i.note_text] + list(board.notes)
+    # an input note is usually also a board note: each text appears once, inputs first
+    notes = list(dict.fromkeys([i.note_text for i in inputs if i.note_text] + list(board.notes)))
 
     def sub(m: re.Match[str]) -> str:
         name = m.group(1)

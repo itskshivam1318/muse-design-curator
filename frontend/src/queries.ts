@@ -16,9 +16,11 @@ import {
   listPlugins,
 } from './api'
 import { useDemo } from './demo'
+import { seedVisualizing } from './events'
 
 export const useBoard = (id: string) => useQuery({ queryKey: keys.board(id), queryFn: () => getBoard(id) })
-export const useItems = (id: string) => useQuery({ queryKey: keys.items(id), queryFn: () => listItems(id) })
+export const useItems = (id: string) =>
+  useQuery({ queryKey: keys.items(id), queryFn: () => listItems(id).then(seedVisualizing) })
 export const useProfile = (id: string) =>
   useQuery({ queryKey: keys.profile(id), queryFn: () => getProfile(id) })
 export const useBoardLens = (id: string) =>
@@ -39,8 +41,11 @@ export const useAttributes = (itemId: string | null) =>
     enabled: itemId !== null,
   })
 
-/** Items that belong on the board: staged takes and plugin results wait elsewhere until kept. */
+/** Items that belong on the board: staged takes wait in their option's stage until kept. */
 export const visibleItems = (items: Item[]): Item[] => items.filter((i) => !i.staged)
+
+/** What the board counts as its items: on the canvas (not staged) and not notes. */
+export const countedItems = (items: Item[]): Item[] => visibleItems(items).filter((i) => i.kind !== 'note')
 
 /**
  * Plugin queries only run when the server has plugins on (plugin endpoints 404 otherwise), so a

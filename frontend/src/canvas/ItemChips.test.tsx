@@ -98,6 +98,25 @@ describe('ItemChips', () => {
   })
 })
 
+describe('plugin attributes', () => {
+  it('a plugin-made attribute outside the lens is never an explore chip or picker entry', () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
+    const attrs = makeAttrs()
+    const palette = { ...attrs.attributes[0], key: 'palette', label: 'Palette', source: 'plugin', value: 'oak, sand' }
+    qc.setQueryData(keys.attributes('i1'), { ...attrs, attributes: [palette, ...attrs.attributes] })
+    qc.setQueryData(keys.explorations('b1'), [])
+    selection.select(['i1'])
+    render(
+      <QueryClientProvider client={qc}>
+        <ItemChips item={image} screen={{ x: 0, y: 0, width: 100, height: 100 }} />
+        <AxisPicker item={image} screen={{ x: 0, y: 0, width: 100, height: 100 }} onDone={() => undefined} />
+      </QueryClientProvider>,
+    )
+    expect(screen.queryAllByRole('button', { name: /Palette/ })).toHaveLength(0)
+    expect(screen.getAllByRole('button', { name: /Legibility/ }).length).toBeGreaterThan(0)
+  })
+})
+
 describe('chipSource', () => {
   const base = makeAttrs().attributes[0]
   it('maps attribute provenance onto the six marks', () => {

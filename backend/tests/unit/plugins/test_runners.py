@@ -473,3 +473,9 @@ def test_video_not_connected() -> None:
         with pytest.raises(PluginError) as e:
             run(builtin(pid), [img()])
         assert code(e) == "PLUGIN_NOT_CONNECTED", pid
+
+
+def test_render_prompt_lists_an_input_note_once() -> None:
+    board = BoardCtx(title="Chairs", context=None, notes=["softer edges", "no chrome"])
+    out = runners.render_prompt("{{notes}}", {}, [note(text="softer edges")], board)
+    assert out == "softer edges\nno chrome"

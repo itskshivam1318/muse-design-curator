@@ -98,10 +98,13 @@ test('demo flow: board, references, lens, link, video, vary, keep, reject, nudge
     // hover the video on the canvas (just under its toolbar) to reveal the frames strip
     const toolbar = page.getByRole('toolbar', { name: 'Item actions' })
     await expect(toolbar).toBeVisible()
-    const tb = (await toolbar.boundingBox())!
-    await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height + 30)
     const strip = page.getByRole('group', { name: 'Video frames' })
-    await expect(strip.getByRole('button')).toHaveCount(3)
+    await expect(async () => {
+      // re-hover each try: a single move can land before the canvas has settled after the fit
+      const tb = (await toolbar.boundingBox())!
+      await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height + 30)
+      await expect(strip.getByRole('button')).toHaveCount(3, { timeout: 1_000 })
+    }).toPass({ timeout: 15_000 })
     const frame2 = strip.getByRole('button', { name: 'Use frame at 2.0 s' }) // frames are 0-indexed: 0, 1, 2
     await frame2.click()
     await expect(frame2).toHaveAttribute('aria-pressed', 'true')
@@ -185,11 +188,19 @@ test('demo flow: board, references, lens, link, video, vary, keep, reject, nudge
     await expect(panel.getByRole('radio', { name: 'More' })).toHaveAttribute('aria-checked', 'true')
     await expect(panel.locator('.preflight-sentence')).toContainText(target!.value)
     await releaseProtected(panel)
+    const started = page.waitForResponse(
+      (r) => r.request().method() === 'POST' && /\/api\/boards\/[^/]+\/runs$/.test(new URL(r.url()).pathname),
+    )
     await panel.getByRole('button', { name: 'Run' }).click()
+    const { run_id: nudgeRun } = (await (await started).json()) as { run_id: string }
     await expect(panel).toHaveCount(0)
+    // wait for the nudge run itself to finish, so the strip is not still showing the earlier run
+    await expect
+      .poll(async () => (await apiJson<{ run: { status: string } }>(`/runs/${nudgeRun}`)).run.status, { timeout: 30_000 })
+      .toBe('completed')
     // the Maybe strip now follows the nudge run (no decided candidates) through to completion
-    await expect(strip.getByRole('button', { name: /, (kept|rejected)$/ })).toHaveCount(0)
     await expect(strip.getByRole('status')).toHaveText(/ found\./, { timeout: 30_000 })
+    await expect(strip.getByRole('button', { name: /, (kept|rejected)$/ })).toHaveCount(0)
   })
 
   await test.step('10. reload; everything persists', async () => {

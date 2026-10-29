@@ -295,3 +295,12 @@ def test_demo_mode_run_requires_unlock(demo_on: None, client: TestClient) -> Non
     assert client.get(f"/api/boards/{board}/nodes").status_code == 200
     assert client.post("/api/demo/unlock", json={"passcode": "open sesame"}).status_code == 200
     assert client.post(f"/api/nodes/{node['id']}/run").status_code == 202
+
+
+def test_run_node_whose_plugin_was_removed_400(client: TestClient, board: str) -> None:
+    add_plugin(client, board, "palette")
+    node = make_node(client, board, "palette", [upload_image(client, board)])
+    assert client.delete(f"/api/boards/{board}/plugins/palette").status_code == 204
+    r = client.post(f"/api/nodes/{node['id']}/run")
+    assert r.status_code == 400 and error(r) == "PLUGIN_NOT_ADDED"
+    assert r.json()["error"]["message"] == "Add this plugin to the board to run it"

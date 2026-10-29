@@ -111,7 +111,7 @@ export function Canvas({
   onSendToNode,
 }: Props) {
   const { exploreEnabled } = useDemo()
-  // staged takes and plugin results wait elsewhere; notes are drawn at the size their text needs
+  // staged takes wait in their option's stage; notes are drawn at the size their text needs
   const visible = useMemo(() => visibleItems(allItems).map(sizedNote), [allItems])
   const tool = useTool()
   const [editing, setEditing] = useState<Editing | null>(null)

@@ -19,6 +19,7 @@ import {
 import { toScreenBounds, type View } from '../canvas/geometry'
 import { LOCKED_TITLE } from '../demo'
 import { itemTitle } from '../format'
+import { useBoardPlugins } from '../queries'
 import { canRun, effective, type Field, nodeBounds, paramFields, previewNode, removeNode, shownFields, summaryLine, updateNode } from './nodeLogic'
 import { PluginTile } from './PluginsPanel'
 
@@ -260,6 +261,8 @@ function ParamField({ field, value, nodeId, readOnly, onSave }: { field: Field; 
   )
 }
 
+const NOT_ADDED = 'Add this plugin to the board to run it'
+
 export function NodeCard({ boardId, node, plugin, run, items, view, readOnly = false, dropTarget = false, onWheel }: Props) {
   const qc = useQueryClient()
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -278,10 +281,13 @@ export function NodeCard({ boardId, node, plugin, run, items, view, readOnly = f
   const fields = plugin ? paramFields(plugin.params) : []
   const values = effective(fields, node.params)
   const running = starting || (run ? ACTIVE.has(run.status) : false) || (conflictFor !== undefined && conflictFor === (run?.id ?? null))
-  const check = canRun(plugin, node, items)
+  // the plugin was taken off the board: the node stays, but the server will not run it
+  const added = useBoardPlugins(boardId).data
+  const notAdded = added !== undefined && !added.includes(node.plugin_id)
+  const check = notAdded ? { ok: false, reason: NOT_ADDED } : canRun(plugin, node, items)
   const runDisabled = readOnly || running || !check.ok
   const reasonId = `node-${node.id}-reason`
-  const showReason = !readOnly && !running && !check.ok && plugin?.status === 'available'
+  const showReason = !readOnly && !running && !check.ok && (notAdded || plugin?.status === 'available')
   const secondary = plugin?.secondary ?? 'Settings'
 
   useEffect(() => {
@@ -423,7 +429,7 @@ export function NodeCard({ boardId, node, plugin, run, items, view, readOnly = f
                 disabled={readOnly}
                 onClick={() => {
                   setMenuOpen(false)
-                  void removeNode(qc, node.id).catch(fail('Could not remove the node'))
+                  void removeNode(qc, node.id, { undoable: true }).catch(fail('Could not remove the node'))
                 }}
               >
                 Remove node

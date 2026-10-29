@@ -219,3 +219,24 @@ def test_upload_identical_to_take_of_dismissed_option_announces(client: TestClie
             seen.append((ev["type"], ev["data"].get("id"), ev["data"].get("staged")))
     assert ("item.updated", a, False) in seen
     assert fresh(world, a).staged is False
+
+
+def test_deleting_kept_take_settles_option(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    oid, (a, _b) = make_takes(client, world)
+    keep(client, oid, a)
+    with events.subscribe(world["watch"]) as sub:
+        assert client.delete(f"/api/items/{a}").status_code == 204
+        seen = []
+        while (ev := sub.get(timeout=1)) is not None:
+            seen.append(ev["type"])
+    row = option_row(world, oid)
+    assert row.kept_item_id is None and row.status == "visualized"  # b remains
+    assert "explore.updated" in seen
+
+
+def test_deleting_last_kept_take_reopens_option(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    oid, (a,) = make_takes(client, world, n=1)
+    keep(client, oid, a)
+    assert client.delete(f"/api/items/{a}").status_code == 204
+    row = option_row(world, oid)
+    assert row.kept_item_id is None and row.status == "open"

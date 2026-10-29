@@ -69,6 +69,22 @@ export function setVisualizing(noteId: string, on: boolean): void {
   noteVisualizeStore.set({ ids })
 }
 
+/** The server frees a note's visualize claim after this long (its job died); matches CLAIM_TTL_S. */
+export const VISUALIZE_CLAIM_TTL_MS = 300_000
+
+/**
+ * Loaded items: a note the server still holds a fresh visualize claim on is visualizing (after a
+ * reload mid-visualize the note.visualizing event is long gone). Returns the items unchanged.
+ */
+export function seedVisualizing(items: Item[], now = Date.now()): Item[] {
+  for (const i of items) {
+    const since = i.kind === 'note' ? i.generation?.visualizing_since : undefined
+    const at = since ? Date.parse(since) : NaN
+    if (Number.isFinite(at) && now - at < VISUALIZE_CLAIM_TTL_MS) setVisualizing(i.id, true)
+  }
+  return items
+}
+
 export interface ActivityEntry {
   at: string
   text: string
@@ -96,7 +112,35 @@ export const useBoardActivity = (): readonly ActivityEntry[] =>
 export interface DescribeContext {
   pluginName?: string
   noteLabel?: string
+  /** The kind of a board item by id, from the cache; undefined when it is not there yet. */
+  itemKind?: (id: string) => Item['kind'] | undefined
 }
+
+const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
+
+/** "4 images", "1 note", "2 images and 1 note"; "3 items" when any kind is unknown. */
+function madeText(ids: readonly string[], itemKind: DescribeContext['itemKind']): string {
+  const kinds = ids.map((id) => itemKind?.(id))
+  if (kinds.some((k) => k === undefined)) return `${plural(ids.length, 'item')} added`
+  const images = kinds.filter((k) => k !== 'note').length
+  const notes = kinds.length - images
+  const parts = [images ? plural(images, 'image') : '', notes ? plural(notes, 'note') : ''].filter(Boolean)
+  return `${parts.join(' and ')} added`
+}
+
+const VISUALIZE_ERRORS: Record<string, string> = {
+  IMAGE_MODEL_FAILED: 'the image model failed',
+  INTERRUPTED: 'it was interrupted',
+  MODEL_TIMEOUT: 'the image model took too long',
+  MODEL_UNAVAILABLE: 'the image model is unavailable',
+  MODEL_RATE_LIMITED: 'the image model is busy, try again shortly',
+  MODEL_API_KEY: 'the image model key is missing or invalid',
+  MODEL_INVALID_RESPONSE: 'the image model sent back something unusable',
+  VISUALIZE_ERROR: 'something went wrong',
+}
+
+/** A visualize failure code in plain words. */
+export const visualizeErrorText = (code: string): string => VISUALIZE_ERRORS[code] ?? 'something went wrong'
 
 /** A plain sentence for an event worth telling the person about; null for the rest. */
 export function describeEvent(type: string, data: unknown, ctx: DescribeContext = {}): string | null {
@@ -106,8 +150,8 @@ export function describeEvent(type: string, data: unknown, ctx: DescribeContext 
     case 'plugin_run.queued':
       return `${plugin} is running`
     case 'plugin_run.done': {
-      const made = (d.output as PluginRun['output'] | undefined)?.created_item_ids?.length ?? 0
-      return made > 0 ? `${plugin} finished: ${made} ${made === 1 ? 'note' : 'notes'} added` : `${plugin} finished`
+      const made = (d.output as PluginRun['output'] | undefined)?.created_item_ids ?? []
+      return made.length > 0 ? `${plugin} finished: ${madeText(made, ctx.itemKind)}` : `${plugin} finished`
     }
     case 'plugin_run.failed':
       return typeof d.error_message === 'string' && d.error_message
@@ -119,7 +163,7 @@ export function describeEvent(type: string, data: unknown, ctx: DescribeContext 
       return `${ctx.noteLabel ?? 'Note'} visualized`
     case 'note.visualize_failed':
       return typeof d.error === 'string' && d.error
-        ? `${ctx.noteLabel ?? 'Note'} could not be visualized: ${d.error}`
+        ? `${ctx.noteLabel ?? 'Note'} could not be visualized: ${visualizeErrorText(d.error)}`
         : `${ctx.noteLabel ?? 'Note'} could not be visualized`
   }
   return null
@@ -210,6 +254,7 @@ export function applyEvent(qc: QueryClient, boardId: string, type: string, data:
   const text = describeEvent(type, d, {
     pluginName: pluginName(qc, boardId, d.node_id),
     noteLabel: noteLabel(qc, boardId, d.note_id),
+    itemKind: (id) => qc.getQueryData<Item[]>(keys.items(boardId))?.find((i) => i.id === id)?.kind,
   })
   if (text) boardActivity.push(text)
 }

@@ -7,10 +7,11 @@ import { makeNode, makePlugin } from '../test/plugins'
 vi.mock('../api', async (orig) => ({
   ...(await orig<typeof import('../api')>()),
   createNode: vi.fn(),
+  deleteNode: vi.fn(),
   patchNode: vi.fn(),
 }))
 const api = await import('../api')
-const { acceptsItem, addToNode, canRun, createNodeFromSelection, nodeAt, paramFields, shownFields, summaryLine } =
+const { acceptsItem, addToNode, canRun, createNodeFromSelection, nodeAt, paramFields, removeNode, shownFields, summaryLine } =
   await import('./nodeLogic')
 const { selection } = await import('../canvas/selection')
 const { undoHistory } = await import('../canvas/history')
@@ -185,6 +186,42 @@ describe('createNodeFromSelection', () => {
     expect(api.createNode).toHaveBeenCalledWith('b1', { plugin_id: 'image', x: 10, y: 20, input_item_ids: ['n1', 'i1'] })
     expect(node.input_item_ids).toEqual(['n1', 'i1'])
     expect(qc.getQueryData<NodesResponse>(keys.nodes('b1'))?.nodes.map((n) => n.id)).toEqual(['node1'])
+  })
+})
+
+describe('node undo', () => {
+  const undo = async () => {
+    const entry = undoHistory.pop()
+    if (entry?.kind === 'revert') entry.revert()
+    await new Promise((r) => setTimeout(r, 0))
+  }
+  const ids = (qc: QueryClient) => qc.getQueryData<NodesResponse>(keys.nodes('b1'))?.nodes.map((n) => n.id)
+
+  it('undo after creating a node deletes it', async () => {
+    const qc = client()
+    vi.mocked(api.createNode).mockImplementation(async (boardId, body) => makeNode({ board_id: boardId, ...body }) as never)
+    vi.mocked(api.deleteNode).mockResolvedValue(undefined as never)
+    await createNodeFromSelection(qc, 'b1', image, { x: 10, y: 20 })
+    expect(undoHistory.size).toBe(1)
+    await undo()
+    expect(api.deleteNode).toHaveBeenCalledWith('node1')
+    expect(ids(qc)).toEqual([])
+    expect(undoHistory.size).toBe(0) // the undo itself is not pushed again
+  })
+
+  it('undo after removing a node recreates it with its place, live inputs and params', async () => {
+    const old = makeNode({ id: 'old', x: 40, y: 50, input_item_ids: ['i1', 'gone'], params: { mode: 'whole', count: 2 } })
+    const qc = client({ nodes: [old], runs: {} })
+    vi.mocked(api.deleteNode).mockResolvedValue(undefined as never)
+    vi.mocked(api.createNode).mockImplementation(async (boardId, body) => makeNode({ id: 'new', board_id: boardId, params: {}, ...body }) as never)
+    vi.mocked(api.patchNode).mockImplementation(async (id, body) => makeNode({ id, x: 40, y: 50, input_item_ids: ['i1'], ...body }) as never)
+    await removeNode(qc, 'old', { undoable: true })
+    expect(ids(qc)).toEqual([])
+    await undo()
+    expect(api.createNode).toHaveBeenCalledWith('b1', { plugin_id: old.plugin_id, x: 40, y: 50, input_item_ids: ['i1'] })
+    expect(api.patchNode).toHaveBeenCalledWith('new', { params: { mode: 'whole', count: 2 } })
+    const back = qc.getQueryData<NodesResponse>(keys.nodes('b1'))?.nodes ?? []
+    expect(back.map((n) => [n.id, n.params])).toEqual([['new', { mode: 'whole', count: 2 }]])
   })
 })
 

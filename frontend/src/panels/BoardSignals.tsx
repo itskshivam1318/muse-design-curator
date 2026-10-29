@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { LensRow } from '../api'
-import { useBoardLens, useItems, useProfile } from '../queries'
+import { countedItems, useBoardLens, useItems, useProfile } from '../queries'
 import { ProgressDots, UNLOCK_AT } from './Onboarding'
 import { type Row, signalRows } from './signalRows'
 
@@ -36,7 +36,7 @@ function LensChip({ lens }: { lens: LensRow | null | undefined }) {
 /** Board intelligence on the right edge; updates live as profile.updated events arrive. */
 export function BoardSignals({ boardId }: { boardId: string }) {
   const profile = useProfile(boardId).data?.profile
-  const items = useItems(boardId).data ?? []
+  const items = countedItems(useItems(boardId).data ?? [])
   const lens = useBoardLens(boardId).data
   const [open, setOpen] = useState(true)
   const rows = useMemo(() => (profile ? signalRows(profile) : []), [profile])

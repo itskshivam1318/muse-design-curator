@@ -1,8 +1,8 @@
 import { QueryClient } from '@tanstack/react-query'
 import { describe, expect, it } from 'vitest'
 import { type Exploration, type Item, keys, type NodesResponse, type PluginNode, type PluginRun } from './api'
-import { applyEvent, connectBoardEvents, boardActivity, describeEvent, noteVisualizeStore } from './events'
-import { visibleItems } from './queries'
+import { applyEvent, connectBoardEvents, boardActivity, type DescribeContext, describeEvent, noteVisualizeStore, seedVisualizing } from './events'
+import { countedItems, visibleItems } from './queries'
 import { makeItem } from './test/fixtures'
 
 function qcWith(items: Item[]) {
@@ -150,18 +150,39 @@ describe('note visualizing', () => {
   })
 })
 
+describe('seedVisualizing', () => {
+  it('a note with a fresh server claim is visualizing after a reload; a stale claim is not', () => {
+    const now = Date.parse('2026-10-29T10:10:00.000+00:00')
+    const fresh = makeItem({ id: 'sv1', kind: 'note', note_text: 'a', generation: { visualizing_since: '2026-10-29T10:08:00.000+00:00' } })
+    const stale = makeItem({ id: 'sv2', kind: 'note', note_text: 'b', generation: { visualizing_since: '2026-10-29T10:04:00.000+00:00' } })
+    const image = makeItem({ id: 'sv3', generation: { visualizing_since: '2026-10-29T10:09:00.000+00:00' } })
+    const items = [fresh, stale, image, makeItem({ id: 'sv4', kind: 'note', note_text: 'c' })]
+    expect(seedVisualizing(items, now)).toBe(items)
+    const ids = noteVisualizeStore.get().ids
+    expect([ids.has('sv1'), ids.has('sv2'), ids.has('sv3'), ids.has('sv4')]).toEqual([true, false, false, false])
+  })
+})
+
 describe('describeEvent', () => {
   it('test describeEvent sentences', () => {
     const ctx = { pluginName: 'Palette & material' }
-    expect(describeEvent('plugin_run.done', { output: { created_item_ids: ['a'] } }, ctx)).toBe('Palette & material finished: 1 note added')
-    expect(describeEvent('plugin_run.done', { output: { created_item_ids: ['a', 'b'] } }, ctx)).toBe('Palette & material finished: 2 notes added')
+    const kinds: Record<string, 'image' | 'note'> = { i1: 'image', i2: 'image', n1: 'note' }
+    const known = { ...ctx, itemKind: (id: string) => kinds[id] }
+    const done = (ids: string[], c: DescribeContext = known) => describeEvent('plugin_run.done', { output: { created_item_ids: ids } }, c)
+    expect(done(['n1'])).toBe('Palette & material finished: 1 note added')
+    expect(done(['i1', 'i2'], { ...known, pluginName: 'Image' })).toBe('Image finished: 2 images added')
+    expect(done(['i1', 'i2', 'n1'])).toBe('Palette & material finished: 2 images and 1 note added')
+    expect(done(['i1', 'zz'])).toBe('Palette & material finished: 2 items added')
+    expect(done(['a'], ctx)).toBe('Palette & material finished: 1 item added')
     expect(describeEvent('plugin_run.done', { output: {} }, ctx)).toBe('Palette & material finished')
     expect(describeEvent('plugin_run.failed', { error_message: 'no key' }, ctx)).toBe('Palette & material failed: no key')
     expect(describeEvent('plugin_run.queued', {}, ctx)).toBe('Palette & material is running')
     expect(describeEvent('note.visualized', {}, { noteLabel: 'Honey' })).toBe('Honey visualized')
     expect(describeEvent('note.visualized', {})).toBe('Note visualized')
     expect(describeEvent('note.visualizing', {})).toBe('Visualizing note')
-    expect(describeEvent('note.visualize_failed', { error: 'x' })).toBe('Note could not be visualized: x')
+    expect(describeEvent('note.visualize_failed', { error: 'IMAGE_MODEL_FAILED' })).toBe('Note could not be visualized: the image model failed')
+    expect(describeEvent('note.visualize_failed', { error: 'INTERRUPTED' })).toBe('Note could not be visualized: it was interrupted')
+    expect(describeEvent('note.visualize_failed', { error: 'WEIRD_CODE' })).toBe('Note could not be visualized: something went wrong')
     expect(describeEvent('item.added', {})).toBeNull()
   })
 
@@ -169,11 +190,19 @@ describe('describeEvent', () => {
     const qc = new QueryClient()
     qc.setQueryData<NodesResponse>(keys.nodes('b'), { nodes: [node()], runs: {} })
     qc.setQueryData(keys.plugins(), [{ id: 'palette', name: 'Palette' }])
+    qc.setQueryData(keys.items('b'), [makeItem({ id: 'a', board_id: 'b', kind: 'note', note_text: 'oak' })])
     boardActivity.clear()
     applyEvent(qc, 'b', 'plugin_run.done', { node_id: 'n1', run_id: 'r1', output: { created_item_ids: ['a'] } })
     expect(boardActivity.get().entries.at(-1)?.text).toBe('Palette finished: 1 note added')
     for (let i = 0; i < 60; i++) applyEvent(qc, 'b', 'note.visualized', { note_id: `n${i}` })
     expect(boardActivity.get().entries).toHaveLength(50)
+  })
+})
+
+describe('countedItems', () => {
+  it('drops staged takes and notes (the board and onboarding counts)', () => {
+    const items = [makeItem({ id: 'a' }), makeItem({ id: 'b', staged: true }), makeItem({ id: 'n', kind: 'note', note_text: 'x' })]
+    expect(countedItems(items).map((i) => i.id)).toEqual(['a'])
   })
 })
 
