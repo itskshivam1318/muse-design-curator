@@ -1,4 +1,4 @@
-import type { Exploration, GeneratedCheck, Item } from '../api'
+import { type Exploration, type GeneratedCheck, type Item, isGenerated } from '../api'
 
 export type VerdictTone = 'ok' | 'warn' | 'pending' | 'error'
 export interface Verdict {
@@ -31,7 +31,8 @@ export function itemVerdict(
   explorations: readonly Exploration[] | undefined,
   labels: ReadonlyMap<string, string>,
 ): (Verdict & { optionName: string }) | null {
-  if (!item.generation) return null
+  // plugin-generated images are never checked against an option: no verdict, not "Checking…"
+  if (!isGenerated(item) || item.generation?.plugin) return null
   for (const e of explorations ?? []) {
     const option = e.options.find((o) => o.id === item.explore_option_id)
     if (option) {

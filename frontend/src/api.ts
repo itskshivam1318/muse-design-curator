@@ -43,13 +43,16 @@ export interface Item {
    * Generation provenance. On a note it can instead hold `{ visualizing_since }` (the visualize
    * claim): never read a non-null `generation` as "generated"; that is `origin === 'generated'`.
    */
-  generation: { model?: string; prompt?: string; option_id?: string; visualizing_since?: string } | null
+  generation: { model?: string; prompt?: string; option_id?: string; visualizing_since?: string; plugin?: string; run_id?: string } | null
   check: GeneratedCheck | null
   /** The text of a note card; null on every other kind. */
   note_text: string | null
   /** A staged item is a take or plugin result not yet kept on the board. */
   staged: boolean
 }
+
+/** Generated means origin, never a non-null `generation` (a note holds its visualize claim there). */
+export const isGenerated = (item: Item): boolean => item.origin === 'generated'
 
 /** The comparator's verdict on a generated image: did the target land, what was kept. */
 export interface GeneratedCheck {

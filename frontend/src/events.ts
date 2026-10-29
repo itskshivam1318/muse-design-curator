@@ -152,12 +152,16 @@ const RUN_STATUS: Record<string, PluginRun['status']> = {
 function applyRunEvent(qc: QueryClient, boardId: string, type: string, d: Record<string, unknown>): void {
   const nodeId = String(d.node_id)
   const runId = String(d.run_id)
+  let stale = false
   qc.setQueryData<NodesResponse>(keys.nodes(boardId), (old) => {
     if (!old) return old
     const node = old.nodes.find((n) => n.id === nodeId)
     const cur = old.runs[nodeId]
     // a late event of an older run must not overwrite the node's newer one
-    if (cur && cur.id !== runId && node?.last_run_id === cur.id && type !== 'plugin_run.queued') return old
+    if (cur && cur.id !== runId && node?.last_run_id === cur.id && type !== 'plugin_run.queued') {
+      stale = true
+      return old
+    }
     const base: PluginRun = cur?.id === runId ? cur : {
       id: runId, node_id: nodeId, plugin_id: node?.plugin_id ?? '', status: 'queued', progress: null,
       output: null, error_code: null, error_message: null, created_at: new Date().toISOString(),
@@ -182,6 +186,8 @@ function applyRunEvent(qc: QueryClient, boardId: string, type: string, d: Record
       runs: { ...old.runs, [nodeId]: next },
     }
   })
+  // not the run we hold: refetch instead of dropping what the server knows
+  if (stale) void qc.invalidateQueries({ queryKey: keys.nodes(boardId) })
 }
 
 function noteLabel(qc: QueryClient, boardId: string, noteId: unknown): string | undefined {
@@ -306,6 +312,7 @@ export function connectBoardEvents(
   opts: ConnectOptions = {},
 ): () => void {
   const url = `${API_ORIGIN}/api/boards/${encodeURIComponent(boardId)}/events`
+  boardActivity.clear() // activity belongs to the board being watched
   const make = opts.makeSource ?? ((u: string) => new EventSource(u))
   let source: EventSource | null = null
   let attempt = 0

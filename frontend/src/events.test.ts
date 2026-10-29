@@ -1,7 +1,7 @@
 import { QueryClient } from '@tanstack/react-query'
 import { describe, expect, it } from 'vitest'
 import { type Exploration, type Item, keys, type NodesResponse, type PluginNode, type PluginRun } from './api'
-import { applyEvent, boardActivity, describeEvent, noteVisualizeStore } from './events'
+import { applyEvent, connectBoardEvents, boardActivity, describeEvent, noteVisualizeStore } from './events'
 import { visibleItems } from './queries'
 import { makeItem } from './test/fixtures'
 
@@ -123,6 +123,13 @@ describe('plugin runs', () => {
     expect(runOf(qc)).toMatchObject({ id: 'r2', status: 'running' })
   })
 
+  it('a mismatched run event refetches the nodes instead of being dropped', () => {
+    const qc = nodesQc()
+    qc.setQueryData<NodesResponse>(keys.nodes('b'), { nodes: [node({ last_run_id: 'r2' })], runs: { n1: run({ id: 'r2', status: 'running' }) } })
+    applyEvent(qc, 'b', 'plugin_run.failed', { node_id: 'n1', run_id: 'r1', error_message: 'x' })
+    expect(qc.getQueryState(keys.nodes('b'))?.isInvalidated).toBe(true)
+  })
+
   it('without a nodes cache it refetches nothing and does not throw', () => {
     const qc = new QueryClient()
     expect(() => applyEvent(qc, 'b', 'plugin_run.done', { node_id: 'n1', run_id: 'r1' })).not.toThrow()
@@ -174,5 +181,26 @@ describe('visibleItems', () => {
   it('test visibleItems drops staged', () => {
     const items = [makeItem({ id: 'a' }), makeItem({ id: 'b', staged: true })]
     expect(visibleItems(items).map((i) => i.id)).toEqual(['a'])
+  })
+})
+
+describe('connectBoardEvents', () => {
+  it('routes the round 2 event types into the cache and clears activity for a new board', () => {
+    const listeners: Record<string, (e: MessageEvent<string>) => void> = {}
+    const src = {
+      addEventListener: (t: string, l: (e: MessageEvent<string>) => void) => (listeners[t] = l),
+      close: () => undefined,
+    } as unknown as EventSource
+    const qc = new QueryClient()
+    boardActivity.push('from the previous board')
+    const stop = connectBoardEvents('b2', qc, { makeSource: () => src })
+    expect(boardActivity.get().entries).toEqual([])
+    listeners['note.visualizing']({ data: JSON.stringify({ note_id: 'nx' }) } as MessageEvent<string>)
+    expect(noteVisualizeStore.get().ids.has('nx')).toBe(true)
+    listeners['note.visualized']({ data: JSON.stringify({ note_id: 'nx' }) } as MessageEvent<string>)
+    expect(noteVisualizeStore.get().ids.has('nx')).toBe(false)
+    for (const t of ['plugin_run.queued', 'plugin_run.progress', 'plugin_run.done', 'plugin_run.failed', 'note.visualize_failed'])
+      expect(listeners[t]).toBeTypeOf('function')
+    stop()
   })
 })

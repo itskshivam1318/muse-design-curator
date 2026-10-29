@@ -6,6 +6,7 @@ import {
   getAttributeHistory,
   type ItemAttribute,
   type ItemAttributes,
+  isGenerated,
   keys,
   patchAttribute,
 } from '../api'
@@ -95,10 +96,10 @@ export function InspectPanel({ boardId, itemId, onClose, locked = false }: Drawe
         eyebrow="Inspect"
         title={item ? itemTitle(item) : 'Item'}
         onClose={onClose}
-        sub={item?.licence && !item.generation && <CreditLine licence={item.licence} className="credit panel-credit small muted" />}
+        sub={item?.licence && !isGenerated(item) && <CreditLine licence={item.licence} className="credit panel-credit small muted" />}
       />
       <div className="panel-body">
-        {item?.generation && verdict && (
+        {item?.generation && isGenerated(item) && verdict && (
           <section className="attr-group generated-from">
             <h3 className="eyebrow">{verdict.optionName ? `Generated from ${verdict.optionName}` : 'Generated image'}</h3>
             <p className={`verdict verdict-${verdict.tone}`}>{verdict.text}</p>

@@ -43,6 +43,7 @@ function setup(locked = false, item: Partial<Item> = {}, explorations?: unknown[
 
 describe('InspectPanel', () => {
   const generated = {
+    origin: 'generated',
     generation: { model: 'img-1', prompt: 'a navy dial', option_id: 'o1' },
     explore_option_id: 'o1',
     check: { target: { answer: 'yes' as const, confidence: 1, note: '' }, kept: 3, of: 4 },

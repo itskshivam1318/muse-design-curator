@@ -49,12 +49,17 @@ describe('itemVerdict', () => {
   it('is null for a non-generated item', () => {
     expect(itemVerdict(makeItem(), [exp], labels)).toBeNull()
   })
+  it('is null for a note holding a visualize claim and for plugin-generated images', () => {
+    expect(itemVerdict(makeItem({ kind: 'note', generation: { visualizing_since: 'x' } }), [], labels)).toBeNull()
+    const plugin = makeItem({ origin: 'generated', generation: { plugin: 'p', model: 'm', run_id: 'r' } })
+    expect(itemVerdict(plugin, [], labels)).toBeNull()
+  })
   it('uses the matched option and attribute label', () => {
-    const v = itemVerdict(makeItem({ generation: gen, explore_option_id: 'o1', check }), [exp], labels)
+    const v = itemVerdict(makeItem({ origin: 'generated', generation: gen, explore_option_id: 'o1', check }), [exp], labels)
     expect(v).toEqual({ text: 'Dial colour → Navy ✓ · 3 of 4 kept', tone: 'ok', optionName: 'Navy' })
   })
   it('is neutral while the option is unknown', () => {
-    const base = { generation: gen, explore_option_id: 'o1' }
+    const base = { origin: 'generated', generation: gen, explore_option_id: 'o1' }
     expect(itemVerdict(makeItem({ ...base, check: null }), undefined, labels)).toEqual({
       text: 'Checking…', tone: 'pending', optionName: '',
     })

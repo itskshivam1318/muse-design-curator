@@ -1,3 +1,4 @@
+import { itemVerdict } from '../explore/verdict'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { makeItem } from '../test/fixtures'
@@ -46,6 +47,7 @@ describe('CreditCaption', () => {
 describe('generated caption', () => {
   it('caption for generated item shows model, no licence', () => {
     const item = makeItem({
+      origin: 'generated',
       licence,
       generation: { model: 'gpt-image-1', prompt: 'p', option_id: 'o1' },
     })
@@ -60,7 +62,7 @@ describe('generated caption', () => {
   })
 
   it('generated items are caption targets', () => {
-    const g = makeItem({ id: 'g', generation: { model: 'm', prompt: 'p', option_id: 'o' } })
+    const g = makeItem({ id: 'g', origin: 'generated', generation: { model: 'm', prompt: 'p', option_id: 'o' } })
     expect(creditTargets(g, []).map((i) => i.id)).toEqual(['g'])
   })
 })
@@ -74,5 +76,21 @@ describe('creditTargets', () => {
     expect(creditTargets(a, [a, b, user, link]).map((i) => i.id)).toEqual(['a', 'b'])
     expect(creditTargets(user, [])).toEqual([])
     expect(creditTargets(undefined, [b]).map((i) => i.id)).toEqual(['b'])
+  })
+})
+
+describe('notes and plugin images', () => {
+  it('a note holding a visualize claim gets no caption and is not a target', () => {
+    const note = makeItem({ kind: 'note', generation: { visualizing_since: 'x' } })
+    const { container } = render(<CreditCaption item={note} screen={box} />)
+    expect(container.innerHTML).toBe('')
+    expect(creditTargets(note, [])).toEqual([])
+  })
+
+  it('a plugin-generated image shows the generated caption with its model and no Checking', () => {
+    const item = makeItem({ origin: 'generated', generation: { plugin: 'p', model: 'img-2', run_id: 'r' } })
+    render(<CreditCaption item={item} screen={box} verdict={itemVerdict(item, [], new Map())} />)
+    expect(screen.getByText('generated · img-2')).toBeTruthy()
+    expect(screen.queryByText('Checking…')).toBeNull()
   })
 })
