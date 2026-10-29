@@ -1,42 +1,41 @@
-# Fly.io: one machine serving the API (/api) and the built app (/) from the root Dockerfile.
-#   fly launch --no-deploy --copy-config      # once; pick a free app name if this one is taken
-#   fly volumes create muse_data --region bom --size 3
-#   fly secrets set MODEL_API_KEY=...
-#   fly deploy
-# SQLite, SSE and rate limits live in one process: never run more than one machine.
-app = "muse-curator"
-primary_region = "bom"
+# fly.toml app configuration file generated for muse-curator on 2026-10-29T15:46:26+05:30
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'muse-curator'
+primary_region = 'sin'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
 [env]
-  PORT = "7860"
-  DATA_DIR = "/data"
-  DATABASE_URL = "sqlite:////data/dle.sqlite"
-  DEMO_MODE = "0"
-  IMAGE_PROVIDER = "muse-image"
+  DATABASE_URL = 'sqlite:////data/dle.sqlite'
+  DATA_DIR = '/data'
+  DEMO_MODE = '0'
+  IMAGE_PROVIDER = 'muse-image'
+  PORT = '7860'
 
-# First start copies the baked data/ snapshot onto the empty volume (docker-entrypoint.sh).
-[mounts]
-  source = "muse_data"
-  destination = "/data"
+[[mounts]]
+  source = 'muse_data'
+  destination = '/data'
 
 [http_service]
   internal_port = 7860
   force_https = true
-  auto_stop_machines = "off"
+  auto_stop_machines = 'off'
   auto_start_machines = true
   min_machines_running = 1
 
   [[http_service.checks]]
-    method = "GET"
-    path = "/api/demo/status"
-    interval = "30s"
-    timeout = "5s"
-    grace_period = "120s"
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '1m0s'
+    method = 'GET'
+    path = '/api/demo/status'
 
 [[vm]]
-  memory = "4gb"
+  memory = '4gb'
+  cpu_kind = 'shared'
   cpus = 2
-  cpu_kind = "shared"
+  memory_mb = 4096
