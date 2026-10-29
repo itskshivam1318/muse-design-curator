@@ -10,7 +10,7 @@ MIN_CONFIDENCE = 0.4
 
 Kind = Literal["enum", "ordinal", "number", "boolean", "color", "text", "shape"]
 Status = Literal["extracted", "uncertain", "missing", "edited", "confirmed"]
-Source = Literal["model", "mock", "user", "corpus_index", "measured"]
+Source = Literal["model", "mock", "user", "corpus_index", "measured", "plugin"]
 Value = str | float | bool | None
 
 

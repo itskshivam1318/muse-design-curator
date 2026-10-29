@@ -1,0 +1,32 @@
+{
+  "id": "tagline",
+  "name": "Tagline",
+  "description": "Writes short taglines from the notes and the board brief.",
+  "mark": "TAG",
+  "tint": "#f3f4f6",
+  "ink": "#3a4350",
+  "runner": "llm",
+  "runs_on": "Reasoning model",
+  "inputs": { "kinds": ["note", "image"], "min": 1, "max": 6 },
+  "params": {
+    "type": "object",
+    "properties": {
+      "tone": { "type": "string", "enum": ["calm", "playful", "bold"], "default": "calm" }
+    }
+  },
+  "outputs": ["notes", "text"],
+  "prompt": "prompt.md",
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "taglines": {
+        "type": "array",
+        "items": { "type": "string" },
+        "minItems": 1,
+        "maxItems": 3
+      },
+      "why": { "type": ["string", "null"] }
+    }
+  },
+  "output_map": { "notes": "taglines", "text": "why" }
+}

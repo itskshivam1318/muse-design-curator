@@ -76,6 +76,15 @@ Inspect). "Find real examples" starts a Vary run for options that map to a known
 Muse Image is restricted from India under Meta's Geographic Use Policy §2.2. It is used here for
 development only; set IMAGE_PROVIDER to another provider for the demo.
 
+## Plugins
+
+Plugins are tools you place on the board as nodes: connect items, set params, Run, and the result
+lands beside the node (images, notes) or on the inputs (attributes). Built-ins: Image, Palette and
+Critique. Your own go in `data/plugins/<id>/` (python or llm), reloaded with
+`POST /api/plugins/reload`; they run on your machine with your permissions (not a sandbox) and are
+never loaded in demo mode. See [docs/plugins.md](docs/plugins.md) for the manifest, the I/O
+contract and two examples. `PLUGINS_ENABLED=0` turns the feature off.
+
 ## Keys
 
 | Key | Needed for | Notes |

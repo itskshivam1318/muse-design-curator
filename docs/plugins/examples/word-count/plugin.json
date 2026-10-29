@@ -1,0 +1,19 @@
+{
+  "id": "word-count",
+  "name": "Word count",
+  "description": "Counts the words in the connected notes.",
+  "mark": "WC",
+  "tint": "#f3f4f6",
+  "ink": "#3a4350",
+  "runner": "python",
+  "runs_on": "Python",
+  "inputs": { "kinds": ["note"], "min": 1, "max": 12 },
+  "params": {
+    "type": "object",
+    "properties": {
+      "per_note": { "type": "boolean", "default": false }
+    }
+  },
+  "outputs": ["notes", "text"],
+  "entry": "main.py"
+}

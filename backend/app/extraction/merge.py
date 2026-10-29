@@ -13,7 +13,8 @@ def _summary(value: Any, status: str, confidence: float) -> dict[str, Any]:
 
 
 def _is_user_owned(row: ItemAttribute) -> bool:
-    return row.status in USER_STATUSES or not row.enabled
+    """User work, or a value a plugin wrote (the user ran it on purpose): kept on re-extraction."""
+    return row.status in USER_STATUSES or not row.enabled or row.source == "plugin"
 
 
 def record_fields(rec: AttributeRecord) -> dict[str, Any]:

@@ -218,7 +218,8 @@ def visualize_job(option_id: str) -> None:
 
 def recover_stuck(session: Session) -> int:
     """Startup: no job survives a restart, so `visualizing` options go back to rest, every
-    claim is freed, and a generated item whose check never finished is marked INTERRUPTED."""
+    claim is freed, and a generated item whose check never finished is marked INTERRUPTED
+    (plugin outputs are never checked, so they are left alone)."""
     stuck = list(
         session.scalars(select(ExploreOption).where(ExploreOption.status == "visualizing"))
     )
@@ -228,7 +229,7 @@ def recover_stuck(session: Session) -> int:
     for o in session.scalars(claimed):
         o.visualize_claimed_at = None  # also options dismissed mid-job
     for item in session.scalars(select(BoardItem).where(BoardItem.origin == "generated")):
-        if item.check_json is None:
+        if item.check_json is None and not (item.generation_json or {}).get("plugin"):
             item.check_json = {"error": "INTERRUPTED"}
     session.flush()
     return len(stuck)

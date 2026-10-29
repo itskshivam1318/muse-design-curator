@@ -40,10 +40,12 @@ def cors_origins() -> list[str]:
 
 
 def _recover_visualizing() -> None:
-    """Options left `visualizing` by a previous process go back to rest (their job is gone)."""
+    """Options left `visualizing` by a previous process go back to rest and its plugin runs are
+    marked interrupted (their jobs are gone)."""
     from app.api import deps
     from app.explore.visualize import recover_stuck
     from app.notes.visualize import recover_stuck_notes
+    from app.plugins.service import recover_stuck_runs
 
     try:
         with deps.new_session() as session:
@@ -51,6 +53,8 @@ def _recover_visualizing() -> None:
                 log.info("reset %d options left visualizing", n)
             if n := recover_stuck_notes(session):
                 log.info("freed %d notes left visualizing", n)
+            if n := recover_stuck_runs(session):
+                log.info("marked %d plugin runs interrupted", n)
             session.commit()
     except Exception:
         log.exception("could not reset options left visualizing")
