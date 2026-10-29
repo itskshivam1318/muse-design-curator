@@ -48,8 +48,8 @@ class Board(Base):
     updated_at: Mapped[str] = mapped_column(String, default=now_iso, onupdate=now_iso)
 
 
-ITEM_KINDS = ("image", "video", "link")
-ORIGINS = ("upload", "drop", "paste", "link", "extension", "candidate", "seed", "generated")
+ITEM_KINDS = ("image", "video", "link", "note")
+ORIGINS = ("upload", "drop", "paste", "link", "extension", "candidate", "seed", "generated", "note")
 RIGHTS = ("user_supplied", "licensed", "generated")
 PARSE_STATUS = ("pending", "pending_lens", "processing", "completed", "failed")
 ROLES = ("reference", "counter_example")
@@ -138,6 +138,8 @@ class BoardItem(Base):
     explore_option_id: Mapped[str | None] = mapped_column(String, index=True)
     generation_json: Mapped[Any] = _json()
     check_json: Mapped[Any] = _json()
+    note_text: Mapped[str | None] = mapped_column(String)
+    staged: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     created_at: Mapped[str] = _created()
     __table_args__ = (
         CheckConstraint(_in("kind", ITEM_KINDS), name="ck_item_kind"),
@@ -159,7 +161,7 @@ class BoardItem(Base):
     )
 
 
-OPTION_STATUS = ("open", "dismissed", "visualizing", "visualized")
+OPTION_STATUS = ("open", "dismissed", "visualizing", "visualized", "kept")
 
 
 class Exploration(Base):
@@ -188,6 +190,8 @@ class ExploreOption(Base):
     status: Mapped[str] = mapped_column(String, default="open")
     last_error: Mapped[str | None] = mapped_column(String)
     visualize_claimed_at: Mapped[str | None] = mapped_column(String)
+    # no FK, like board_items.explore_option_id
+    kept_item_id: Mapped[str | None] = mapped_column(String)
     x: Mapped[float | None] = mapped_column(Float)
     y: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[str] = _created()
@@ -238,11 +242,19 @@ class AttributeEvent(Base):
     after_json: Mapped[Any] = _json()
     created_at: Mapped[str] = _created()
     __table_args__ = (
-        CheckConstraint(_in("actor", ("user", "model"))),
+        CheckConstraint(_in("actor", ("user", "model", "plugin"))),
         CheckConstraint(
             _in(
                 "action",
-                ("extracted", "model_suppressed", "edited", "confirmed", "disabled", "enabled"),
+                (
+                    "extracted",
+                    "model_suppressed",
+                    "edited",
+                    "confirmed",
+                    "disabled",
+                    "enabled",
+                    "plugin",
+                ),
             )
         ),
     )
@@ -419,3 +431,50 @@ class ExtensionToken(Base):
     token_hash: Mapped[str] = mapped_column(String, primary_key=True)
     created_at: Mapped[str] = _created()
     last_used_at: Mapped[str | None] = mapped_column(String)
+
+
+PLUGIN_RUN_STATUS = ("queued", "running", "done", "failed")
+
+
+class BoardPlugin(Base):
+    __tablename__ = "board_plugins"
+    board_id: Mapped[str] = mapped_column(ForeignKey("boards.id"), primary_key=True)
+    plugin_id: Mapped[str] = mapped_column(String, primary_key=True)
+    added_at: Mapped[str] = mapped_column(String, default=now_iso)
+
+
+class PluginNode(Base):
+    __tablename__ = "plugin_nodes"
+    id: Mapped[str] = _id("node")
+    board_id: Mapped[str] = mapped_column(ForeignKey("boards.id"), index=True)
+    plugin_id: Mapped[str] = mapped_column(String)
+    x: Mapped[float] = mapped_column(Float)
+    y: Mapped[float] = mapped_column(Float)
+    w: Mapped[float] = mapped_column(Float)
+    h: Mapped[float] = mapped_column(Float)
+    input_item_ids_json: Mapped[Any] = _json(nullable=False)
+    params_json: Mapped[Any] = _json(nullable=False)
+    last_run_id: Mapped[str | None] = mapped_column(String)
+    removed_at: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[str] = _created()
+
+
+class PluginRun(Base):
+    __tablename__ = "plugin_runs"
+    id: Mapped[str] = _id("prun")
+    board_id: Mapped[str] = mapped_column(ForeignKey("boards.id"), index=True)
+    node_id: Mapped[str] = mapped_column(ForeignKey("plugin_nodes.id"), index=True)
+    plugin_id: Mapped[str] = mapped_column(String)
+    input_item_ids_json: Mapped[Any] = _json(nullable=False)
+    params_json: Mapped[Any] = _json(nullable=False)
+    status: Mapped[str] = mapped_column(String, default="queued")
+    progress_json: Mapped[Any] = _json()
+    output_json: Mapped[Any] = _json()
+    error_code: Mapped[str | None] = mapped_column(String)
+    error_message: Mapped[str | None] = mapped_column(String)
+    claimed_at: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[str] = _created()
+    finished_at: Mapped[str | None] = mapped_column(String)
+    __table_args__ = (
+        CheckConstraint(_in("status", PLUGIN_RUN_STATUS), name="ck_plugin_run_status"),
+    )

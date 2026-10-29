@@ -204,8 +204,9 @@ def test_migration_downgrade_is_clean(tmp_path: Path) -> None:
         s.commit()
     cfg = Config(str(BACKEND_DIR / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_DIR / "alembic"))
-    with engine.begin() as conn:
-        assert conn.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+    # 0007's downgrade rebuilds board_items too, so run the whole downgrade the way the
+    # app does: FK enforcement deferred around it
+    with migration_transaction(engine) as conn:
         cfg.attributes["connection"] = conn
         command.downgrade(cfg, "0005")
     names = set(inspect(engine).get_table_names())
@@ -310,7 +311,7 @@ def test_failure_after_0004_leaves_0003_with_its_version_stamp(tmp_path: Path) -
     script = tmp_path / "alembic"
     shutil.copytree(BACKEND_DIR / "alembic", script, ignore=shutil.ignore_patterns("__pycache__"))
     (script / "versions" / "9999_boom.py").write_text(
-        'revision = "9999_boom"\ndown_revision = "0006_explore"\n\n\n'
+        'revision = "9999_boom"\ndown_revision = "0007_round2"\n\n\n'
         "def upgrade() -> None:\n    raise RuntimeError('boom')\n\n\n"
         "def downgrade() -> None:\n    pass\n"
     )
@@ -329,7 +330,7 @@ def test_failure_after_0004_leaves_0003_with_its_version_stamp(tmp_path: Path) -
         cols = {r[1] for r in c.exec_driver_sql("PRAGMA table_info(board_items)")}
     assert "explore_option_id" not in cols
     run_migrations(engine)  # and the run can simply be retried
-    assert _state(engine)[0] == "0006_explore"
+    assert _state(engine)[0] == "0007_round2"
     engine.dispose()
 
 
@@ -361,5 +362,5 @@ def test_foreign_keys_back_on_after_a_successful_run() -> None:
     engine = _one_conn_engine()
     run_migrations(engine)
     version, _, fks = _state(engine)
-    assert version == "0006_explore" and fks == 1
+    assert version == "0007_round2" and fks == 1
     engine.dispose()

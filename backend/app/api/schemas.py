@@ -83,4 +83,5 @@ def item_to_dict(i: BoardItem) -> dict[str, Any]:
         "parent_item_id": i.parent_item_id, "created_at": i.created_at,
         "licence": licence_of(i), "explore_option_id": i.explore_option_id,
         "generation": i.generation_json, "check": i.check_json,
+        "note_text": i.note_text, "staged": bool(i.staged),
     }  # fmt: skip

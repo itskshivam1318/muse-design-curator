@@ -7,7 +7,7 @@ PREFIXES = {
     "board": "brd_", "item": "itm_", "frame": "frm_", "attribute": "att_", "event": "evt_",
     "lens": "lens_", "corpus": "cx_", "run": "run_", "candidate": "cand_",
     "validation": "val_", "decision": "dec_", "ui_event": "uie_",
-    "exploration": "exp_", "option": "opt_",
+    "exploration": "exp_", "option": "opt_", "node": "node_", "prun": "prun_",
 }  # fmt: skip
 
 

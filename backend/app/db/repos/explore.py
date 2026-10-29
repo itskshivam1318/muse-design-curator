@@ -90,7 +90,7 @@ def option_to_dict(o: ExploreOption) -> dict[str, Any]:
         "name": o.name, "description": o.description, "distance": o.distance,
         "value": o.value_json, "keeps": o.keeps_json, "edit_prompt": o.edit_prompt,
         "status": o.status, "last_error": o.last_error, "x": o.x, "y": o.y,
-        "created_at": o.created_at,
+        "created_at": o.created_at, "kept_item_id": o.kept_item_id,
     }  # fmt: skip
 
 
