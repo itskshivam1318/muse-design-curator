@@ -1,7 +1,8 @@
 import Konva from 'konva'
 import { useEffect, useRef, useState } from 'react'
-import { Circle, Group, Image as KImage, Label, Rect, Tag, Text } from 'react-konva'
+import { Circle, Group, Image as KImage, Label, Line, Rect, Tag, Text } from 'react-konva'
 import { type Item, itemImageUrl } from '../api'
+import { useNoteVisualizing } from '../events'
 import type { VerdictTone } from '../explore/verdict'
 import { hostOf } from '../format'
 import type { Bounds } from './geometry'
@@ -10,11 +11,14 @@ import {
   hoverOutlineRect,
   imageNodeProps,
   isParsing,
+  itemBounds,
+  lineagePoints,
   SHIMMER_OPACITY,
   statusColor,
   statusDot,
   wantsFull,
 } from './nodeProps'
+import { NoteNode } from './NoteNode'
 import type { CanvasPalette } from './palette'
 import { useImage } from './useImage'
 
@@ -43,6 +47,8 @@ interface NodeProps {
   draggable: boolean
   palette: CanvasPalette
   handlers: ItemHandlers
+  /** A note being edited in place: the HTML editor covers it, so it is not drawn. */
+  hidden?: boolean
 }
 
 function common(item: Item, draggable: boolean, h: ItemHandlers) {
@@ -107,7 +113,98 @@ function LinkCard({ item, draggable, palette, handlers }: NodeProps) {
 }
 
 export function ItemNode(props: NodeProps) {
-  return props.item.kind === 'link' ? <LinkCard {...props} /> : <PictureNode {...props} />
+  const { item, draggable, handlers, hidden } = props
+  if (item.kind === 'note') return <NoteNode item={item} hidden={hidden} draggable={draggable} events={common(item, draggable, handlers)} />
+  return item.kind === 'link' ? <LinkCard {...props} /> : <PictureNode {...props} />
+}
+
+// the server's placement of an image made from a note (backend IMAGE_GAP and STACK_GAP)
+export const NOTE_IMAGE_GAP = 40
+export const NOTE_STACK_GAP = 24
+const PLACEHOLDER_W = 190
+const PLACEHOLDER_H = 150
+const TRACK_W = 120
+
+interface VisualizingProps {
+  note: Item
+  /** Images already generated from this note: the next one lands below them. */
+  siblings: readonly Item[]
+  scale: number
+  palette: CanvasPalette
+  reduced: boolean
+}
+
+/** While a note is being visualized: a placeholder card where the image will land, tied by a dashed line. */
+export function NoteVisualizing({ note, siblings, scale, palette, reduced }: VisualizingProps) {
+  const visualizing = useNoteVisualizing(note.id)
+  if (!visualizing) return null
+  const x = note.x + note.w + NOTE_IMAGE_GAP
+  const y = note.y + siblings.reduce((sum, s) => sum + s.h + NOTE_STACK_GAP, 0)
+  const card = { x, y, width: PLACEHOLDER_W, height: PLACEHOLDER_H }
+  return (
+    <>
+      <Line
+        name="note-placeholder-line"
+        points={lineagePoints(itemBounds(note), card)}
+        bezier
+        stroke={palette.noteEdge}
+        strokeWidth={1.3 / scale}
+        dash={[4 / scale, 4 / scale]}
+        listening={false}
+      />
+      <Group name="note-placeholder" x={x} y={y} listening={false}>
+        <Rect
+          name="note-placeholder-card"
+          width={PLACEHOLDER_W}
+          height={PLACEHOLDER_H}
+          cornerRadius={12}
+          fill={palette.paper}
+          stroke={palette.rule}
+          strokeWidth={1.5}
+        />
+        <Progress x={(PLACEHOLDER_W - TRACK_W) / 2} y={PLACEHOLDER_H / 2 - 12} palette={palette} reduced={reduced} />
+        <Text
+          y={PLACEHOLDER_H / 2}
+          width={PLACEHOLDER_W}
+          align="center"
+          text="Reading the board…"
+          fontSize={12}
+          fill={palette.muted}
+        />
+      </Group>
+    </>
+  )
+}
+
+/** An indeterminate 120×4 bar: a segment sweeps across; it rests at 55% when motion is reduced. */
+function Progress({ x, y, palette, reduced }: { x: number; y: number; palette: CanvasPalette; reduced: boolean }) {
+  const ref = useRef<Konva.Rect>(null)
+  useEffect(() => {
+    const node = ref.current
+    if (!node || reduced) return
+    const anim = new Konva.Animation((frame) => {
+      if (!frame) return
+      const phase = (frame.time / 1600) % 1
+      node.x(-TRACK_W * 0.4 + phase * TRACK_W * 1.4)
+    }, node.getLayer())
+    anim.start()
+    return () => {
+      anim.stop()
+    }
+  }, [reduced])
+  return (
+    <Group x={x} y={y} clipX={0} clipY={0} clipWidth={TRACK_W} clipHeight={4}>
+      <Rect width={TRACK_W} height={4} cornerRadius={2} fill={palette.rule} />
+      <Rect
+        ref={ref}
+        name="note-placeholder-progress"
+        width={TRACK_W * (reduced ? 0.55 : 0.4)}
+        height={4}
+        cornerRadius={2}
+        fill={palette.accent}
+      />
+    </Group>
+  )
 }
 
 /** A slow light band across a parsing image at 8% opacity; static when motion is reduced. */
@@ -160,7 +257,7 @@ interface DecorProps {
 
 /** Everything drawn around an item: outline, status dot, handles, shimmer and small badges. */
 export function ItemDecorations({ item, bounds, scale, hovered, selected, reduced, palette, verdictTone }: DecorProps) {
-  const picture = item.kind !== 'link'
+  const picture = item.kind === 'image' || item.kind === 'video'
   const parsing = picture && isParsing(item.parse_status)
   const showDot = picture && (hovered || item.parse_status !== 'completed')
   const badgeFont = 11 / scale

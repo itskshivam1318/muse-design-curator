@@ -1,7 +1,17 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { deleteItem, type ExploreOption, type Item, keys, patchItem, type Point } from '../api'
-import { upsertItems } from '../events'
+import {
+  ApiError,
+  createNote,
+  deleteItem,
+  type ExploreOption,
+  type Item,
+  keys,
+  patchItem,
+  type Point,
+  visualizeNote,
+} from '../api'
+import { setVisualizing, upsertItems } from '../events'
 import { dismissOption, moveOption } from '../explore/optionActions'
 import { type Move, undoHistory as history } from './history'
 import { selection } from './selection'
@@ -37,6 +47,37 @@ export function useItemActions(boardId: string) {
         old?.map((i) => (byId.has(i.id) ? { ...i, ...byId.get(i.id)! } : i)),
       )
       for (const [id, p] of byId) patchItem(id, { x: p.x, y: p.y }).catch(fail('Could not save position'))
+    },
+    [qc, boardId, fail],
+  )
+
+  const dropNote = useCallback(
+    (id: string) => {
+      qc.setQueryData<Item[]>(keys.items(boardId), (old) => old?.filter((i) => i.id !== id))
+      deleteItem(id).catch(fail('Could not remove note'))
+    },
+    [qc, boardId, fail],
+  )
+
+  const addNote = useCallback(
+    async (at: { x: number; y: number; w: number; h: number }, text: string): Promise<Item | null> => {
+      try {
+        const body = { text, x: Math.round(at.x), y: Math.round(at.y), w: at.w, h: Math.round(at.h) }
+        const item = await createNote(boardId, body)
+        upsertItems(qc, boardId, [item])
+        return item
+      } catch (e) {
+        report('Could not add note')(e)
+        return null
+      }
+    },
+    [qc, boardId, report],
+  )
+
+  const setNoteText = useCallback(
+    (id: string, note_text: string, h: number) => {
+      qc.setQueryData<Item[]>(keys.items(boardId), (old) => old?.map((i) => (i.id === id ? { ...i, note_text, h } : i)))
+      patchItem(id, { note_text, h }).catch(fail('Could not save note'))
     },
     [qc, boardId, fail],
   )
@@ -82,6 +123,33 @@ export function useItemActions(boardId: string) {
         qc.setQueryData<Item[]>(keys.items(boardId), (old) => old?.map((i) => (ids.has(i.id) ? { ...i, role } : i)))
         for (const id of ids) patchItem(id, { role }).catch(fail('Could not update item'))
       },
+      /** A note typed on the canvas; ⌘Z removes it again. */
+      async createNote(at: { x: number; y: number; w: number; h: number }, text: string) {
+        const item = await addNote(at, text)
+        if (item) history.pushRevert(() => dropNote(item.id))
+        return item
+      },
+      /** New text for a note (and the height it now draws at); ⌘Z puts the old text back. */
+      editNote(note: Item, text: string, h: number) {
+        const before = { text: note.note_text ?? '', h: note.h }
+        setNoteText(note.id, text, h)
+        history.pushRevert(() => setNoteText(note.id, before.text, before.h))
+      },
+      /** Delete from the note's menu; ⌘Z writes it back (as a new note in the same spot). */
+      deleteNote(note: Item) {
+        dropNote(note.id)
+        const text = note.note_text ?? ''
+        if (text.trim()) history.pushRevert(() => void addNote(note, text))
+      },
+      /** Generate an image from the note. Shown as visualizing at once; a refusal clears it. */
+      visualizeNote(noteId: string) {
+        setVisualizing(noteId, true)
+        visualizeNote(noteId).catch((e: unknown) => {
+          if (e instanceof ApiError && e.status === 409) return // already under way: its events will follow
+          setVisualizing(noteId, false)
+          report('Could not visualize note')(e)
+        })
+      },
       async chooseFrame(itemId: string, frameId: string) {
         try {
           const item = await patchItem(itemId, { chosen_frame_id: frameId })
@@ -92,7 +160,7 @@ export function useItemActions(boardId: string) {
         }
       },
     }),
-    [error, applyPositions, qc, boardId, fail, report],
+    [error, applyPositions, qc, boardId, fail, report, addNote, dropNote, setNoteText],
   )
 }
 

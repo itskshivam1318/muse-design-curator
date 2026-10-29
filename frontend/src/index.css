@@ -287,6 +287,106 @@ textarea {
   touch-action: none;
   user-select: none;
 }
+.canvas.is-note {
+  cursor: crosshair;
+}
+/* a note typed in place: the textarea stands exactly where the note card is drawn */
+.note-editor {
+  position: absolute;
+  box-sizing: border-box;
+  border: 0;
+  margin: 0;
+  resize: none;
+  user-select: text;
+  overflow: hidden;
+  box-shadow: 0 0 0 1.5px var(--accent), 0 6px 16px rgba(20, 24, 30, 0.14);
+  outline: none;
+  z-index: 7;
+}
+.note-bar {
+  position: absolute;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--raised);
+  box-shadow: 0 1px 2px rgba(20, 24, 30, 0.1), 0 6px 16px rgba(20, 24, 30, 0.12);
+  z-index: 6;
+}
+.note-bar > button {
+  height: 36px;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font: 600 13px var(--f-body);
+}
+.note-bar-visualize {
+  padding: 0 12px;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.note-bar-visualize:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.note-bar-more {
+  width: 36px;
+  background: transparent;
+  color: var(--muted);
+}
+.note-bar-more:hover,
+.note-bar-more[aria-expanded='true'] {
+  background: var(--paper);
+  color: var(--ink);
+}
+.note-bar-menu {
+  position: absolute;
+  left: calc(100% + 4px);
+  top: 0;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--raised);
+  box-shadow: var(--shadow);
+}
+.note-bar-menu [role='group'] {
+  display: flex;
+  flex-direction: column;
+  border-block: 1px solid var(--rule);
+  margin: 4px 0;
+  padding: 4px 0;
+}
+.note-bar-menu-label {
+  padding: 4px 10px 2px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.note-bar-menu button {
+  border: 0;
+  background: none;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font: 500 13px var(--f-body);
+  color: var(--ink);
+  cursor: pointer;
+}
+.note-bar-menu button:hover:not(:disabled) {
+  background: var(--paper);
+}
+.note-bar-menu button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.note-bar-menu .is-danger {
+  color: var(--bad);
+}
 .canvas.is-pan {
   cursor: grab;
 }

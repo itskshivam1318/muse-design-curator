@@ -60,7 +60,8 @@ export const noteVisualizeStore = createStore<{ ids: ReadonlySet<string> }>({ id
 export const useNoteVisualizing = (noteId: string): boolean =>
   useSyncExternalStore(noteVisualizeStore.subscribe, () => noteVisualizeStore.get().ids.has(noteId))
 
-function setVisualizing(noteId: string, on: boolean): void {
+/** Mark a note as visualizing (or not); the click sets it ahead of the server's note.visualizing. */
+export function setVisualizing(noteId: string, on: boolean): void {
   const ids = new Set(noteVisualizeStore.get().ids)
   if (on === ids.has(noteId)) return
   if (on) ids.add(noteId)

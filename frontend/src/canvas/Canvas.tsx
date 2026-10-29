@@ -11,10 +11,11 @@ import {
   useState,
 } from 'react'
 import { Layer, Line, Rect, Stage } from 'react-konva'
-import type { Exploration, Item, Point, UploadOrigin } from '../api'
+import { type Exploration, isGenerated, type Item, type Point, type UploadOrigin } from '../api'
 import { useDemo } from '../demo'
 import { itemVerdict } from '../explore/verdict'
-import { useBoardLens, useExplorations } from '../queries'
+import { useBoardLens, useExplorations, visibleItems } from '../queries'
+import { setTool, useTool } from '../shell/tools'
 import type { ItemActions } from './actions'
 import { handleDrop } from './drop'
 import { FramesStrip } from './FramesStrip'
@@ -32,12 +33,15 @@ import {
   zoomAt,
 } from './geometry'
 import type { Move } from './history'
-import { ItemDecorations, type ItemHandlers, ItemNode } from './ItemNode'
+import { ItemDecorations, type ItemHandlers, ItemNode, NoteVisualizing } from './ItemNode'
 import { CreditCaption } from './CreditCaption'
 import { creditTargets } from './credit'
 import { ItemToolbar } from './ItemToolbar'
 import { itemBounds, lineagePoints, statusLabel } from './nodeProps'
 import { noteLines, placedNotes, type PlacedNote } from './notes'
+import { NoteBar } from './NoteBar'
+import { NoteEditor } from './NoteEditor'
+import { NOTE_MIN_H, NOTE_W, noteHeight, sizedNote } from './noteSize'
 import { OptionNote } from './OptionNote'
 import { useCanvasPalette, usePrefersReducedMotion } from './palette'
 import { selection, useSelection } from './selection'
@@ -60,9 +64,14 @@ interface Props {
   onOpenPanel: (kind: 'explore' | 'vary' | 'inspect' | 'compare', itemId: string, params?: Record<string, unknown>) => void
   spaceDown: boolean
   ref?: Ref<CanvasHandle>
-  /** Public demo, not unlocked: no file drops, role changes, removal or frame choice. */
+  /** Public demo, not unlocked: no file drops, role changes, removal, frame choice or note edits. */
   readOnly?: boolean
+  /** A note's ⋯ → Send to node (wired by the plugin nodes; the entries are hidden without it). */
+  onSendToNode?: (pluginId: string, noteId: string) => void
 }
+
+/** A note being typed: a new one (no id yet, placed at `at`) or an existing one. */
+type Editing = { id: null; at: Point } | { id: string }
 
 type KEvent<E extends Event = MouseEvent> = Konva.KonvaEventObject<E>
 
@@ -86,8 +95,25 @@ function useSize(el: HTMLElement | null) {
   return size
 }
 
-export function Canvas({ boardId, items, actions, onFiles, onOpenPanel, spaceDown, ref, readOnly = false }: Props) {
+export function Canvas({
+  boardId,
+  items: allItems,
+  actions,
+  onFiles,
+  onOpenPanel,
+  spaceDown,
+  ref,
+  readOnly = false,
+  onSendToNode,
+}: Props) {
   const { exploreEnabled } = useDemo()
+  // staged takes and plugin results wait elsewhere; notes are drawn at the size their text needs
+  const items = useMemo(() => visibleItems(allItems).map(sizedNote), [allItems])
+  const tool = useTool()
+  const [editing, setEditing] = useState<Editing | null>(null)
+  const [noteHover, setNoteHover] = useState<string | null>(null)
+  const noteHoverTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const overNoteBar = useRef(false)
   const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const size = useSize(container)
   const stageRef = useRef<Konva.Stage>(null)
@@ -210,6 +236,14 @@ export function Canvas({ boardId, items, actions, onFiles, onOpenPanel, spaceDow
 
   const onStageDown = (e: KEvent) => {
     if (e.target !== stageRef.current || spaceDown || e.evt.button !== 0) return
+    if (tool === 'note') {
+      e.evt.preventDefault() // keep the mousedown from taking focus away from the editor about to open
+      const p = pointerCanvas()
+      if (readOnly || !p) return
+      setTool('select')
+      setEditing({ id: null, at: p })
+      return
+    }
     const p = pointerCanvas()
     if (p) setMarquee({ a: p, b: p, additive: e.evt.shiftKey })
   }
@@ -286,10 +320,16 @@ export function Canvas({ boardId, items, actions, onFiles, onOpenPanel, spaceDow
       setOverrides({})
     },
     onOpen: (item) => {
-      if (item.kind !== 'link') onOpenPanel('inspect', item.id)
+      if (item.kind === 'note') {
+        if (!readOnly) setEditing({ id: item.id })
+      } else if (item.kind !== 'link') onOpenPanel('inspect', item.id)
     },
     onEnter: (item) => {
       setHovered(item.id)
+      if (item.kind === 'note') {
+        clearTimeout(noteHoverTimer.current)
+        setNoteHover(item.id)
+      }
       if (item.kind === 'video') {
         clearTimeout(stripTimer.current)
         setStripFor(item.id)
@@ -297,6 +337,10 @@ export function Canvas({ boardId, items, actions, onFiles, onOpenPanel, spaceDow
     },
     onLeave: (item) => {
       setHovered((h) => (h === item.id ? null : h))
+      if (item.kind === 'note') {
+        clearTimeout(noteHoverTimer.current)
+        noteHoverTimer.current = setTimeout(() => !overNoteBar.current && setNoteHover(null), 250)
+      }
       if (item.kind === 'video') {
         clearTimeout(stripTimer.current)
         stripTimer.current = setTimeout(() => !overStrip.current && setStripFor(null), 250)
@@ -348,9 +392,17 @@ export function Canvas({ boardId, items, actions, onFiles, onOpenPanel, spaceDow
   const dragging = Object.keys(overrides).length > 0
   const stripItem = stripFor ? byId.get(stripFor) : undefined
   const hoveredItem = hovered ? byId.get(hovered) : undefined
+  // an image made from a note always shows the solid line back to it (its provenance)
+  const fromNote = (child: Item) => isGenerated(child) && byId.get(child.parent_item_id ?? '')?.kind === 'note'
+  const noteLineage = items.flatMap((child) => {
+    if (!fromNote(child)) return []
+    const parent = byId.get(child.parent_item_id!)!
+    return [{ id: child.id, points: lineagePoints(itemBounds(positioned(parent)), itemBounds(positioned(child))) }]
+  })
+  const noteChildren = (noteId: string) => items.filter((i) => i.parent_item_id === noteId && isGenerated(i))
   const lineage = items.flatMap((child) => {
     const parent = child.parent_item_id ? byId.get(child.parent_item_id) : undefined
-    if (!parent || !(selected.includes(child.id) || selected.includes(parent.id))) return []
+    if (!parent || fromNote(child) || !(selected.includes(child.id) || selected.includes(parent.id))) return []
     return [{ id: child.id, points: lineagePoints(itemBounds(positioned(parent)), itemBounds(positioned(child))) }]
   })
   const shownItems = ordered.map(positioned)
@@ -360,12 +412,46 @@ export function Canvas({ boardId, items, actions, onFiles, onOpenPanel, spaceDow
   const noteLinks = noteLines(withDraggedNote(shownExplorations, noteDrag), shownItems)
   const openNote = (n: PlacedNote) =>
     onOpenPanel('explore', n.exploration.item_id, { key: n.exploration.key, optionId: n.option.id })
+  // ---- notes: the editor and the bar ----
+  const editedNote = editing?.id ? byId.get(editing.id) : undefined
+  const editorAt: { x: number; y: number; text: string } | null = editing
+    ? editing.id === null
+      ? { ...editing.at, text: '' }
+      : editedNote
+        ? { x: editedNote.x, y: editedNote.y, text: editedNote.note_text ?? '' }
+        : null
+    : null
+  const commitNote = (text: string) => {
+    const e = editing
+    setEditing(null)
+    if (!e) return
+    const clean = text.trim()
+    const h = noteHeight(clean)
+    if (e.id === null) {
+      if (clean) void actions.createNote({ ...e.at, w: NOTE_W, h }, clean)
+      return
+    }
+    const note = byId.get(e.id)
+    // an emptied note keeps its old text; deleting is in its menu
+    if (note && clean && clean !== note.note_text) actions.editNote(note, clean, h)
+  }
+  const soleSelected = selectedItems.length === 1 ? selectedItems[0] : undefined
+  const barNote = [noteHover ? byId.get(noteHover) : undefined, soleSelected].find(
+    (n): n is Item => !!n && n.kind === 'note' && n.id !== editing?.id,
+  )
+  const onlyNotes = selectedItems.length > 0 && selectedItems.every((i) => i.kind === 'note')
+  const addNoteAtCenter = () => {
+    const c = toCanvasPoint({ x: size.width / 2, y: size.height / 2 }, viewRef.current)
+    setTool('select')
+    setEditing({ id: null, at: { x: c.x - NOTE_W / 2, y: c.y - NOTE_MIN_H / 2 } })
+  }
+
   const gridStep = GRID * view.scale * (view.scale < 0.5 ? 4 : view.scale < 1 ? 2 : 1)
 
   return (
     <div
       ref={setContainer}
-      className={`canvas${dropActive ? ' is-drop' : ''}${spaceDown ? ' is-pan' : ''}`}
+      className={`canvas${dropActive ? ' is-drop' : ''}${spaceDown ? ' is-pan' : ''}${tool === 'note' && !readOnly ? ' is-note' : ''}`}
       style={{
         backgroundSize: `${gridStep}px ${gridStep}px`,
         backgroundPosition: `${view.x}px ${view.y}px`,
@@ -410,6 +496,17 @@ export function Canvas({ boardId, items, actions, onFiles, onOpenPanel, spaceDow
                 listening={false}
               />
             ))}
+            {noteLineage.map((l) => (
+              <Line
+                key={l.id}
+                name="note-lineage"
+                points={l.points}
+                bezier
+                stroke={palette.noteEdge}
+                strokeWidth={1.3 / view.scale}
+                listening={false}
+              />
+            ))}
             {lineage.map((l) => (
               <Line
                 key={l.id}
@@ -426,11 +523,24 @@ export function Canvas({ boardId, items, actions, onFiles, onOpenPanel, spaceDow
                 key={i.id}
                 item={positioned(i)}
                 scale={view.scale}
-                draggable={!spaceDown}
+                draggable={!spaceDown && !(i.kind === 'note' && readOnly)}
                 palette={palette}
                 handlers={handlers}
+                hidden={i.id === editing?.id}
               />
             ))}
+            {ordered
+              .filter((i) => i.kind === 'note')
+              .map((n) => (
+                <NoteVisualizing
+                  key={`viz-${n.id}`}
+                  note={positioned(n)}
+                  siblings={noteChildren(n.id)}
+                  scale={view.scale}
+                  palette={palette}
+                  reduced={reduced}
+                />
+              ))}
             {notes.map((n) => (
               <OptionNote
                 key={n.option.id}
@@ -495,7 +605,7 @@ export function Canvas({ boardId, items, actions, onFiles, onOpenPanel, spaceDow
             verdict={itemVerdict(i, explorations, labels)}
           />
         ))}
-      {selBounds && !dragging && !marquee && (
+      {selBounds && !dragging && !marquee && !onlyNotes && (
         <ItemToolbar
           items={selectedItems}
           screen={toScreenBounds(selBounds, view)}
@@ -525,6 +635,41 @@ export function Canvas({ boardId, items, actions, onFiles, onOpenPanel, spaceDow
             setStripFor(null)
           }}
         />
+      )}
+      {barNote && !dragging && !marquee && (
+        <NoteBar
+          key={barNote.id}
+          boardId={boardId}
+          note={barNote}
+          screen={toScreenBounds(itemBounds(positioned(barNote)), view)}
+          readOnly={readOnly}
+          onVisualize={() => actions.visualizeNote(barNote.id)}
+          onEdit={() => setEditing({ id: barNote.id })}
+          onDelete={() => actions.deleteNote(barNote)}
+          onSendToNode={onSendToNode}
+          onEnter={() => {
+            overNoteBar.current = true
+            clearTimeout(noteHoverTimer.current)
+          }}
+          onLeave={() => {
+            overNoteBar.current = false
+            noteHoverTimer.current = setTimeout(() => setNoteHover(null), 250)
+          }}
+        />
+      )}
+      {editing && editorAt && (
+        <NoteEditor
+          key={editing.id ?? 'new'}
+          screen={toScreenBounds({ x: editorAt.x, y: editorAt.y, width: NOTE_W, height: NOTE_MIN_H }, view)}
+          scale={view.scale}
+          initial={editorAt.text}
+          onCommit={commitNote}
+        />
+      )}
+      {tool === 'note' && !readOnly && !editing && (
+        <button type="button" className="sr-only" onClick={addNoteAtCenter}>
+          Add a note in the middle of the view
+        </button>
       )}
       {dropActive && <div className="drop-hint">Drop to add here</div>}
       <ItemList items={ordered} selected={selected} />
@@ -578,7 +723,9 @@ function ItemList({ items, selected }: { items: Item[]; selected: readonly strin
             aria-pressed={selected.includes(i.id)}
             onClick={(e) => (e.shiftKey ? selection.toggle(i.id) : selection.select([i.id]))}
           >
-            {i.kind} {i.original_filename ?? i.page_title ?? i.page_url ?? i.id} · {statusLabel(i)}
+            {i.kind === 'note'
+              ? `note ${i.note_text ?? ''}`
+              : `${i.kind} ${i.original_filename ?? i.page_title ?? i.page_url ?? i.id} · ${statusLabel(i)}`}
             {i.role === 'counter_example' ? ' · not this' : ''}
           </button>
         </li>
