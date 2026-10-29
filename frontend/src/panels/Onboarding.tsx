@@ -25,7 +25,7 @@ export function Onboarding({ itemCount, onFocusContext, onOpenAdd }: Props) {
               Add references
             </button>
             <p className="onboarding-hint">
-              Drop images or video anywhere, paste a link with ⌘V, or press +
+              Drop images or video anywhere, paste a link with ⌘V, or open Library
             </p>
           </div>
         </li>

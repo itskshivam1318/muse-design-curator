@@ -20,6 +20,7 @@ import { handleDrop } from './drop'
 import { FramesStrip } from './FramesStrip'
 import {
   type Bounds,
+  centeredView,
   fitView,
   normalizeRect,
   rectsIntersect,
@@ -47,6 +48,8 @@ export interface CanvasHandle {
   center: () => Point
   /** Where an item's bounds sit on the page (client coordinates), e.g. for the Keep fly-in. */
   clientRectOf: (item: Item) => Bounds | null
+  /** Pan (keeping the zoom) so the item sits at the viewport centre, e.g. when picked in Library. */
+  centerOn: (item: Item) => void
 }
 
 interface Props {
@@ -65,9 +68,9 @@ type KEvent<E extends Event = MouseEvent> = Konva.KonvaEventObject<E>
 
 const GRID = 24
 
-/** Keep fitted items clear of the context bar (top-left), signals (right) and + button (bottom). */
+/** Keep fitted items clear of the stage's rounded edge and the bottom toolbar. */
 function fitInsets(width: number) {
-  return width > 900 ? { top: 140, right: 310, bottom: 96, left: 72 } : { top: 140, right: 24, bottom: 96, left: 24 }
+  return width > 900 ? { top: 48, right: 48, bottom: 96, left: 48 } : { top: 24, right: 24, bottom: 96, left: 24 }
 }
 
 function useSize(el: HTMLElement | null) {
@@ -157,6 +160,7 @@ export function Canvas({ boardId, items, actions, onFiles, onOpenPanel, spaceDow
         const b = toScreenBounds(itemBounds(item), viewRef.current)
         return { ...b, x: b.x + r.left, y: b.y + r.top }
       },
+      centerOn: (item: Item) => setView((v) => centeredView(v, itemBounds(item), size)),
     }),
     [fit, size, container],
   )

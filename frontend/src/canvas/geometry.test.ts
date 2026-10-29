@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fitView, toScreenBounds } from './geometry'
+import { centeredView, fitView, toScreenBounds } from './geometry'
 
 describe('fitView', () => {
   it('fits all items inside the viewport minus insets, never zooming past 100%', () => {
@@ -15,5 +15,12 @@ describe('fitView', () => {
     expect(a.x + a.width).toBeLessThanOrEqual(1350 - 300 + 1e-9)
     expect(a.y + a.height).toBeLessThanOrEqual(850 - 50 + 1e-9)
     expect(fitView([{ x: 0, y: 0, width: 10, height: 10 }], { width: 800, height: 600 }).scale).toBe(1)
+  })
+})
+
+describe('centeredView', () => {
+  it('pans so the bounds sit at the viewport centre, keeping the zoom', () => {
+    const v = centeredView({ x: 5, y: 5, scale: 2 }, { x: 100, y: 50, width: 40, height: 20 }, { width: 800, height: 600 })
+    expect(v).toEqual({ x: 400 - 120 * 2, y: 300 - 60 * 2, scale: 2 })
   })
 })

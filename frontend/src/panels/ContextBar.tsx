@@ -31,7 +31,7 @@ function domainState(board: Board) {
   }
 }
 
-/** Floating top-left: board title (inline edit) and its one-line brief; expands to edit the brief and domain. */
+/** Board header: title (inline edit) and its one-line brief; expands to edit the brief and domain. */
 export function ContextBar({ board, profile, onSave, ref, locked = false, badge }: Props) {
   const [titleDraft, setTitleDraft] = useState<string | null>(null)
   const [open, setOpen] = useState(false)

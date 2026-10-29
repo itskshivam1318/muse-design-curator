@@ -18,11 +18,11 @@ import { Canvas, type CanvasHandle } from '../canvas/Canvas'
 import type { Bounds } from '../canvas/geometry'
 import { usePrefersReducedMotion } from '../canvas/palette'
 import { handlePaste, readClipboard } from '../canvas/paste'
-import { selection, selectionStore, useSelection } from '../canvas/selection'
+import { selection, selectionStore } from '../canvas/selection'
 import { useAddFlow } from '../canvas/useAddFlow'
 import { useDemo } from '../demo'
 import { connectBoardEvents } from '../events'
-import { AddMenu } from '../panels/AddMenu'
+import { AddActions } from '../panels/AddMenu'
 import { BoardSignals } from '../panels/BoardSignals'
 import { ContextBar, type ContextBarHandle } from '../panels/ContextBar'
 import { DemoBadge } from '../panels/DemoBadge'
@@ -32,18 +32,13 @@ import { hasDrawerPanel } from '../panels/drawerRegistry'
 import { KeepFlight } from '../panels/KeepFlight'
 import { MaybeStrip } from '../panels/MaybeStrip'
 import '../panels/registerPanels'
-import { RightDrawer } from '../panels/RightDrawer'
 import { UploadStatus } from '../panels/UploadStatus'
 import { useBoard, useBoardLens, useItems, useProfile } from '../queries'
 import { Link } from '../Link'
-import { insideOverlay } from './shortcutGuard'
+import { BoardShell } from '../shell/BoardShell'
+import { railStore, setTool } from '../shell/tools'
+import { insideOverlay, isTyping } from './shortcutGuard'
 import { runStore } from '../vary/runStore'
-
-function isTyping(t: EventTarget | null): boolean {
-  const el = t as HTMLElement | null
-  if (!el || !el.tagName) return false
-  return el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)
-}
 
 export function BoardPage({ boardId }: { boardId: string }) {
   const qc = useQueryClient()
@@ -54,19 +49,19 @@ export function BoardPage({ boardId }: { boardId: string }) {
   const actions = useItemActions(boardId)
   const add = useAddFlow(boardId)
   const canvas = useRef<CanvasHandle>(null)
-  const [addOpen, setAddOpen] = useState(false)
   const contextBar = useRef<ContextBarHandle>(null)
   const [dismissedLens, setDismissedLens] = useState<string | null>(null)
   const [spaceDown, setSpaceDown] = useState(false)
   const [live, setLive] = useState<'connecting' | 'open' | 'reconnecting'>('connecting')
-  const { drawer } = useSelection()
   const reduced = usePrefersReducedMotion()
-  const { locked, exploreEnabled } = useDemo()
+  const { locked, exploreEnabled, pluginsEnabled } = useDemo()
   const [flight, setFlight] = useState<{ id: string; src: string; from: Bounds; to: Bounds } | null>(null)
 
   useEffect(() => {
     selection.reset()
     runStore.clear()
+    setTool('select')
+    railStore.set(null)
     setTelemetryBoard(boardId)
     const disconnect = connectBoardEvents(boardId, qc, { onStatus: setLive })
     return () => {
@@ -160,11 +155,12 @@ export function BoardPage({ boardId }: { boardId: string }) {
           }
           break
         case 'escape':
-          // innermost first: candidate popover, then the drawer, then the selection
+          // innermost first: candidate popover, then the drawer, then a rail panel, then the selection
+          // (the tool goes back to Select in BoardShell's own handler)
           if (runStore.get().openCandidate) runStore.open(null)
           else if (selectionStore.get().drawer) selection.closeDrawer()
+          else if (railStore.get()) railStore.set(null)
           else selection.clear()
-          setAddOpen(false)
           break
         default:
           return
@@ -194,6 +190,12 @@ export function BoardPage({ boardId }: { boardId: string }) {
     void qc.invalidateQueries({ queryKey: keys.board(boardId) })
   }
 
+  // a lens proposal waits in Library: open it there once, unless another panel is open
+  const proposedId = lens.data?.status === 'proposed' && lens.data.id !== dismissedLens ? lens.data.id : null
+  useEffect(() => {
+    if (proposedId && !railStore.get()) railStore.set('library')
+  }, [proposedId])
+
   if (board.isError) {
     const notFound = board.error instanceof ApiError && board.error.status === 404
     return (
@@ -208,79 +210,107 @@ export function BoardPage({ boardId }: { boardId: string }) {
   const list = items.data ?? []
   const proposed = lens.data && lens.data.status === 'proposed' && lens.data.id !== dismissedLens ? lens.data : null
 
+  const focusItem = (item: Item) => {
+    selection.select([item.id])
+    canvas.current?.centerOn(item)
+  }
+  const findExamples = (item: Item) => {
+    selection.select([item.id])
+    canvas.current?.centerOn(item)
+    openPanel('vary', item.id)
+  }
+
   return (
     <main className="board">
       <h1 className="sr-only">{board.data?.title ?? 'Board'}</h1>
-      <Canvas
-        ref={canvas}
+      <BoardShell
         boardId={boardId}
         items={list}
-        actions={actions}
-        onFiles={uploadAt}
-        onOpenPanel={openPanel}
-        spaceDown={spaceDown}
-        readOnly={locked}
-      />
-
-      <div className="float top-left">
-        <Link href="/" className="back-link" aria-label="All boards">
-          ←
-        </Link>
-        {board.data && (
-          <ContextBar
-            key={board.data.id}
-            board={board.data}
-            profile={profile.data?.profile}
-            onSave={saveBoard}
-            ref={contextBar}
-            locked={locked}
-            badge={<DemoBadge />}
+        plugins={pluginsEnabled}
+        explore={exploreEnabled}
+        onFocusItem={focusItem}
+        onFindExamples={findExamples}
+        header={
+          <>
+            <Link href="/" className="back-link" aria-label="All boards">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                <path d="M10 3L5 8l5 5" />
+              </svg>
+            </Link>
+            {board.data && (
+              <ContextBar
+                key={board.data.id}
+                board={board.data}
+                profile={profile.data?.profile}
+                onSave={saveBoard}
+                ref={contextBar}
+                locked={locked}
+                badge={<DemoBadge />}
+              />
+            )}
+          </>
+        }
+        canvas={
+          <Canvas
+            ref={canvas}
+            boardId={boardId}
+            items={list}
+            actions={actions}
+            onFiles={uploadAt}
+            onOpenPanel={openPanel}
+            spaceDown={spaceDown}
+            readOnly={locked}
           />
-        )}
-      </div>
-
-      {items.isSuccess && (
-        <Onboarding
-          itemCount={list.length}
-          onFocusContext={() => contextBar.current?.focus()}
-          onOpenAdd={() => setAddOpen(true)}
-        />
-      )}
-
-      <div className="float right">
-        {!drawer && <BoardSignals boardId={boardId} />}
-        {proposed && (
-          <LensReview key={proposed.id} lens={proposed} onConfirm={onConfirmLens} onDismiss={() => setDismissedLens(proposed.id)} locked={locked} />
-        )}
-      </div>
-      <RightDrawer boardId={boardId} />
-      <MaybeStrip boardId={boardId} streamOpen={live === 'open'} onKept={onKept} />
+        }
+        library={
+          <>
+            <AddActions
+              onFiles={(files) => uploadAt(files, center(), 'upload')}
+              onLink={(url) => addLink(url, center())}
+              disabled={locked}
+            />
+            <BoardSignals boardId={boardId} />
+            {proposed && (
+              <LensReview
+                key={proposed.id}
+                lens={proposed}
+                onConfirm={onConfirmLens}
+                onDismiss={() => setDismissedLens(proposed.id)}
+                locked={locked}
+              />
+            )}
+          </>
+        }
+        overlays={
+          <>
+            {items.isSuccess && (
+              <Onboarding
+                itemCount={list.length}
+                onFocusContext={() => contextBar.current?.focus()}
+                onOpenAdd={() => railStore.set('library')}
+              />
+            )}
+            <MaybeStrip boardId={boardId} streamOpen={live === 'open'} onKept={onKept} />
+            <div className="float stage-status">
+              <UploadStatus jobs={add.jobs} onDismiss={add.dismiss} onCancel={add.cancel} />
+              {actions.error && (
+                <p className="toast error" role="alert">
+                  {actions.error}{' '}
+                  <button type="button" className="btn-quiet small" onClick={actions.clearError}>
+                    Dismiss
+                  </button>
+                </p>
+              )}
+            </div>
+            {live === 'reconnecting' && (
+              <p className="live-status" role="status">
+                Reconnecting to live updates…
+              </p>
+            )}
+          </>
+        }
+      />
       {flight && <KeepFlight key={flight.id} src={flight.src} from={flight.from} to={flight.to} onDone={() => setFlight(null)} />}
-
-      <div className="float bottom-left">
-        <UploadStatus jobs={add.jobs} onDismiss={add.dismiss} onCancel={add.cancel} />
-        {actions.error && (
-          <p className="toast error" role="alert">
-            {actions.error}{' '}
-            <button type="button" className="btn-quiet small" onClick={actions.clearError}>
-              Dismiss
-            </button>
-          </p>
-        )}
-        <AddMenu
-          open={addOpen}
-          onOpenChange={setAddOpen}
-          onFiles={(files) => uploadAt(files, center(), 'upload')}
-          onLink={(url) => addLink(url, center())}
-          disabled={locked}
-        />
-      </div>
-
-      {live === 'reconnecting' && (
-        <p className="live-status" role="status">
-          Reconnecting to live updates…
-        </p>
-      )}
     </main>
   )
 }

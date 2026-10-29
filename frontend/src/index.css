@@ -320,31 +320,6 @@ textarea {
 .float > * {
   pointer-events: auto;
 }
-.float.top-left {
-  left: 16px;
-  top: 16px;
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-}
-.float.right {
-  right: 16px;
-  top: 16px;
-  bottom: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: flex-end;
-  overflow: auto;
-}
-.float.bottom-left {
-  left: 16px;
-  bottom: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: flex-start;
-}
 .back-link {
   display: grid;
   place-items: center;
@@ -605,38 +580,6 @@ button.onboarding-step:hover {
   overflow: auto;
 }
 
-.add-menu {
-  position: relative;
-}
-.add-btn {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  border: 0;
-  background: var(--ink);
-  color: var(--paper);
-  font: 300 26px/1 var(--f-body);
-  cursor: pointer;
-  box-shadow: var(--shadow);
-  display: grid;
-  place-items: center;
-}
-.add-btn[aria-expanded='true'] span {
-  transform: rotate(45deg);
-}
-.add-btn span {
-  transition: transform 0.15s ease;
-}
-.add-panel {
-  position: absolute;
-  bottom: 54px;
-  left: 0;
-  width: min(330px, calc(100vw - 32px));
-  background: var(--raised);
-  border-radius: 10px;
-  box-shadow: var(--shadow);
-  padding: 6px;
-}
 .menu-list {
   list-style: none;
   margin: 0;
@@ -1631,10 +1574,6 @@ button.onboarding-step:hover {
 }
 
 @media (max-width: 640px) {
-  .float.right {
-    top: auto;
-    max-height: 45vh;
-  }
   .signals {
     width: min(260px, calc(100vw - 32px));
   }
@@ -1684,10 +1623,6 @@ button.onboarding-step:hover {
   margin: 0;
   padding: 0;
   min-width: 0;
-}
-.add-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 
 .verdict-ok { color: var(--good, #2f7d4f); }

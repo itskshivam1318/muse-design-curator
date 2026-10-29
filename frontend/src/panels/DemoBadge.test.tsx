@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Board } from '../api'
 import { ItemToolbar } from '../canvas/ItemToolbar'
 import { makeItem } from '../test/fixtures'
-import { AddMenu } from './AddMenu'
+import { AddActions } from './AddMenu'
 import { ContextBar } from './ContextBar'
 import { DemoBadge } from './DemoBadge'
 
@@ -76,11 +76,14 @@ describe('locked controls', () => {
     id: 'b1', title: 'T', context: 'c', domain: null, lens_id: null, created_at: '', updated_at: '',
   }
 
-  it('+ menu is disabled and never opens', () => {
-    render(<AddMenu open onOpenChange={() => {}} onFiles={() => {}} onLink={async () => {}} disabled />)
-    const add = screen.getByRole('button', { name: 'Add to board' }) as HTMLButtonElement
-    expect(add.disabled).toBe(true)
-    expect(screen.queryByRole('dialog')).toBeNull()
+  it('add actions are disabled and never open', () => {
+    render(<AddActions onFiles={() => {}} onLink={async () => {}} disabled />)
+    for (const name of [/upload images or video/i, /paste a link/i, /get the chrome extension/i]) {
+      const b = screen.getByRole('button', { name }) as HTMLButtonElement
+      expect(b.disabled).toBe(true)
+      fireEvent.click(b)
+    }
+    expect(screen.queryByLabelText('Link to a page or image')).toBeNull()
   })
 
   it('toolbar keeps Vary and Inspect but disables Not this and Remove', () => {

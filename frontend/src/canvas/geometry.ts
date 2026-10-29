@@ -42,6 +42,11 @@ export function zoomAt(view: View, pointer: Point, nextScale: number): View {
 }
 
 /** Wheel delta → zoom factor: smooth for trackpad pinches (small deltas), ~1.35× per mouse-wheel notch. */
+/** The same zoom, panned so `b` sits at the centre of a viewport of `size`. */
+export function centeredView(view: View, b: Bounds, size: { width: number; height: number }): View {
+  return { ...view, x: size.width / 2 - (b.x + b.width / 2) * view.scale, y: size.height / 2 - (b.y + b.height / 2) * view.scale }
+}
+
 export function wheelZoomFactor(deltaY: number): number {
   return Math.exp(-Math.max(-30, Math.min(30, deltaY)) * 0.01)
 }

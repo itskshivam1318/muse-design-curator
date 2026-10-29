@@ -1,12 +1,11 @@
-import { type RefObject, useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { ApiError, pairCode } from '../api'
 import { asHttpUrl } from '../canvas/paste'
 import { formatPairCode } from '../format'
+import { LOCKED_TITLE } from '../demo'
 import { ACCEPT } from '../validation'
 
 interface Props {
-  open: boolean
-  onOpenChange: (open: boolean) => void
   onFiles: (files: File[]) => void
   onLink: (url: string) => Promise<unknown>
   /** Public demo, not unlocked: nothing can be added. */
@@ -15,55 +14,9 @@ interface Props {
 
 type Pane = 'menu' | 'link' | 'extension'
 
-/** The + button: upload, paste a link, or pair the Chrome extension. */
-export function AddMenu({ open, onOpenChange, onFiles, onLink, disabled = false }: Props) {
+/** Add to the board: upload, paste a link, or pair the Chrome extension (rendered in the Library panel). */
+export function AddActions({ onFiles, onLink, disabled = false }: Props) {
   const fileRef = useRef<HTMLInputElement>(null)
-  const rootRef = useRef<HTMLDivElement>(null)
-  return (
-    <div className="add-menu" ref={rootRef}>
-      <input
-        ref={fileRef}
-        type="file"
-        multiple
-        accept={ACCEPT}
-        className="sr-only"
-        tabIndex={-1}
-        aria-label="Choose images or video to upload"
-        onChange={(e) => {
-          const files = Array.from(e.target.files ?? [])
-          e.target.value = ''
-          if (files.length) onFiles(files)
-          onOpenChange(false)
-        }}
-      />
-      {open && !disabled && (
-        <AddPanel rootRef={rootRef} onClose={() => onOpenChange(false)} onUpload={() => fileRef.current?.click()} onLink={onLink} />
-      )}
-      <button
-        type="button"
-        className="add-btn"
-        aria-label="Add to board"
-        title={disabled ? 'Demo — read-only. Unlock to add references.' : undefined}
-        disabled={disabled}
-        aria-expanded={open && !disabled}
-        aria-haspopup="dialog"
-        onClick={() => onOpenChange(!open)}
-      >
-        <span aria-hidden="true">+</span>
-      </button>
-    </div>
-  )
-}
-
-interface PanelProps {
-  rootRef: RefObject<HTMLDivElement | null>
-  onClose: () => void
-  onUpload: () => void
-  onLink: (url: string) => Promise<unknown>
-}
-
-/** Mounted only while the menu is open, so every opening starts fresh. */
-function AddPanel({ rootRef, onClose, onUpload, onLink }: PanelProps) {
   const [pane, setPane] = useState<Pane>('menu')
   const [url, setUrl] = useState('')
   const [linkError, setLinkError] = useState<string | null>(null)
@@ -71,27 +24,32 @@ function AddPanel({ rootRef, onClose, onUpload, onLink }: PanelProps) {
   const [code, setCode] = useState<string | null>(null)
   const [codeError, setCodeError] = useState<string | null>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  const moved = useRef(false)
   const ids = useId()
 
+  // focus follows the pane once the person has moved between panes (not on first render)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    const onDown = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    window.addEventListener('mousedown', onDown)
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      window.removeEventListener('mousedown', onDown)
-    }
-  }, [onClose, rootRef])
-
-  useEffect(() => {
-    panelRef.current?.querySelector<HTMLElement>('input, button')?.focus()
+    if (!moved.current) return
+    panelRef.current?.querySelector<HTMLElement>('input:not(.sr-only), button')?.focus()
   }, [pane])
 
+  const go = (next: Pane) => {
+    moved.current = true
+    setPane(next)
+  }
+
+  const backToMenu = () => {
+    setUrl('')
+    setBusy(false)
+    go('menu')
+  }
+
+  const lockTitle = disabled ? LOCKED_TITLE : undefined
+
   const showExtension = async () => {
-    setPane('extension')
+    go('extension')
+    setCode(null)
+    setCodeError(null)
     try {
       setCode((await pairCode()).code)
     } catch (e) {
@@ -109,7 +67,7 @@ function AddPanel({ rootRef, onClose, onUpload, onLink }: PanelProps) {
     setLinkError(null)
     try {
       await onLink(u)
-      onClose()
+      backToMenu()
     } catch (e) {
       setLinkError(e instanceof Error ? e.message : 'Could not add that link')
       setBusy(false)
@@ -117,23 +75,37 @@ function AddPanel({ rootRef, onClose, onUpload, onLink }: PanelProps) {
   }
 
   return (
-    <div ref={panelRef} className="add-panel" role="dialog" aria-label="Add to board">
+    <div ref={panelRef} className="add-actions" role="group" aria-label="Add to board">
+      <input
+        ref={fileRef}
+        type="file"
+        multiple
+        accept={ACCEPT}
+        className="sr-only"
+        tabIndex={-1}
+        aria-label="Choose images or video to upload"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? [])
+          e.target.value = ''
+          if (files.length) onFiles(files)
+        }}
+      />
       {pane === 'menu' && (
         <ul className="menu-list">
           <li>
-            <button type="button" onClick={onUpload}>
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={disabled} title={lockTitle}>
               <b>Upload images or video</b>
               <span>JPEG, PNG, WebP, GIF up to 10 MiB · MP4, MOV, WebM up to 100 MiB</span>
             </button>
           </li>
           <li>
-            <button type="button" onClick={() => setPane('link')}>
+            <button type="button" onClick={() => go('link')} disabled={disabled} title={lockTitle}>
               <b>Paste a link</b>
               <span>Or press ⌘V anywhere on the board</span>
             </button>
           </li>
           <li>
-            <button type="button" onClick={() => void showExtension()}>
+            <button type="button" onClick={() => void showExtension()} disabled={disabled} title={lockTitle}>
               <b>Get the Chrome extension</b>
               <span>Capture images and video from any page</span>
             </button>
@@ -165,7 +137,7 @@ function AddPanel({ rootRef, onClose, onUpload, onLink }: PanelProps) {
             </p>
           )}
           <div className="row-end">
-            <button type="button" className="btn-quiet" onClick={() => setPane('menu')}>
+            <button type="button" className="btn-quiet" onClick={() => go('menu')}>
               Back
             </button>
             <button type="submit" className="btn" disabled={busy}>
@@ -189,7 +161,7 @@ function AddPanel({ rootRef, onClose, onUpload, onLink }: PanelProps) {
             </p>
           )}
           <div className="row-end">
-            <button type="button" className="btn-quiet" onClick={() => setPane('menu')}>
+            <button type="button" className="btn-quiet" onClick={() => go('menu')}>
               Back
             </button>
           </div>
