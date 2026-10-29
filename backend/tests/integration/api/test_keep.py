@@ -201,3 +201,21 @@ def test_upload_identical_to_staged_take_unstages_it(client: TestClient, world) 
     )
     assert r.status_code < 300, r.text
     assert fresh(world, a).staged is False
+
+
+def test_upload_identical_to_take_of_dismissed_option_announces(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    from app.storage import files
+
+    oid, (a, _b) = make_takes(client, world)
+    client.patch(f"/api/options/{oid}", json={"status": "dismissed"})
+    data = files.abs_path(fresh(world, a).storage_path).read_bytes()
+    with events.subscribe(world["watch"]) as sub:
+        r = client.post(
+            f"/api/boards/{world['watch']}/items", files=[("files[]", ("s.png", data, "image/png"))]
+        )
+        assert r.status_code < 300, r.text
+        seen = []
+        while (ev := sub.get(timeout=1)) is not None:
+            seen.append((ev["type"], ev["data"].get("id"), ev["data"].get("staged")))
+    assert ("item.updated", a, False) in seen
+    assert fresh(world, a).staged is False

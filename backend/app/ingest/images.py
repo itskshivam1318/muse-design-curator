@@ -56,6 +56,9 @@ def ingest_image(session: Session, board_id: str, data: bytes, meta: ItemMeta) -
             if opt is not None and opt.status == "dismissed":
                 dup.staged = False
                 session.flush()
+                from app.explore.keep import _announce
+
+                _announce(session, dup)
                 return IngestResult(dup, deduped=True)
 
             at = (meta.x, meta.y) if meta.x is not None and meta.y is not None else None
