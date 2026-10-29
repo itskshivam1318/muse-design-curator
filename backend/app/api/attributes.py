@@ -24,7 +24,8 @@ def get_attributes(item_id: str, session: SessionDep) -> dict[str, Any]:
     rows = attrs_repo.for_item(session, item_id)
     if lens is not None:
         order = {a.key: n for n, a in enumerate(lens.attributes)}
-        rows = sorted((r for r in rows if r.key in order), key=lambda r: order[r.key])
+        extra = [r for r in rows if r.key not in order and r.source == "plugin"]
+        rows = sorted((r for r in rows if r.key in order), key=lambda r: order[r.key]) + extra
     return {
         "parse_status": item.parse_status,
         "parse_error_code": item.parse_error_code,

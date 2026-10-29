@@ -76,15 +76,20 @@ def _bad_output(msg: str) -> PluginError:
 # ---- input and param validation ------------------------------------------------------------
 
 
-def check_inputs(m: Manifest, inputs: list[RunInput]) -> None:
-    n = len(inputs)
+def check_input_kinds(m: Manifest, kinds: list[str]) -> None:
+    """Count and kinds of the inputs against the manifest (also checked before a run queues)."""
+    n = len(kinds)
     if n < m.inputs.min:
         raise _bad_input(f"{m.name} needs at least {m.inputs.min} input(s), got {n}")
     if n > m.inputs.max:
         raise _bad_input(f"{m.name} takes at most {m.inputs.max} input(s), got {n}")
-    for i in inputs:
-        if i.kind not in m.inputs.kinds:
-            raise _bad_input(f"{m.name} does not take {i.kind} items")
+    for kind in kinds:
+        if kind not in m.inputs.kinds:
+            raise _bad_input(f"{m.name} does not take {kind} items")
+
+
+def check_inputs(m: Manifest, inputs: list[RunInput]) -> None:
+    check_input_kinds(m, [i.kind for i in inputs])
 
 
 def _type_ok(t: str, v: Any) -> bool:

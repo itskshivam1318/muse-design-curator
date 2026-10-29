@@ -26,7 +26,14 @@ from app.extraction.service import _image_for
 from app.notes.service import board_notes_context
 from app.plugins import writeback
 from app.plugins.registry import Plugin, get_registry, status
-from app.plugins.runners import BoardCtx, PluginError, RunInput, check_params, run_plugin
+from app.plugins.runners import (
+    BoardCtx,
+    PluginError,
+    RunInput,
+    check_input_kinds,
+    check_params,
+    run_plugin,
+)
 
 log = logging.getLogger(__name__)
 
@@ -170,6 +177,7 @@ def request_run(session: Session, node_id: str) -> PluginRun:
         _fail(prev, "PLUGIN_INTERRUPTED", "The run stopped before it finished")
     if status(p) != "available":
         raise AppError(400, "PLUGIN_NOT_CONNECTED", f"{p.manifest.name} is not connected")
+    _check_live_inputs(session, node, p)
     run = PluginRun(
         board_id=node.board_id, node_id=node.id, plugin_id=node.plugin_id,
         input_item_ids_json=list(node.input_item_ids_json or []),
@@ -190,6 +198,20 @@ def request_run(session: Session, node_id: str) -> PluginRun:
     _publish(session, node.board_id, "plugin_run.queued", {"node_id": node.id, "run_id": run.id})
     after_commit(session, partial(jobs.enqueue, JOB, run_id=run.id))
     return run
+
+
+def _check_live_inputs(session: Session, node: PluginNode, p: Plugin) -> None:
+    """400 before queueing when the inputs still on the board cannot satisfy the plugin."""
+    ids = list(node.input_item_ids_json or [])
+    kinds = {
+        i.id: i.kind
+        for i in session.scalars(select(BoardItem).where(BoardItem.id.in_(ids)))
+        if i.removed_at is None and not i.staged
+    }
+    try:
+        check_input_kinds(p.manifest, [kinds[i] for i in ids if i in kinds])
+    except PluginError as e:
+        raise AppError(400, e.code, e.message) from None
 
 
 def _same(col: Any, value: str | None) -> Any:
@@ -234,8 +256,11 @@ def _board(session: Session, board_id: str) -> BoardCtx:
 
 
 def _progress(session: Session, run_id: str, board_id: str, node_id: str, message: str) -> None:
+    # progress is also the heartbeat: a healthy long run never looks stale to request_run
     session.execute(
-        update(PluginRun).where(PluginRun.id == run_id).values(progress_json={"message": message})
+        update(PluginRun)
+        .where(PluginRun.id == run_id)
+        .values(progress_json={"message": message}, claimed_at=_iso(datetime.now(UTC)))
     )
     data = {"node_id": node_id, "run_id": run_id, "progress": {"message": message}}
     _publish(session, board_id, "plugin_run.progress", data)

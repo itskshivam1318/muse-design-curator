@@ -111,3 +111,21 @@ def test_recover_stuck_runs_marks_interrupted(
     assert (run.status, run.error_code) == ("failed", "PLUGIN_INTERRUPTED")
     assert run.finished_at is not None
     assert service.recover_stuck_runs(db) == 0
+
+
+def test_progress_refreshes_the_claim(
+    client: TestClient, board: str, db: Session, no_jobs: list[dict[str, Any]]
+) -> None:
+    add_plugin(client, board, "palette")
+    node = make_node(client, board, "palette", [upload_image(client, board)])
+    run_id = client.post(f"/api/nodes/{node['id']}/run").json()["id"]
+    old = _iso(datetime.now(UTC) - timedelta(seconds=500))
+    run = fresh(db, run_id)
+    run.claimed_at = old
+    db.commit()
+    service._progress(db, run_id, board, node["id"], "Editing image 2 of 4")
+    run = fresh(db, run_id)
+    assert run.progress_json == {"message": "Editing image 2 of 4"}
+    assert run.claimed_at is not None and run.claimed_at > old
+    again = client.post(f"/api/nodes/{node['id']}/run")  # a healthy run is not stale
+    assert again.status_code == 409 and error(again) == "NODE_RUNNING"

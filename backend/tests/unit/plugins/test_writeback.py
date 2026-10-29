@@ -1,5 +1,6 @@
 """Writing a plugin's output back onto the board."""
 
+import base64
 from typing import Any
 
 import pytest
@@ -7,9 +8,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app import jobs
-from app.db.models import ItemAttribute, PluginNode, PluginRun
+from app.db.models import BoardItem, ItemAttribute, PluginNode, PluginRun
 from app.db.repos import attributes as attrs_repo
+from app.db.repos import boards as boards_repo
+from app.db.repos import lenses as lenses_repo
 from app.domain.attributes import AttributeRecord
+from app.domain.kinds import EnumSpec
+from app.domain.lens import load_curated_lens
 from app.extraction.merge import merge_extraction
 from app.plugins.writeback import apply_output
 from app.runs.orchestrator import source_records
@@ -18,6 +23,7 @@ from tests.integration.api.test_nodes_api import (
     make_node,
     upload_image,
 )
+from tests.media import image_bytes
 
 
 @pytest.fixture
@@ -64,9 +70,9 @@ def test_writeback_skips_user_edited_attribute(
     ]}  # fmt: skip
     res = apply_output(db, run, node, out)
     assert sorted(res["skipped_attributes"], key=lambda s: s["key"]) == [
-        {"item_id": img, "key": "confirmed_one"},
-        {"item_id": img, "key": "edited_one"},
-        {"item_id": img, "key": "user_src"},
+        {"item_id": img, "key": "confirmed_one", "reason": "set by you"},
+        {"item_id": img, "key": "edited_one", "reason": "set by you"},
+        {"item_id": img, "key": "user_src", "reason": "set by you"},
     ]
     assert attr(db, img, "edited_one").value_json == "mine"
     assert attr(db, img, "user_src").value_json == "u"
@@ -112,3 +118,59 @@ def test_reextraction_keeps_plugin_attribute(
     assert [e["action"] for e in evs] == ["model_suppressed"]
     # the variation engine reads stored rows back as records: a plugin source must validate
     assert [r.source for r in source_records(db, img)] == ["plugin"]
+
+
+def test_existing_row_keeps_label_category_kind_and_skips_unfit_values(
+    client: TestClient, board: str, db: Session, no_jobs: None
+) -> None:
+    lens = load_curated_lens("fashion", shape_enabled=False)
+    assert lens is not None
+    closed = next(
+        a for a in lens.attributes
+        if isinstance(a, EnumSpec) and a.vocabulary and not a.open_vocabulary
+    )  # fmt: skip
+    row = lenses_repo.save(db, board, "fashion", "edited", lens.model_dump(mode="json"),
+                           status="confirmed")  # fmt: skip
+    boards_repo.update(db, board, lens_id=row.id)
+    img, run, node = setup(client, board, db, "palette")
+    rows = {"n": "number", "b": "boolean", "c": "color", "t": "text", closed.key: "enum",
+            "open_enum": "enum"}  # fmt: skip
+    for key, kind in rows.items():
+        attrs_repo.upsert(db, img, key, label=f"L{key}", category="lensy", kind=kind,
+                          value_json=None, confidence=0.5, status="extracted",
+                          source="model")  # fmt: skip
+    good = {"n": 4, "b": False, "c": "#A1B2C3", "t": "linen", closed.key: closed.vocabulary[0],
+            "open_enum": "anything"}  # fmt: skip
+    bad = {"n": True, "b": "yes", "c": "teal", "t": 3, closed.key: "not_an_option_zz"}
+    for key, value in good.items():
+        res = apply_output(db, run, node, {"attributes": [{"item_id": img, "key": key,
+                                                           "value": value, "label": "New"}]})  # fmt: skip
+        assert res["skipped_attributes"] == [], key
+        r = attr(db, img, key)
+        assert (r.label, r.category, r.kind) == (f"L{key}", "lensy", rows[key])
+        assert r.source == "plugin" and r.value_json == (value.lower() if key == "c" else value)
+    for key, value in bad.items():
+        res = apply_output(
+            db, run, node, {"attributes": [{"item_id": img, "key": key, "value": value}]}
+        )
+        (skip,) = res["skipped_attributes"]
+        assert (skip["item_id"], skip["key"]) == (img, key) and rows[key] in skip["reason"]
+        assert attr(db, img, key).value_json == (good[key].lower() if key == "c" else good[key])
+
+
+def test_parent_is_first_live_image_input(
+    client: TestClient, board: str, db: Session, no_jobs: None
+) -> None:
+    _img, run, node = setup(client, board, db, "image")
+    second = upload_image(client, board, 5)
+    first = run.input_item_ids_json[0]
+    run.input_item_ids_json = [first, second]
+    removed = db.get(BoardItem, first)
+    assert removed is not None
+    removed.removed_at = "2026-10-29T00:00:00.000+00:00"
+    db.flush()
+    data = base64.b64encode(image_bytes(size=(320, 256))).decode()
+    res = apply_output(db, run, node, {"images": [{"data_b64": data, "caption": "x"}]})
+    (item_id,) = res["created_item_ids"]
+    item = db.get(BoardItem, item_id)
+    assert item is not None and item.parent_item_id == second

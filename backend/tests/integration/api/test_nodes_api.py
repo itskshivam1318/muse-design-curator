@@ -10,7 +10,12 @@ from sqlalchemy.orm import Session
 
 from app import demo, events
 from app.db.models import BoardItem, ItemAttribute
+from app.db.repos import boards as boards_repo
+from app.db.repos import lenses as lenses_repo
+from app.domain.lens import load_curated_lens
 from app.explore.visualize import recover_stuck
+from app.plugins import service
+from app.plugins.runners import PluginError
 from tests.media import image_bytes
 
 
@@ -184,9 +189,16 @@ def test_run_image_plugin_creates_generated_items_with_lineage(
     assert a.check_json is None
 
 
-def test_failed_run_event_and_rerun_allowed(client: TestClient, board: str) -> None:
+def test_failed_run_event_and_rerun_allowed(
+    client: TestClient, board: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     add_plugin(client, board, "palette")
-    node = make_node(client, board, "palette", [])  # palette needs at least one image
+    node = make_node(client, board, "palette", [upload_image(client, board)])
+
+    def fails(*_a: Any, **_k: Any) -> dict[str, Any]:
+        raise PluginError("PLUGIN_MODEL_FAILED", "the model failed: down")
+
+    monkeypatch.setattr(service, "run_plugin", fails)
     with events.subscribe(board) as sub:
         run = run_node(client, node["id"])
         failed = None
@@ -194,12 +206,51 @@ def test_failed_run_event_and_rerun_allowed(client: TestClient, board: str) -> N
             if ev["type"] == "plugin_run.failed":
                 failed = ev["data"]
                 break
-    assert run["status"] == "failed" and run["error_code"] == "PLUGIN_BAD_INPUT"
-    assert run["error_message"] and run["finished_at"]
+    assert run["status"] == "failed" and run["error_code"] == "PLUGIN_MODEL_FAILED"
+    assert run["error_message"] == "the model failed: down" and run["finished_at"]
     assert failed is not None and failed["node_id"] == node["id"] and failed["run_id"] == run["id"]
-    assert failed["error_code"] == "PLUGIN_BAD_INPUT"
+    assert failed["error_code"] == "PLUGIN_MODEL_FAILED"
     again = run_node(client, node["id"])
     assert again["id"] != run["id"] and again["status"] == "failed"
+
+
+def test_run_checks_live_inputs_before_queueing(client: TestClient, board: str) -> None:
+    add_plugin(client, board, "palette")
+    node = make_node(client, board, "palette", [])
+    r = client.post(f"/api/nodes/{node['id']}/run")
+    assert r.status_code == 400 and error(r) == "PLUGIN_BAD_INPUT"
+    assert "at least 1" in r.json()["error"]["message"]
+    note = make_note(client, board)
+    client.patch(f"/api/nodes/{node['id']}", json={"input_item_ids": [note]})
+    r = client.post(f"/api/nodes/{node['id']}/run")
+    assert r.status_code == 400 and r.json()["error"]["message"] == (
+        "Palette & material does not take note items"
+    )
+    img = upload_image(client, board)
+    client.patch(f"/api/nodes/{node['id']}", json={"input_item_ids": [img]})
+    assert client.delete(f"/api/items/{img}").status_code == 204  # removed: not a live input
+    r = client.post(f"/api/nodes/{node['id']}/run")
+    assert r.status_code == 400 and error(r) == "PLUGIN_BAD_INPUT"
+    assert client.get(f"/api/boards/{board}/nodes").json()["runs"] == {}
+
+
+def test_plugin_attributes_listed_after_lens_attributes(
+    client: TestClient, board: str, db: Session
+) -> None:
+    lens = load_curated_lens("fashion", shape_enabled=False)
+    assert lens is not None
+    row = lenses_repo.save(db, board, "fashion", "edited", lens.model_dump(mode="json"),
+                           status="confirmed")  # fmt: skip
+    boards_repo.update(db, board, lens_id=row.id)
+    db.commit()
+    add_plugin(client, board, "palette")
+    img = upload_image(client, board)
+    assert run_node(client, make_node(client, board, "palette", [img])["id"])["status"] == "done"
+    attrs = client.get(f"/api/items/{img}/attributes").json()["attributes"]
+    keys = [a["key"] for a in attrs]
+    lens_keys = {a.key for a in lens.attributes}
+    assert keys[-1] == "palette" and attrs[-1]["source"] == "plugin"
+    assert set(keys[:-1]) <= lens_keys
 
 
 def test_not_connected_plugin_run_400(client: TestClient, board: str) -> None:
@@ -237,7 +288,7 @@ def test_demo_mode_run_requires_unlock(demo_on: None, client: TestClient) -> Non
     assert client.post("/api/demo/unlock", json={"passcode": "open sesame"}).status_code == 200
     board = client.post("/api/boards", json={"title": "B"}).json()["id"]
     add_plugin(client, board, "palette")
-    node = make_node(client, board, "palette", [])
+    node = make_node(client, board, "palette", [upload_image(client, board)])
     client.cookies.clear()
     r = client.post(f"/api/nodes/{node['id']}/run")
     assert r.status_code == 403 and error(r) == "DEMO_LOCKED"

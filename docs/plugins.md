@@ -140,14 +140,18 @@ A run returns (python) or maps to (llm) a dict with any of the declared kinds:
   text, numbers, booleans or a list (stored as text, comma-separated). They are stored with
   source `plugin`; confidence defaults to 1.0 for python and 0.7 for llm. A plugin never
   overwrites a value the user edited or confirmed; such writes are skipped and listed in the run's
-  `skipped_attributes`. Re-parsing an item keeps plugin values.
+  `skipped_attributes`. Writing to an attribute the item already has keeps its label, category
+  and kind, and the value must fit that kind (a number for a number, `true`/`false` for a
+  boolean, a hex colour for a colour, one of the lens's options for an enum or scale); a value
+  that does not fit is skipped and listed with a reason. Re-parsing an item keeps plugin values.
 - **text** and **table** are kept on the run and shown in the node.
 
 Anything else, or a kind the manifest does not declare, fails the run with `PLUGIN_BAD_OUTPUT`.
 
 ## Runs and errors
 
-`POST /api/nodes/{id}/run` queues a run (`202`, the run); `GET /api/plugin-runs/{run_id}` reads
+`POST /api/nodes/{id}/run` queues a run (`202`, the run; `400 PLUGIN_BAD_INPUT` up front when
+the connected items still on the board are too few or of a kind the plugin does not take); `GET /api/plugin-runs/{run_id}` reads
 it. The board's event stream carries `plugin_run.queued`, `plugin_run.progress`,
 `plugin_run.done` and `plugin_run.failed`. A failed run has an `error_code`:
 

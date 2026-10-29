@@ -3,6 +3,7 @@ input items. Runs inside the run's final transaction; events go out after the co
 
 import base64
 import io
+import re
 import uuid
 from functools import partial
 from typing import Any
@@ -17,10 +18,11 @@ from app.api.schemas import item_to_dict
 from app.db.models import BoardItem, ItemAttribute, PluginNode, PluginRun
 from app.db.repos import attributes as attrs_repo
 from app.db.session import after_commit
-from app.domain.attributes import RELIABLE_CONFIDENCE, Evidence
+from app.domain.attributes import RELIABLE_CONFIDENCE, Evidence, canonical_token
+from app.domain.kinds import AttributeSpec, EnumSpec, NumberSpec, OrdinalSpec
 from app.errors import AppError
 from app.extraction.merge import USER_STATUSES
-from app.extraction.service import _recompute
+from app.extraction.service import _recompute, current_lens
 from app.ingest.common import ItemMeta, create_item, default_size
 from app.ingest.images import decode_image
 from app.notes.service import create_note
@@ -113,34 +115,76 @@ def _summary(row: ItemAttribute | None) -> dict[str, Any] | None:
     return {"value": row.value_json, "status": row.status, "confidence": row.confidence}
 
 
+HEX = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+_UNFIT = object()
+
+
+def _fit(value: Any, kind: str, spec: AttributeSpec | None) -> Any:
+    """`value` as stored under an existing row of `kind`, or _UNFIT. enum/ordinal values must be
+    one of the lens's options when the lens defines them."""
+    if kind == "number":
+        if not isinstance(value, int | float) or isinstance(value, bool):
+            return _UNFIT
+        if isinstance(spec, NumberSpec) and not spec.min <= value <= spec.max:
+            return _UNFIT
+        return value
+    if kind == "boolean":
+        return value if isinstance(value, bool) else _UNFIT
+    if not isinstance(value, str) or not value.strip():
+        return _UNFIT
+    if kind == "text":
+        return value
+    if kind == "color":
+        return value.strip().lower() if HEX.match(value.strip()) else _UNFIT
+    if kind in ("enum", "ordinal"):
+        options: list[str] | None = None
+        if isinstance(spec, EnumSpec) and spec.vocabulary and not spec.open_vocabulary:
+            options = spec.vocabulary
+        elif isinstance(spec, OrdinalSpec):
+            options = spec.scale
+        if options is None:
+            return value
+        token = canonical_token(value)
+        return token if token in options else _UNFIT
+    return _UNFIT  # shape and anything else a plugin cannot write
+
+
 def _write_attributes(
     session: Session, run: PluginRun, attrs: list[dict[str, Any]], runner: str
 ) -> tuple[set[str], list[dict[str, str]]]:
-    """Upsert each attribute unless the user owns it; returns (items touched, skipped)."""
+    """Upsert each attribute unless the user owns it or the value does not fit the existing
+    row's kind; returns (items touched, skipped)."""
     touched: set[str] = set()
     skipped: list[dict[str, str]] = []
+    lens = current_lens(session, run.board_id)
+    specs = {a.key: a for a in lens.attributes} if lens else {}
     for a in attrs:
         item_id, key = a["item_id"], a["key"]
         row = session.scalar(
             select(ItemAttribute).where(ItemAttribute.item_id == item_id, ItemAttribute.key == key)
         )
         if row is not None and (row.source == "user" or row.status in USER_STATUSES):
-            skipped.append({"item_id": item_id, "key": key})
+            skipped.append({"item_id": item_id, "key": key, "reason": "set by you"})
             continue
-        before = _summary(row)
         value = _scalar(a["value"])
+        if row is not None:
+            value = _fit(value, row.kind, specs.get(key))
+            if value is _UNFIT:
+                reason = f"value does not fit {row.kind} {row.label!r}"
+                skipped.append({"item_id": item_id, "key": key, "reason": reason})
+                continue
+        before = _summary(row)
         confidence = a.get("confidence", DEFAULT_CONFIDENCE[runner])
-        label = a.get("label") or (row.label if row else key.replace("_", " ").capitalize())
         fields: dict[str, Any] = {
-            "label": label, "category": "plugin", "kind": _kind(value), "value_json": value,
-            "confidence": confidence,
+            "value_json": value, "confidence": confidence,
             "status": "extracted" if confidence >= RELIABLE_CONFIDENCE else "uncertain",
             "source": "plugin", "source_detail": run.plugin_id,
             "evidence_json": Evidence().model_dump(mode="json"),
             "model_value_json": None, "model_confidence": None,
         }  # fmt: skip
-        if row is None:
-            fields["part"] = None
+        if row is None:  # a new, open attribute; an existing row keeps label, category, kind
+            fields |= {"label": a.get("label") or key.replace("_", " ").capitalize(),
+                       "category": "plugin", "kind": _kind(value), "part": None}  # fmt: skip
         row = attrs_repo.upsert(session, item_id, key, **fields)
         attrs_repo.append_event(
             session, item_id=item_id, key=key, actor="plugin", action="plugin",
@@ -161,9 +205,12 @@ def apply_output(
     inputs = list(run.input_item_ids_json or [])
     image_inputs = set(
         session.scalars(
-            select(BoardItem.id).where(BoardItem.id.in_(inputs), BoardItem.kind == "image")
+            select(BoardItem.id).where(
+                BoardItem.id.in_(inputs), BoardItem.kind == "image",
+                BoardItem.removed_at.is_(None), BoardItem.staged.is_(False),
+            )
         )
-    )
+    )  # fmt: skip
     parent = next((i for i in inputs if i in image_inputs), None)
     x = node.x + node.w + COLUMN_GAP
     y = _column_top(session, node, x, _earlier_outputs(session, run))
