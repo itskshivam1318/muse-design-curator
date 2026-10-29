@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Board, calm variant</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#2a4aae}a:hover{color:#1d3482}
+</style>
+</helmet>
+<div style="min-height: 900px; background: #eef0f3; color: #14181e; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.45; display: flex; flex-direction: column;">
+
+<header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 0 16px; min-height: 52px;">
+<a href="Main.dc.html" aria-label="All boards" style="width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: #14181e;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M10 3L5 8l5 5"></path></svg></a>
+<span style="font-family: Archivo, sans-serif; font-stretch: 108%; font-weight: 700; font-size: 15px;">Field watch, warmer</span>
+<span style="font-size: 13px; color: #566170;">Keep the case. Make it feel warmer.</span>
+<div style="flex: 1 1 40px;"></div>
+<button type="button" style="height: 36px; padding: 0 14px; border: 0; background: #14181e; color: #ffffff; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer;">Share</button>
+</header>
+
+<div style="flex: 1 1 auto; display: flex; min-height: 0; position: relative;">
+
+<nav aria-label="Panels" style="flex: none; width: 56px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 8px;">
+<button type="button" aria-label="Library" style="width: 40px; height: 40px; border: 0; border-radius: 10px; background: #ffffff; box-shadow: 0 1px 2px rgba(20,24,30,0.1); cursor: pointer; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="#14181e" stroke-width="1.4" aria-hidden="true"><rect x="2.5" y="2.5" width="5.5" height="5.5" rx="1"></rect><rect x="10" y="2.5" width="5.5" height="5.5" rx="1"></rect><rect x="2.5" y="10" width="5.5" height="5.5" rx="1"></rect><rect x="10" y="10" width="5.5" height="5.5" rx="1"></rect></svg></button>
+<button type="button" aria-label="Search" style="width: 40px; height: 40px; border: 0; border-radius: 10px; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="#3a4350" stroke-width="1.4" aria-hidden="true"><circle cx="8" cy="8" r="5"></circle><path d="M12 12l3.5 3.5"></path></svg></button>
+<button type="button" aria-label="Plugins" style="width: 40px; height: 40px; border: 0; border-radius: 10px; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center;"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="#3a4350" stroke-width="1.4" aria-hidden="true"><path d="M7 2.5h4v3a1.5 1.5 0 003 0V9h-3a1.5 1.5 0 000 3h3v3.5H2.5V9h3a1.5 1.5 0 000-3h-3V2.5H7z"></path></svg></button>
+<button type="button" aria-label="Vocabulary" style="width: 40px; height: 40px; border: 0; border-radius: 10px; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center; font: 600 13px/1 Archivo, sans-serif; color: #3a4350;">Aa</button>
+</nav>
+
+<section aria-label="Canvas" style="flex: 1 1 auto; min-width: 0; position: relative; height: 848px; overflow: hidden; margin: 0 12px 12px 0; border-radius: 14px; background-color: #f7f8fa; background-image: radial-gradient(rgba(20,24,30,0.09) 1px, transparent 1px); background-size: 24px 24px;">
+<div style="position: absolute; left: 0; top: 0; width: 1000px; height: 848px;">
+
+<svg width="1000" height="848" viewBox="0 0 1000 848" style="position: absolute; left: 0; top: 0;" aria-hidden="true">
+<line x1="300" y1="250" x2="860" y2="250" stroke="#2a4aae" stroke-width="1.5"></line>
+<path d="M 236 640 C 268 640, 270 650, 300 650" fill="none" stroke="#9aa3b0" stroke-width="1.3"></path>
+<path d="M 468 674 C 500 674, 510 690, 540 690" fill="none" stroke="#9aa3b0" stroke-width="1.3"></path>
+</svg>
+
+<div style="position: absolute; left: 60px; top: 110px; width: 240px; height: 280px; border-radius: 12px; background: #e9e4da; box-shadow: 0 0 0 2px #2a4aae; overflow: hidden;">
+<div style="position: absolute; left: 50%; top: 0; width: 64px; height: 280px; margin-left: -32px; background: #5c6650;"></div>
+<div style="position: absolute; left: 32px; top: 52px; width: 176px; height: 176px; border-radius: 50%; background: #c3c8cf; padding: 12px; box-sizing: border-box; box-shadow: 0 6px 18px rgba(20,24,30,0.25);"><div style="position: relative; width: 100%; height: 100%; border-radius: 50%; background: #efe6d2;"><div style="position: absolute; left: 50%; top: 18%; width: 4px; height: 33%; margin-left: -2px; background: #1b1f25;"></div><div style="position: absolute; left: 50%; top: 50%; width: 28%; height: 4px; margin-top: -2px; background: #1b1f25;"></div></div></div>
+</div>
+<div style="position: absolute; left: 60px; top: 402px; width: 260px; display: flex; flex-wrap: wrap; gap: 6px;">
+<span style="height: 26px; padding: 0 9px; display: inline-flex; align-items: center; gap: 6px; background: #ffffff; border-radius: 6px; font-size: 12.5px; box-shadow: 0 0 0 1.5px #2a4aae;"><span style="width: 10px; height: 10px; border-radius: 3px; background: #efe6d2; box-shadow: inset 0 0 0 1px rgba(20,24,30,0.2);"></span>dial cream</span>
+<span style="height: 26px; padding: 0 9px; display: inline-flex; align-items: center; background: #ffffff; border-radius: 6px; font-size: 12.5px; box-shadow: 0 1px 2px rgba(20,24,30,0.1);">brushed steel</span>
+<span style="height: 26px; padding: 0 9px; display: inline-flex; align-items: center; background: #ffffff; border-radius: 6px; font-size: 12.5px; box-shadow: 0 1px 2px rgba(20,24,30,0.1);">olive canvas</span>
+<span style="height: 26px; padding: 0 9px; display: inline-flex; align-items: center; background: #ffffff; border-radius: 6px; font-size: 12.5px; color: #566170; box-shadow: 0 1px 2px rgba(20,24,30,0.1);">38 mm?</span>
+</div>
+
+<span style="position: absolute; left: 320px; top: 216px; font-size: 12.5px; color: #2a4aae; font-weight: 500;">dial colour</span>
+<div style="position: absolute; left: 318px; top: 236px; width: 556px; display: flex; justify-content: space-between;">
+<sc-for list="{{variants}}" as="v" hint-placeholder-count="5">
+<button type="button" onClick="{{v.pick}}" aria-pressed="{{v.pressed}}" style="width: 104px; min-height: 64px; margin-top: 22px; padding: 8px 10px; border: 0; border-radius: 10px; background: {{v.bg}}; color: {{v.ink}}; box-shadow: {{v.shadow}}; text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 2px;">
+<sc-if value="{{v.isText}}" hint-placeholder-val="{{ true }}">
+<span style="font-size: 13.5px; font-weight: 600;">{{v.name}}</span>
+<span style="font-size: 11.5px; line-height: 1.35; opacity: 0.8;">{{v.desc}}</span>
+</sc-if>
+<sc-if value="{{v.isKept}}" hint-placeholder-val="{{ false }}">
+<span style="position: relative; display: block; width: 84px; height: 84px; border-radius: 8px; background: #e9e4da; overflow: hidden;">
+<span style="position: absolute; left: 50%; top: 0; width: 22px; height: 84px; margin-left: -11px; background: #5c6650;"></span>
+<span style="position: absolute; left: 50%; top: 14px; width: 56px; height: 56px; margin-left: -28px; border-radius: 50%; background: #c3c8cf; padding: 5px; box-sizing: border-box; display: flex;"><span style="flex: 1; border-radius: 50%; background: {{v.keptDial}};"></span></span>
+</span>
+<span style="font-size: 12px; font-weight: 600;">{{v.name}} <span style="color: {{v.tagInk}};">· kept</span></span>
+</sc-if>
+</button>
+</sc-for>
+</div>
+
+<sc-if value="{{hasPick}}" hint-placeholder-val="{{ true }}">
+<div style="position: absolute; left: {{panelLeft}}; top: 348px; width: 236px; background: #ffffff; border-radius: 12px; box-shadow: 0 1px 2px rgba(20,24,30,0.08), 0 8px 24px rgba(20,24,30,0.12); padding: 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px;">
+<sc-if value="{{notShown}}" hint-placeholder-val="{{ false }}">
+<span style="font-size: 13px;"><b>{{pick.name}}</b>: {{pick.desc}}</span>
+<span style="font-size: 12px; color: #566170;">Case, hands and strap stay as they are. Only the dial changes.</span>
+<button type="button" onClick="{{visualize}}" style="height: 38px; border: 0; border-radius: 8px; background: #2a4aae; color: #ffffff; font-size: 13px; font-weight: 600; cursor: pointer;">Visualize</button>
+</sc-if>
+<sc-if value="{{shown}}" hint-placeholder-val="{{ true }}">
+<div style="position: relative; height: 150px; border-radius: 8px; background: #e9e4da; overflow: hidden;">
+<div style="position: absolute; left: 50%; top: 0; width: 40px; height: 150px; margin-left: -20px; background: #5c6650;"></div>
+<div style="position: absolute; left: 50%; top: 20px; width: 110px; height: 110px; margin-left: -55px; border-radius: 50%; background: #c3c8cf; padding: 8px; box-sizing: border-box;"><div style="width: 100%; height: 100%; border-radius: 50%; background: {{pick.dial}};"></div></div>
+<span style="position: absolute; left: 8px; top: 8px; font-size: 11px; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.85);">{{pick.name}} · take {{take}}</span>
+</div>
+<div style="display: flex; gap: 6px;">
+<button type="button" onClick="{{keep}}" style="flex: 1; height: 36px; border: 0; border-radius: 8px; background: {{keepBg}}; color: #ffffff; font-size: 13px; font-weight: 600; cursor: pointer;">{{keepLabel}}</button>
+<button type="button" onClick="{{regen}}" style="flex: 1; height: 36px; border: 0; border-radius: 8px; background: #f3f4f6; font-size: 13px; cursor: pointer;">Regenerate</button>
+</div>
+</sc-if>
+</div>
+</sc-if>
+<div style="position: absolute; left: 852px; top: 240px; width: 20px; height: 20px; border-radius: 50%; background: #ffffff; border: 2px solid #2a4aae; box-sizing: border-box;"></div>
+
+<div style="position: absolute; left: 60px; top: 600px; width: 176px; padding: 14px; box-sizing: border-box; background: #fff6d9; border-radius: 4px; box-shadow: 0 2px 6px rgba(20,24,30,0.12); font-size: 13px; line-height: 1.4; color: #3a3220; box-shadow: 0 0 0 1.5px #2a4aae, 0 4px 12px rgba(20,24,30,0.14);">Warm, but not orange. Honey, like old paper.</div>
+<div style="position: absolute; left: 66px; top: 690px; display: flex; gap: 4px; padding: 4px; background: #ffffff; border-radius: 10px; box-shadow: 0 1px 2px rgba(20,24,30,0.1), 0 6px 16px rgba(20,24,30,0.12);">
+<button type="button" style="height: 34px; padding: 0 12px; border: 0; border-radius: 7px; background: #2a4aae; color: #ffffff; font-size: 13px; font-weight: 600; cursor: pointer;">Visualize</button>
+<button type="button" aria-label="More actions" style="width: 34px; height: 34px; border: 0; border-radius: 7px; background: transparent; cursor: pointer; font-size: 16px; color: #3a4350;">⋯</button>
+</div>
+
+<div style="position: absolute; left: 540px; top: 650px; width: 220px; background: #ffffff; border-radius: 12px; box-shadow: 0 1px 2px rgba(20,24,30,0.08), 0 6px 18px rgba(20,24,30,0.08); overflow: hidden;">
+<div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px;">
+<span style="width: 22px; height: 22px; border-radius: 6px; background: #f6e6d6; display: flex; align-items: center; justify-content: center;"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="#9a5410" stroke-width="1.3" aria-hidden="true"><rect x="1.5" y="3" width="8" height="8" rx="1.5"></rect><path d="M9.5 6l3-1.5v5l-3-1.5"></path></svg></span>
+<span style="font-weight: 600; font-size: 13px; flex: 1;">Video</span>
+<span style="font-size: 11.5px; color: #566170;">action node</span>
+</div>
+<div style="padding: 0 12px 12px; font-size: 12px; color: #566170;">Takes the honey image → 5 s turn on a wrist</div>
+</div>
+
+<div style="position: absolute; left: 300px; top: 590px; width: 168px; height: 168px; border-radius: 12px; background: #e9e4da; overflow: hidden; box-shadow: 0 2px 8px rgba(20,24,30,0.12);">
+<div style="position: absolute; left: 50%; top: 0; width: 44px; height: 168px; margin-left: -22px; background: #5c6650;"></div>
+<div style="position: absolute; left: 24px; top: 24px; width: 120px; height: 120px; border-radius: 50%; background: #c3c8cf; padding: 9px; box-sizing: border-box;"><div style="width: 100%; height: 100%; border-radius: 50%; background: #dcb878;"></div></div>
+</div>
+<span style="position: absolute; left: 300px; top: 764px; font-size: 12px; color: #566170;">visualized from the note</span>
+
+<div style="position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 4px; background: #ffffff; border-radius: 12px; box-shadow: 0 1px 2px rgba(20,24,30,0.08), 0 6px 18px rgba(20,24,30,0.08);">
+<button type="button" style="height: 40px; padding: 0 12px; border: 0; border-radius: 8px; background: #eef0f3; font-size: 13px; cursor: pointer;">Select</button>
+<button type="button" style="height: 40px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; font-size: 13px; cursor: pointer;">Note</button>
+<button type="button" style="height: 40px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; font-size: 13px; cursor: pointer;">Axis</button>
+<button type="button" style="height: 40px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; font-size: 13px; cursor: pointer;">Nodes</button>
+</div>
+</div>
+
+<aside aria-label="Muse agent" style="position: absolute; right: 16px; bottom: 16px; width: 340px; background: #ffffff; border-radius: 14px; box-shadow: 0 1px 2px rgba(20,24,30,0.08), 0 10px 30px rgba(20,24,30,0.12); display: flex; flex-direction: column; overflow: hidden;">
+<div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 0 14px;">
+<span style="font-size: 12.5px; font-weight: 600;">Muse</span>
+<button type="button" aria-label="Expand agent" style="width: 32px; height: 32px; border: 0; background: transparent; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#3a4350" stroke-width="1.4" aria-hidden="true"><path d="M8.5 2.5h3v3M5.5 11.5h-3v-3M11.5 2.5L8 6M2.5 11.5L6 8"></path></svg></button>
+</div>
+<p style="margin: 0; padding: 4px 14px 12px; font-size: 13.5px; line-height: 1.45;">Five ways the dial could go warmer. Pick one to see it; nothing is generated until you do.</p>
+<div style="display: flex; align-items: center; gap: 8px; margin: 0 8px 8px; padding: 6px 6px 6px 12px; background: #f3f4f6; border-radius: 10px;">
+<label for="askc" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);">Message Muse</label>
+<input id="askc" type="text" placeholder="Ask Muse, or @ an item" style="flex: 1; min-width: 0; height: 32px; border: 0; background: transparent; outline: none; font-size: 13px;">
+<button type="button" aria-label="Send" style="width: 32px; height: 32px; border: 0; border-radius: 8px; background: #14181e; cursor: pointer; display: flex; align-items: center; justify-content: center;"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#ffffff" stroke-width="1.6" aria-hidden="true"><path d="M7 11.5v-9M3 6.5l4-4 4 4"></path></svg></button>
+</div>
+</aside>
+</section>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+constructor(props) { super(props); this.state = { picked: 1, shown: false, take: 1, kept: {}, keptTake: {} }; }
+renderVals() {
+const V = [
+{ name: 'Sand', desc: 'pale, low saturation', takes: ['#e6d7b4', '#e2d3ae', '#e9dcbc'] },
+{ name: 'Honey', desc: 'golden, like old paper', takes: ['#d9a85c', '#dcb06a', '#d3a052'] },
+{ name: 'Ochre', desc: 'earthy, more yellow', takes: ['#c08a2e', '#c69438', '#b98326'] },
+{ name: 'Tan', desc: 'leathery, muted', takes: ['#b98a55', '#bf9260', '#b2834e'] },
+{ name: 'Amber', desc: 'deep, nearly brown', takes: ['#a8672a', '#ad6f32', '#a06024'] }
+];
+const s = this.state;
+const p = V[Math.max(s.picked, 0)];
+const kept = s.picked >= 0 && !!s.kept[s.picked];
+const dialOf = (i, t) => V[i].takes[(t - 1) % V[i].takes.length];
+return {
+variants: V.map((v, i) => {
+const on = i === s.picked;
+const k = !!s.kept[i];
+return { name: v.name, desc: v.desc, pressed: on ? 'true' : 'false',
+bg: on && !k ? '#14181e' : '#ffffff', ink: on && !k ? '#ffffff' : '#14181e',
+shadow: on ? '0 0 0 2px #14181e, 0 4px 14px rgba(20,24,30,0.2)' : '0 1px 2px rgba(20,24,30,0.1)',
+isText: !k, isKept: k, keptDial: k ? dialOf(i, s.keptTake[i]) : '', tagInk: '#2c7a4b',
+pick: () => this.setState(k ? { picked: i, shown: true, take: s.keptTake[i] } : { picked: i, shown: false, take: 1 }) };
+}),
+hasPick: s.picked >= 0,
+shown: s.shown, notShown: !s.shown,
+panelLeft: (318 + s.picked * 113 - 60) + 'px',
+pick: { name: p.name, desc: p.desc, dial: p.takes[(s.take - 1) % p.takes.length] },
+panelTop: '348px',
+take: s.take,
+visualize: () => this.setState({ shown: true }),
+regen: () => this.setState({ take: s.take + 1 }),
+keep: () => kept
+? this.setState({ kept: Object.assign({}, s.kept, { [s.picked]: false }) })
+: this.setState({ kept: Object.assign({}, s.kept, { [s.picked]: true }), keptTake: Object.assign({}, s.keptTake, { [s.picked]: s.take }), picked: -1, shown: false }),
+keepLabel: kept ? 'Un-keep' : 'Keep',
+keepBg: kept ? '#2c7a4b' : '#14181e'
+};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Chips, axis and variant states</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1200px; height: 720px; box-sizing: border-box; padding: 40px; background: #f8f9fb; color: #14181e; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.45; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px;">
+
+<section style="display: flex; flex-direction: column; gap: 12px;">
+<p style="margin: 0; font: 600 10.5px/1.4 'IBM Plex Mono', monospace; letter-spacing: 0.07em; text-transform: uppercase; color: #566170;">01 · Attribute chip — where the value came from</p>
+<h2 style="margin: 0 0 4px; font-family: Archivo, sans-serif; font-stretch: 108%; font-size: 20px; font-weight: 700;">Every value shows its evidence</h2>
+<sc-for list="{{sources}}" as="s" hint-placeholder-count="6">
+<div style="display: flex; flex-direction: column; gap: 4px;">
+<div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; background: #ffffff; border: 1px solid #c8ced7; border-radius: 7px; font-size: 12.5px;">
+<span style="width: 9px; height: 9px; box-sizing: border-box; flex: none; background: {{s.fill}}; border: {{s.stroke}}; border-radius: {{s.radius}};"></span>
+<span style="font: 500 11px/1 'IBM Plex Mono', monospace; color: #566170; min-width: 76px;">{{s.key}}</span>
+<span style="flex: 1;">{{s.value}}</span>
+<span style="font: 500 10px/1 'IBM Plex Mono', monospace; color: {{s.tagInk}};">{{s.tag}}</span>
+</div>
+<span style="font-size: 12px; color: #566170; padding-left: 2px;">{{s.how}}</span>
+</div>
+</sc-for>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 12px;">
+<p style="margin: 0; font: 600 10.5px/1.4 'IBM Plex Mono', monospace; letter-spacing: 0.07em; text-transform: uppercase; color: #566170;">02 · The axis object</p>
+<h2 style="margin: 0 0 4px; font-family: Archivo, sans-serif; font-stretch: 108%; font-size: 20px; font-weight: 700;">Drag a chip off the image</h2>
+
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<span style="font: 500 11px/1 'IBM Plex Mono', monospace; color: #566170;">a · hover: grip appears</span>
+<div style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 6px 0 10px; background: #ffffff; border: 1.5px solid #2a4aae; border-radius: 7px; font-size: 12.5px;">
+<span style="width: 9px; height: 9px; background: #2c7a4b; border-radius: 2px;"></span>
+<span style="font: 500 11px/1 'IBM Plex Mono', monospace; color: #566170; min-width: 76px;">dial colour</span>
+<span style="flex: 1;">cream</span>
+<span aria-hidden="true" style="width: 22px; height: 22px; border-radius: 50%; background: #dfe5f6; color: #2a4aae; display: flex; align-items: center; justify-content: center; font-size: 13px;">→</span>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<span style="font: 500 11px/1 'IBM Plex Mono', monospace; color: #566170;">b · dragging: ghost dots preview the count</span>
+<div style="position: relative; height: 40px;">
+<div style="position: absolute; left: 6px; right: 26px; top: 19px; height: 2px; background: #2a4aae;"></div>
+<div style="position: absolute; left: 0; top: 14px; width: 12px; height: 12px; border-radius: 50%; background: #2a4aae;"></div>
+<div style="position: absolute; left: 22%; top: 12px; width: 16px; height: 16px; border-radius: 50%; border: 1.5px dashed #2a4aae; box-sizing: border-box;"></div>
+<div style="position: absolute; left: 44%; top: 12px; width: 16px; height: 16px; border-radius: 50%; border: 1.5px dashed #2a4aae; box-sizing: border-box;"></div>
+<div style="position: absolute; left: 66%; top: 12px; width: 16px; height: 16px; border-radius: 50%; border: 1.5px dashed #2a4aae; box-sizing: border-box;"></div>
+<div style="position: absolute; right: 0; top: 8px; width: 24px; height: 24px; border-radius: 50%; background: #ffffff; border: 2px solid #2a4aae; box-sizing: border-box;"></div>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<span style="font: 500 11px/1 'IBM Plex Mono', monospace; color: #566170;">c · on release: confirm the axis</span>
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 12px; background: #ffffff; border: 1px solid #c8ced7; border-radius: 10px; box-shadow: 0 1px 2px rgba(20,24,30,0.08), 0 4px 16px rgba(20,24,30,0.08);">
+<div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 12.5px;">
+<span style="font-weight: 600;">dial colour</span><span style="color: #566170;">from</span>
+<span style="height: 24px; padding: 0 8px; border: 1px solid #c8ced7; border-radius: 6px; display: inline-flex; align-items: center;">cream</span>
+<span style="color: #566170;">toward</span>
+<span style="height: 24px; padding: 0 8px; border: 1px solid #2a4aae; border-radius: 6px; display: inline-flex; align-items: center; color: #1d3482;">amber</span>
+</div>
+<div style="display: flex; gap: 6px; flex-wrap: wrap;">
+<span style="height: 26px; padding: 0 9px; border-radius: 6px; background: #14181e; color: #ffffff; font-size: 12px; display: inline-flex; align-items: center;">Retrieve + generate</span>
+<span style="height: 26px; padding: 0 9px; border-radius: 6px; border: 1px solid #c8ced7; font-size: 12px; display: inline-flex; align-items: center;">Retrieve only</span>
+<span style="height: 26px; padding: 0 9px; border-radius: 6px; border: 1px solid #c8ced7; font-size: 12px; display: inline-flex; align-items: center;">5 values</span>
+</div>
+<span style="font-size: 12px; color: #3a4350;">Holding case, hands, strap, size. Each result is masked and re-read.</span>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 6px;">
+<span style="font: 500 11px/1 'IBM Plex Mono', monospace; color: #566170;">d · running: values fill in as they pass the check</span>
+<div style="display: flex; align-items: center; gap: 8px;">
+<span style="width: 28px; height: 28px; border-radius: 50%; background: #e6d7b4; border: 2px solid #2c7a4b; box-sizing: border-box;"></span>
+<span style="width: 28px; height: 28px; border-radius: 50%; background: #d9a85c; border: 2px solid #2c7a4b; box-sizing: border-box;"></span>
+<span style="width: 28px; height: 28px; border-radius: 50%; background: #eceff2; border: 1.5px dashed #9aa3b0; box-sizing: border-box;"></span>
+<span style="width: 28px; height: 28px; border-radius: 50%; background: #eceff2; border: 1.5px dashed #9aa3b0; box-sizing: border-box;"></span>
+<span style="font: 500 11px/1 'IBM Plex Mono', monospace; color: #566170;">2 / 5 · checking</span>
+</div>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 12px;">
+<p style="margin: 0; font: 600 10.5px/1.4 'IBM Plex Mono', monospace; letter-spacing: 0.07em; text-transform: uppercase; color: #566170;">03 · Variant on the axis</p>
+<h2 style="margin: 0 0 4px; font-family: Archivo, sans-serif; font-stretch: 108%; font-size: 20px; font-weight: 700;">Proof it held, one look</h2>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+<sc-for list="{{states}}" as="v" hint-placeholder-count="4">
+<div style="display: flex; flex-direction: column; gap: 8px; padding: 12px; background: #ffffff; border: {{v.border}}; border-radius: 10px; opacity: {{v.opacity}};">
+<div style="position: relative; height: 92px; display: flex; align-items: center; justify-content: center; background: #f3f5f8; border-radius: 6px;">
+<div style="width: 72px; height: 72px; border-radius: 50%; background: #c3c8cf; padding: 6px; box-sizing: border-box;"><div style="width: 100%; height: 100%; border-radius: 50%; background: {{v.dial}}; box-shadow: {{v.mask}};"></div></div>
+<span style="position: absolute; left: 6px; top: 6px; font: 600 9.5px/1 'IBM Plex Mono', monospace; letter-spacing: 0.05em; padding: 3px 5px; border-radius: 3px; background: {{v.badgeBg}}; color: {{v.badgeInk}};">{{v.badge}}</span>
+</div>
+<span style="font-size: 12.5px; font-weight: 600;">{{v.title}}</span>
+<span style="font-size: 11.5px; color: #566170; line-height: 1.35;">{{v.detail}}</span>
+</div>
+</sc-for>
+</div>
+<p style="margin: 0; font-size: 12px; color: #566170;">K keeps, X rejects. Keep and reject are written to the decision record the agent reads.</p>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":720}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+sources: [
+{ key: 'dial colour', value: 'cream', tag: 'measured', tagInk: '#2c7a4b', fill: '#2c7a4b', stroke: '0', radius: '2px', how: 'SAM mask + Lab colour. Exact.' },
+{ key: 'hands', value: 'sword', tag: 'read', tagInk: '#2a4aae', fill: 'transparent', stroke: '1.5px solid #2a4aae', radius: '2px', how: 'Read by Spark. Hover shows the box it looked at.' },
+{ key: 'case size', value: '38 mm', tag: 'estimated', tagInk: '#9a6110', fill: 'transparent', stroke: '1.5px dashed #9a6110', radius: '2px', how: 'Inferred from proportions. Low confidence, says so.' },
+{ key: 'price', value: '[value] ¹', tag: 'web', tagInk: '#2a4aae', fill: '#dfe5f6', stroke: '1.5px solid #2a4aae', radius: '50%', how: 'Filled by search grounding, numbered citation.' },
+{ key: 'mood', value: 'utilitarian', tag: 'you', tagInk: '#14181e', fill: '#14181e', stroke: '0', radius: '50%', how: 'Typed or edited by you or the agent. Wins over others.' },
+{ key: 'lume', value: '?', tag: 'unknown', tagInk: '#566170', fill: 'transparent', stroke: '1.5px solid #9aa3b0', radius: '50%', how: 'Not grounded. Never guessed silently.' }
+],
+states: [
+{ title: 'Held', detail: 'Changed only inside the dial mask. Re-read: honey.', dial: '#d9a85c', mask: 'none', badge: 'GENERATED', badgeBg: '#14181e', badgeInk: '#ffffff', border: '1.5px solid #2c7a4b', opacity: '1' },
+{ title: 'Needs review', detail: 'Hands drifted outside the mask. Toggle to see the diff.', dial: '#c08a2e', mask: 'inset 0 0 0 3px rgba(226,166,76,0.9)', badge: 'GENERATED', badgeBg: '#14181e', badgeInk: '#ffffff', border: '1.5px solid #e2a64c', opacity: '1' },
+{ title: 'Retrieved', detail: 'Real object from the corpus. Credit shown on the card.', dial: '#b98a55', mask: 'none', badge: 'MET OA', badgeBg: '#ffffff', badgeInk: '#14181e', border: '1px solid #c8ced7', opacity: '1' },
+{ title: 'Rejected', detail: 'Stays faint on the axis so the board remembers why.', dial: '#c96a2a', mask: 'none', badge: 'NOT THIS', badgeBg: '#ad3636', badgeInk: '#ffffff', border: '1px dashed #9aa3b0', opacity: '0.6' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

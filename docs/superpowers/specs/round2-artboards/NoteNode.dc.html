@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Note node and Visualize</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1200px; height: 640px; box-sizing: border-box; padding: 40px 40px 32px; background-color: #f7f8fa; background-image: radial-gradient(rgba(20,24,30,0.09) 1px, transparent 1px); background-size: 24px 24px; color: #14181e; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.45; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px;">
+
+<div style="display: flex; flex-direction: column; gap: 14px;">
+<span style="font-size: 13px; color: #566170;">1 · Press N, type</span>
+<div style="width: 220px; min-height: 150px; padding: 16px; box-sizing: border-box; background: #fff6d9; border-radius: 4px; box-shadow: 0 2px 6px rgba(20,24,30,0.12); font-size: 14px; line-height: 1.45; color: #3a3220;">Strap in waxed canvas, dark olive. Stitching the same tone, nothing contrasting.<span style="display: inline-block; width: 1.5px; height: 16px; background: #3a3220; vertical-align: -3px; margin-left: 1px;"></span></div>
+<p style="margin: 0; font-size: 12.5px; color: #566170; max-width: 230px;">A note is a board item. The agent reads it as context, like any reference.</p>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 14px;">
+<span style="font-size: 13px; color: #566170;">2 · Hover</span>
+<div style="position: relative; width: 220px; min-height: 150px; padding: 16px; box-sizing: border-box; background: #fff6d9; border-radius: 4px; box-shadow: 0 0 0 1.5px #2a4aae, 0 6px 16px rgba(20,24,30,0.14); font-size: 14px; line-height: 1.45; color: #3a3220;">Strap in waxed canvas, dark olive. Stitching the same tone, nothing contrasting.
+<div style="position: absolute; left: 8px; bottom: -22px; display: flex; gap: 4px; padding: 4px; background: #ffffff; border-radius: 10px; box-shadow: 0 1px 2px rgba(20,24,30,0.1), 0 6px 16px rgba(20,24,30,0.12);">
+<button type="button" style="height: 36px; padding: 0 12px; border: 0; border-radius: 7px; background: #2a4aae; color: #ffffff; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="#ffffff" stroke-width="1.4" aria-hidden="true"><path d="M7 1.5l1.3 3.2 3.2 1.3-3.2 1.3L7 10.5 5.7 7.3 2.5 6l3.2-1.3z"></path></svg>Visualize</button>
+<button type="button" aria-label="More actions" style="width: 36px; height: 36px; border: 0; border-radius: 7px; background: transparent; cursor: pointer; font-size: 16px; color: #3a4350;">⋯</button>
+</div>
+</div>
+<p style="margin: 22px 0 0; font-size: 12.5px; color: #566170; max-width: 230px;">More: make it a term, attach to an item, send to a node.</p>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 14px;">
+<span style="font-size: 13px; color: #566170;">3 · Generating</span>
+<div style="position: relative; height: 330px;">
+<div style="position: absolute; left: 0; top: 0; width: 150px; padding: 12px; box-sizing: border-box; background: #fff6d9; border-radius: 4px; box-shadow: 0 2px 6px rgba(20,24,30,0.12); font-size: 12px; line-height: 1.4; color: #3a3220;">Strap in waxed canvas, dark olive…</div>
+<svg width="260" height="330" viewBox="0 0 260 330" style="position: absolute; left: 0; top: 0;" aria-hidden="true"><path d="M 75 96 C 75 140, 110 150, 110 168" fill="none" stroke="#9aa3b0" stroke-width="1.3" stroke-dasharray="4 4"></path></svg>
+<div style="position: absolute; left: 30px; top: 170px; width: 190px; height: 150px; border-radius: 12px; background: #eceef2; box-shadow: inset 0 0 0 1.5px #c8ced7; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;">
+<div style="width: 120px; height: 4px; border-radius: 2px; background: #dde1e7; overflow: hidden;"><div style="width: 55%; height: 100%; background: #2a4aae;"></div></div>
+<span style="font-size: 12px; color: #566170;">Reading the board…</span>
+</div>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 14px;">
+<span style="font-size: 13px; color: #566170;">4 · Result lands next to it</span>
+<div style="position: relative; height: 330px;">
+<div style="position: absolute; left: 0; top: 0; width: 150px; padding: 12px; box-sizing: border-box; background: #fff6d9; border-radius: 4px; box-shadow: 0 2px 6px rgba(20,24,30,0.12); font-size: 12px; line-height: 1.4; color: #3a3220;">Strap in waxed canvas, dark olive…</div>
+<svg width="260" height="330" viewBox="0 0 260 330" style="position: absolute; left: 0; top: 0;" aria-hidden="true"><path d="M 75 96 C 75 140, 110 150, 110 168" fill="none" stroke="#9aa3b0" stroke-width="1.3"></path></svg>
+<div style="position: absolute; left: 30px; top: 170px; width: 190px; height: 150px; border-radius: 12px; background: #e9e4da; overflow: hidden; box-shadow: 0 2px 8px rgba(20,24,30,0.14);">
+<div style="position: absolute; left: 50%; top: 0; width: 46px; height: 150px; margin-left: -23px; background: #4a5240;"></div>
+<div style="position: absolute; left: 50%; top: 0; width: 1px; height: 150px; margin-left: -18px; background: #5c6650;"></div>
+<div style="position: absolute; left: 50%; top: 0; width: 1px; height: 150px; margin-left: 17px; background: #5c6650;"></div>
+<div style="position: absolute; left: 50%; top: 32px; width: 86px; height: 86px; margin-left: -43px; border-radius: 50%; background: #c3c8cf; padding: 7px; box-sizing: border-box;"><div style="width: 100%; height: 100%; border-radius: 50%; background: #efe6d2;"></div></div>
+</div>
+</div>
+<p style="margin: 0; font-size: 12.5px; color: #566170; max-width: 240px;">Uses the note plus the board's references and terms. The line back to the note is the provenance; the prompt is one click away.</p>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":640}}'>
+class Component extends DCLogic {
+renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

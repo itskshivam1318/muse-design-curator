@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Action nodes</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 40px; background-color: #f7f8fa; background-image: radial-gradient(rgba(20,24,30,0.09) 1px, transparent 1px); background-size: 24px 24px; color: #14181e; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.45; display: flex; flex-direction: column; gap: 28px;">
+
+<div style="display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;">
+<h1 style="margin: 0; font-family: Archivo, sans-serif; font-stretch: 108%; font-weight: 700; font-size: 26px;">Action nodes</h1>
+<p style="margin: 0; font-size: 14px; color: #566170;">Take items from the board, run, and put the output back on the board. Each one is also a tool the agent can call.</p>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px;">
+
+<div style="background: #ffffff; border-radius: 14px; box-shadow: 0 1px 2px rgba(20,24,30,0.08), 0 8px 24px rgba(20,24,30,0.08); display: flex; flex-direction: column;">
+<div style="display: flex; align-items: center; gap: 10px; padding: 14px 16px 10px;">
+<span style="width: 28px; height: 28px; border-radius: 8px; background: #dfe5f6; display: flex; align-items: center; justify-content: center;"><svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="#2a4aae" stroke-width="1.3" aria-hidden="true"><rect x="1.5" y="1.5" width="11" height="11" rx="2"></rect><path d="M1.5 10l3.5-3.5 3 3 2-2 2.5 2.5"></path><circle cx="9.5" cy="4.5" r="1"></circle></svg></span>
+<span style="font-weight: 600; flex: 1;">Image</span>
+<span style="font-size: 12px; color: #566170;">Muse Spark</span>
+</div>
+<div style="padding: 0 16px; display: flex; flex-wrap: wrap; gap: 6px;">
+<span style="height: 26px; padding: 0 8px 0 4px; display: inline-flex; align-items: center; gap: 6px; background: #f3f4f6; border-radius: 6px; font-size: 12px;"><span style="width: 18px; height: 18px; border-radius: 4px; background: #efe6d2; box-shadow: inset 0 0 0 1px rgba(20,24,30,0.15);"></span>REF 01</span>
+<span style="height: 26px; padding: 0 8px 0 4px; display: inline-flex; align-items: center; gap: 6px; background: #f3f4f6; border-radius: 6px; font-size: 12px;"><span style="width: 18px; height: 18px; border-radius: 3px; background: #fff0b8;"></span>note</span>
+<span style="height: 26px; padding: 0 8px; display: inline-flex; align-items: center; background: #f3f4f6; border-radius: 6px; font-size: 12px;">part: dial</span>
+</div>
+<div style="padding: 12px 16px; display: flex; gap: 8px; font-size: 12.5px; color: #3a4350;">
+<span style="flex: 1;">Change only the dial</span><span>4 images</span>
+</div>
+<div style="margin: 0 16px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px;">
+<div style="aspect-ratio: 1 / 1; border-radius: 6px; background: #e6d7b4;"></div>
+<div style="aspect-ratio: 1 / 1; border-radius: 6px; background: #dcb878;"></div>
+<div style="aspect-ratio: 1 / 1; border-radius: 6px; background: #d9a85c;"></div>
+<div style="aspect-ratio: 1 / 1; border-radius: 6px; background: #c9a06a;"></div>
+</div>
+<div style="padding: 14px 16px 16px; display: flex; gap: 8px; margin-top: auto;">
+<button type="button" style="flex: 1; height: 38px; border: 0; border-radius: 8px; background: #14181e; color: #ffffff; font-size: 13px; font-weight: 500; cursor: pointer;">Run again</button>
+<button type="button" style="height: 38px; padding: 0 12px; border: 0; border-radius: 8px; background: #f3f4f6; font-size: 13px; cursor: pointer;">Prompt</button>
+</div>
+</div>
+
+<div style="background: #ffffff; border-radius: 14px; box-shadow: 0 1px 2px rgba(20,24,30,0.08), 0 8px 24px rgba(20,24,30,0.08); display: flex; flex-direction: column;">
+<div style="display: flex; align-items: center; gap: 10px; padding: 14px 16px 10px;">
+<span style="width: 28px; height: 28px; border-radius: 8px; background: #f6e6d6; display: flex; align-items: center; justify-content: center;"><svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="#9a5410" stroke-width="1.3" aria-hidden="true"><rect x="1.5" y="3" width="8" height="8" rx="1.5"></rect><path d="M9.5 6l3-1.5v5l-3-1.5"></path></svg></span>
+<span style="font-weight: 600; flex: 1;">Video</span>
+<span style="font-size: 12px; color: #566170;">[model]</span>
+</div>
+<div style="padding: 0 16px; display: flex; flex-wrap: wrap; gap: 6px;">
+<span style="height: 26px; padding: 0 8px 0 4px; display: inline-flex; align-items: center; gap: 6px; background: #f3f4f6; border-radius: 6px; font-size: 12px;"><span style="width: 18px; height: 18px; border-radius: 4px; background: #dcb878;"></span>honey dial</span>
+<span style="height: 26px; padding: 0 8px; display: inline-flex; align-items: center; background: #f3f4f6; border-radius: 6px; font-size: 12px;">“slow turn on a wrist”</span>
+</div>
+<div style="padding: 12px 16px; display: flex; gap: 8px; font-size: 12.5px; color: #3a4350;">
+<span style="flex: 1;">From first frame</span><span>5 s</span>
+</div>
+<div style="margin: 0 16px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 3px; padding: 6px; border-radius: 8px; background: #1b1f25;">
+<div style="aspect-ratio: 3 / 4; border-radius: 3px; background: #dcb878;"></div>
+<div style="aspect-ratio: 3 / 4; border-radius: 3px; background: #d4b072;"></div>
+<div style="aspect-ratio: 3 / 4; border-radius: 3px; background: #cba86c;"></div>
+<div style="aspect-ratio: 3 / 4; border-radius: 3px; background: #c3a066;"></div>
+<div style="aspect-ratio: 3 / 4; border-radius: 3px; background: #bb9860;"></div>
+</div>
+<div style="padding: 14px 16px 16px; display: flex; gap: 8px; margin-top: auto;">
+<button type="button" style="flex: 1; height: 38px; border: 0; border-radius: 8px; background: #14181e; color: #ffffff; font-size: 13px; font-weight: 500; cursor: pointer;">Run</button>
+<button type="button" style="height: 38px; padding: 0 12px; border: 0; border-radius: 8px; background: #f3f4f6; font-size: 13px; cursor: pointer;">Track with SAM</button>
+</div>
+</div>
+
+<div style="background: #ffffff; border-radius: 14px; box-shadow: 0 1px 2px rgba(20,24,30,0.08), 0 8px 24px rgba(20,24,30,0.08); display: flex; flex-direction: column;">
+<div style="display: flex; align-items: center; gap: 10px; padding: 14px 16px 10px;">
+<span style="width: 28px; height: 28px; border-radius: 8px; background: #e0efe6; display: flex; align-items: center; justify-content: center;"><svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="#2c7a4b" stroke-width="1.3" aria-hidden="true"><path d="M7 1.5l5 2.8v5.4L7 12.5 2 9.7V4.3z"></path><path d="M2 4.3L7 7l5-2.7M7 7v5.5"></path></svg></span>
+<span style="font-weight: 600; flex: 1;">Image → 3D</span>
+<span style="font-size: 12px; color: #566170;">[model]</span>
+</div>
+<div style="padding: 0 16px; display: flex; flex-wrap: wrap; gap: 6px;">
+<span style="height: 26px; padding: 0 8px 0 4px; display: inline-flex; align-items: center; gap: 6px; background: #f3f4f6; border-radius: 6px; font-size: 12px;"><span style="width: 18px; height: 18px; border-radius: 4px; background: #c3c8cf;"></span>REF 01, case only</span>
+</div>
+<div style="padding: 12px 16px; display: flex; gap: 8px; font-size: 12.5px; color: #3a4350;">
+<span style="flex: 1;">Mesh + texture</span><span>.glb</span>
+</div>
+<div style="margin: 0 16px; height: 112px; border-radius: 8px; background: #eef0f3; display: flex; align-items: center; justify-content: center;">
+<svg width="120" height="96" viewBox="0 0 120 96" aria-hidden="true"><ellipse cx="60" cy="48" rx="34" ry="34" fill="#c3c8cf"></ellipse><ellipse cx="60" cy="48" rx="26" ry="26" fill="#dcb878"></ellipse><path d="M26 48a34 12 0 0068 0" fill="none" stroke="#8a929d" stroke-width="1"></path><path d="M60 14v68" stroke="#8a929d" stroke-width="1" stroke-dasharray="2 3"></path><rect x="51" y="0" width="18" height="14" rx="3" fill="#5c6650"></rect><rect x="51" y="82" width="18" height="14" rx="3" fill="#5c6650"></rect></svg>
+</div>
+<div style="padding: 14px 16px 16px; display: flex; gap: 8px; margin-top: auto;">
+<button type="button" style="flex: 1; height: 38px; border: 0; border-radius: 8px; background: #14181e; color: #ffffff; font-size: 13px; font-weight: 500; cursor: pointer;">Open viewer</button>
+<button type="button" style="height: 38px; padding: 0 12px; border: 0; border-radius: 8px; background: #f3f4f6; font-size: 13px; cursor: pointer;">Download</button>
+</div>
+</div>
+
+<div style="background: #ffffff; border-radius: 14px; box-shadow: 0 1px 2px rgba(20,24,30,0.08), 0 8px 24px rgba(20,24,30,0.08); display: flex; flex-direction: column;">
+<div style="display: flex; align-items: center; gap: 10px; padding: 14px 16px 10px;">
+<span style="width: 28px; height: 28px; border-radius: 8px; background: #ebe4f5; display: flex; align-items: center; justify-content: center; font: 500 12px/1 'IBM Plex Mono', monospace; color: #5b3e94;">{}</span>
+<span style="font-weight: 600; flex: 1;">Python</span>
+<span style="font-size: 12px; color: #566170;">sandbox</span>
+</div>
+<div style="padding: 0 16px; display: flex; flex-wrap: wrap; gap: 6px;">
+<span style="height: 26px; padding: 0 8px; display: inline-flex; align-items: center; background: #f3f4f6; border-radius: 6px; font-size: 12px;">3 formulas · attributes</span>
+</div>
+<pre style="margin: 12px 16px 0; padding: 10px 12px; border-radius: 8px; background: #1b1f25; color: #d6dbe3; font: 400 11.5px/1.55 'IBM Plex Mono', monospace; white-space: pre-wrap; overflow: hidden;">for f in board.items(kind="formula"):
+    f.set("spreadability",
+          spread(f.oil_phase, f.emollient))
+plot(board, x="emollient", y="spreadability")</pre>
+<div style="margin: 10px 16px 0; height: 54px; border-radius: 8px; background: #f3f4f6; position: relative; overflow: hidden;">
+<svg width="100%" height="54" viewBox="0 0 280 54" preserveAspectRatio="none" aria-hidden="true"><path d="M10 44 L70 36 L130 26 L190 20 L270 16" fill="none" stroke="#5b3e94" stroke-width="2"></path><circle cx="70" cy="36" r="3.5" fill="#5b3e94"></circle><circle cx="130" cy="26" r="3.5" fill="#5b3e94"></circle><circle cx="190" cy="20" r="3.5" fill="#5b3e94"></circle></svg>
+</div>
+<div style="padding: 14px 16px 16px; display: flex; gap: 8px; margin-top: auto;">
+<button type="button" style="flex: 1; height: 38px; border: 0; border-radius: 8px; background: #14181e; color: #ffffff; font-size: 13px; font-weight: 500; cursor: pointer;">Run</button>
+<button type="button" style="height: 38px; padding: 0 12px; border: 0; border-radius: 8px; background: #f3f4f6; font-size: 13px; cursor: pointer;">Edit code</button>
+</div>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 14px;">
+<h2 style="margin: 0; font-family: Archivo, sans-serif; font-stretch: 108%; font-weight: 700; font-size: 18px;">More nodes worth having</h2>
+<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px;">
+<sc-for list="{{more}}" as="m" hint-placeholder-count="10">
+<div style="background: #ffffff; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 1px 2px rgba(20,24,30,0.08);">
+<span style="font-weight: 600; font-size: 13.5px;">{{m.name}}</span>
+<span style="font-size: 12.5px; color: #566170; line-height: 1.4;">{{m.does}}</span>
+<span style="font: 400 11px/1.4 'IBM Plex Mono', monospace; color: #3a4350; margin-top: 4px;">{{m.io}}</span>
+</div>
+</sc-for>
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+renderVals() {
+return {
+more: [
+{ name: 'Web fill', does: 'Fills price, specs, materials from the web with numbered citations.', io: 'item → attributes' },
+{ name: 'Palette & material', does: 'Pulls colours and materials from a group into swatches.', io: 'items → swatch set' },
+{ name: 'Critique', does: 'Checks the board or a pick against the brief and the notes.', io: 'board + brief → notes' },
+{ name: 'Video → frames', does: 'Spark reads a clip, SAM tracks the object, best frames become references.', io: 'video → images' },
+{ name: 'Design language card', does: 'Summarises terms, axes and keeps into a one-page brief.', io: 'board → doc' },
+{ name: 'Tech pack / spec sheet', does: 'Turns a kept design into a spec with dimensions and materials.', io: 'item → doc' },
+{ name: 'Cost & BOM', does: 'Estimates parts and cost, marked as estimates with sources.', io: 'item → table' },
+{ name: 'Compare', does: 'Puts 2–4 items side by side on the same attributes.', io: 'items → table' },
+{ name: 'Texture / pattern', does: 'Makes a tileable texture from a reference region.', io: 'image region → texture' },
+{ name: 'Clean-up', does: 'Removes background, upscales, crops to the part.', io: 'image → image' }
+]
+};
+}
+}
+</script>
+</body>
+</html>

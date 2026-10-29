@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Plugins</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1200px; height: 780px; box-sizing: border-box; padding: 40px; background: #e7e9ed; color: #14181e; font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.45; display: flex; align-items: flex-start; justify-content: center;">
+
+<div role="dialog" aria-label="Plugins" style="width: 1040px; height: 680px; background: #ffffff; border-radius: 16px; box-shadow: 0 20px 60px rgba(20,24,30,0.18); display: flex; overflow: hidden;">
+
+<nav aria-label="Workflows" style="flex: none; width: 240px; background: #f7f8fa; padding: 20px 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px;">
+<h2 style="margin: 0 8px 12px; font-family: Archivo, sans-serif; font-stretch: 108%; font-weight: 700; font-size: 18px;">Plugins</h2>
+<sc-for list="{{packs}}" as="p" hint-placeholder-count="6">
+<button type="button" onClick="{{p.pick}}" style="display: flex; align-items: center; justify-content: space-between; height: 40px; padding: 0 10px; border: 0; border-radius: 8px; background: {{p.bg}}; font-size: 13.5px; font-weight: {{p.weight}}; color: #14181e; cursor: pointer; text-align: left;"><span>{{p.name}}</span><span style="font-size: 12px; color: #566170;">{{p.count}}</span></button>
+</sc-for>
+<div style="flex: 1;"></div>
+<p style="margin: 0 8px; font-size: 12px; color: #566170;">Packs are suggestions. Any node can be added to any board.</p>
+</nav>
+
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+<div style="display: flex; align-items: center; gap: 12px; padding: 20px 24px 12px;">
+<div style="flex: 1;">
+<h3 style="margin: 0; font-family: Archivo, sans-serif; font-stretch: 106%; font-weight: 700; font-size: 17px;">{{active.name}}</h3>
+<p style="margin: 2px 0 0; font-size: 13px; color: #566170;">{{active.about}}</p>
+</div>
+<label for="psearch" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);">Search plugins</label>
+<input id="psearch" type="text" placeholder="Search plugins" style="width: 200px; height: 38px; padding: 0 12px; border: 0; border-radius: 8px; background: #f3f4f6; font-size: 13px;">
+</div>
+
+<ul style="list-style: none; margin: 0; padding: 0 12px; flex: 1; overflow: hidden;">
+<sc-for list="{{active.nodes}}" as="n" hint-placeholder-count="6">
+<li style="display: flex; align-items: center; gap: 14px; padding: 12px; border-radius: 10px;">
+<span style="flex: none; width: 36px; height: 36px; border-radius: 9px; background: {{n.tint}}; display: flex; align-items: center; justify-content: center; font: 600 12px/1 'IBM Plex Mono', monospace; color: {{n.ink}};">{{n.mark}}</span>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+<span style="font-weight: 600; font-size: 14px;">{{n.name}}</span>
+<span style="font-size: 12.5px; color: #566170;">{{n.does}}</span>
+</div>
+<span style="font-size: 12px; color: #566170; min-width: 150px; text-align: right;">{{n.runs}}</span>
+<button type="button" onClick="{{n.toggle}}" style="width: 96px; height: 34px; border: 0; border-radius: 8px; background: {{n.btnBg}}; color: {{n.btnInk}}; font-size: 13px; font-weight: 500; cursor: pointer;">{{n.btn}}</button>
+</li>
+</sc-for>
+</ul>
+
+<div style="display: flex; align-items: center; gap: 12px; padding: 14px 24px; border-top: 1px solid #eceef1; font-size: 12.5px; color: #566170;">
+<span style="flex: 1;">A plugin declares what it reads from the board, what it writes back, and which model or service it calls.</span>
+<button type="button" style="height: 34px; padding: 0 12px; border: 0; border-radius: 8px; background: #f3f4f6; font-size: 13px; color: #14181e; cursor: pointer;">Build a plugin</button>
+</div>
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":780}}'>
+class Component extends DCLogic {
+constructor(props) { super(props); this.state = { pack: 'product', on: { image: true, critique: true, web: true, threed: false, code: false, video: false, spec: false, bom: false, palette: true, formula: false, texture: false, fit: false } }; }
+renderVals() {
+const N = {
+image: { mark: 'IMG', tint: '#dfe5f6', ink: '#2a4aae', name: 'Image', does: 'Masked edits and new images from items and notes.', runs: 'Muse Spark · Baseten' },
+video: { mark: 'VID', tint: '#f6e6d6', ink: '#9a5410', name: 'Video', does: 'Short clips from an image and a direction.', runs: '[video model]' },
+threed: { mark: '3D', tint: '#e0efe6', ink: '#2c7a4b', name: 'Image → 3D', does: 'Mesh and texture from one or more views.', runs: '[3D model] · Modal' },
+code: { mark: '{}', tint: '#ebe4f5', ink: '#5b3e94', name: 'Python', does: 'Run code on board items; write results back as attributes.', runs: 'sandbox' },
+critique: { mark: 'CR', tint: '#f3f4f6', ink: '#3a4350', name: 'Critique', does: 'Checks picks against the brief and notes.', runs: 'Muse Spark' },
+web: { mark: 'WEB', tint: '#f3f4f6', ink: '#3a4350', name: 'Web fill', does: 'Cited specs, prices and materials.', runs: 'Muse Spark search' },
+spec: { mark: 'SPEC', tint: '#f3f4f6', ink: '#3a4350', name: 'Tech pack', does: 'Spec sheet from a kept design.', runs: 'Muse Spark' },
+bom: { mark: 'BOM', tint: '#f3f4f6', ink: '#3a4350', name: 'Cost & BOM', does: 'Parts and cost estimates with sources.', runs: 'Muse Spark search' },
+palette: { mark: 'PAL', tint: '#f3f4f6', ink: '#3a4350', name: 'Palette & material', does: 'Swatches from a group.', runs: 'SAM 3.1 + Lab' },
+formula: { mark: 'FX', tint: '#ebe4f5', ink: '#5b3e94', name: 'Formula sheet', does: 'Phases and percentages as editable attributes.', runs: 'Python' },
+texture: { mark: 'TEX', tint: '#f3f4f6', ink: '#3a4350', name: 'Texture tile', does: 'Tileable texture from a region.', runs: 'Muse Spark' },
+fit: { mark: 'FIT', tint: '#e0efe6', ink: '#2c7a4b', name: 'Fit check', does: 'Simple size and proportion checks against a spec.', runs: 'Python' }
+};
+const P = [
+{ id: 'product', name: 'Product design', about: 'Objects you hold or wear: watches, lamps, furniture.', nodes: ['image', 'threed', 'critique', 'web', 'spec', 'bom'] },
+{ id: 'fashion', name: 'Fashion', about: 'Garments and accessories.', nodes: ['image', 'video', 'palette', 'texture', 'spec', 'fit'] },
+{ id: 'interior', name: 'Interior', about: 'Rooms, light and materials.', nodes: ['image', 'palette', 'texture', 'bom', 'critique'] },
+{ id: 'auto', name: 'Automotive', about: 'Exterior and interior details.', nodes: ['image', 'threed', 'video', 'critique', 'spec'] },
+{ id: 'lab', name: 'Formulation lab', about: 'Creams, coatings, food: design by ingredients.', nodes: ['formula', 'code', 'web', 'critique', 'image'] },
+{ id: 'all', name: 'All plugins', about: 'Everything available.', nodes: Object.keys(N) }
+];
+const cur = P.find((p) => p.id === this.state.pack);
+return {
+packs: P.map((p) => ({ name: p.name, count: String(p.nodes.length), bg: p.id === cur.id ? '#ffffff' : 'transparent', weight: p.id === cur.id ? '600' : '400', pick: () => this.setState({ pack: p.id }) })),
+active: {
+name: cur.name, about: cur.about,
+nodes: cur.nodes.map((k) => {
+const on = !!this.state.on[k];
+return Object.assign({}, N[k], {
+btn: on ? 'Added' : 'Add', btnBg: on ? '#f3f4f6' : '#14181e', btnInk: on ? '#3a4350' : '#ffffff',
+toggle: () => this.setState({ on: Object.assign({}, this.state.on, { [k]: !on }) })
+});
+})
+}
+};
+}
+}
+</script>
+</body>
+</html>
