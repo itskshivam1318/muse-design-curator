@@ -73,14 +73,16 @@ export function setVisualizing(noteId: string, on: boolean): void {
 export const VISUALIZE_CLAIM_TTL_MS = 300_000
 
 /**
- * Loaded items: a note the server still holds a fresh visualize claim on is visualizing (after a
- * reload mid-visualize the note.visualizing event is long gone). Returns the items unchanged.
+ * Loaded items: each note is visualizing exactly when the server holds a fresh visualize claim on
+ * it (after a reload mid-visualize the note.visualizing event is long gone; a refetch after a
+ * missed note.visualized clears it). Returns the items unchanged.
  */
 export function seedVisualizing(items: Item[], now = Date.now()): Item[] {
   for (const i of items) {
-    const since = i.kind === 'note' ? i.generation?.visualizing_since : undefined
+    if (i.kind !== 'note') continue
+    const since = i.generation?.visualizing_since
     const at = since ? Date.parse(since) : NaN
-    if (Number.isFinite(at) && now - at < VISUALIZE_CLAIM_TTL_MS) setVisualizing(i.id, true)
+    setVisualizing(i.id, Number.isFinite(at) && now - at < VISUALIZE_CLAIM_TTL_MS)
   }
   return items
 }
@@ -371,11 +373,10 @@ export function connectBoardEvents(
     source = make(url)
     source.onopen = () => {
       opts.onStatus?.('open')
-      if (everOpened) {
-        // events may have been missed while we were away: refetch what the stream maintains
-        void qc.invalidateQueries({ queryKey: keys.items(boardId) })
-        void qc.invalidateQueries({ queryKey: keys.lens(boardId) })
-      }
+      // events may have been missed before the stream opened (a job that ended between the page's
+      // items fetch and now) or while we were away: refetch the items every time it opens
+      void qc.invalidateQueries({ queryKey: keys.items(boardId) })
+      if (everOpened) void qc.invalidateQueries({ queryKey: keys.lens(boardId) })
       everOpened = true
       attempt = 0
     }

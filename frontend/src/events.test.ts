@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { type Exploration, type Item, keys, type NodesResponse, type PluginNode, type PluginRun } from './api'
 import { applyEvent, connectBoardEvents, boardActivity, type DescribeContext, describeEvent, noteVisualizeStore, seedVisualizing } from './events'
 import { countedItems, visibleItems } from './queries'
@@ -161,6 +161,15 @@ describe('seedVisualizing', () => {
     const ids = noteVisualizeStore.get().ids
     expect([ids.has('sv1'), ids.has('sv2'), ids.has('sv3'), ids.has('sv4')]).toEqual([true, false, false, false])
   })
+
+  it('a seeded visualizing note is cleared when a refetch returns it without a claim', () => {
+    const now = Date.parse('2026-10-29T10:10:00.000+00:00')
+    const claimed = makeItem({ id: 'sv5', kind: 'note', note_text: 'a', generation: { visualizing_since: '2026-10-29T10:09:00.000+00:00' } })
+    seedVisualizing([claimed], now)
+    expect(noteVisualizeStore.get().ids.has('sv5')).toBe(true)
+    seedVisualizing([{ ...claimed, generation: null }], now)
+    expect(noteVisualizeStore.get().ids.has('sv5')).toBe(false)
+  })
 })
 
 describe('describeEvent', () => {
@@ -214,6 +223,16 @@ describe('visibleItems', () => {
 })
 
 describe('connectBoardEvents', () => {
+  it('refetches the items on the first open too (a job may have ended before the stream opened)', () => {
+    const src = { addEventListener: () => undefined, close: () => undefined } as unknown as EventSource
+    const qc = new QueryClient()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+    const stop = connectBoardEvents('b3', qc, { makeSource: () => src })
+    src.onopen?.(new Event('open'))
+    expect(spy).toHaveBeenCalledWith({ queryKey: keys.items('b3') })
+    stop()
+  })
+
   it('routes the round 2 event types into the cache and clears activity for a new board', () => {
     const listeners: Record<string, (e: MessageEvent<string>) => void> = {}
     const src = {
