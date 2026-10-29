@@ -23,9 +23,7 @@
     "notes",
     "text"
   ],
-  "requires": [
-    "PLUGIN_PLACEHOLDER"
-  ],
+  "requires": [],
   "prompt": "prompt.md",
   "output_schema": {
     "type": "object",

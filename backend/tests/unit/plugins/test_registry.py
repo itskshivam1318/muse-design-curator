@@ -88,3 +88,20 @@ def test_shipped_packs_reference_only_builtins() -> None:
     assert [p["id"] for p in raw] == ["product", "fashion", "interior", "auto", "lab"]
     for p in raw:
         assert set(p["plugin_ids"]) <= ids, p["id"]
+
+
+def test_builtin_statuses(tmp_path: Path) -> None:
+    found, _ = discover(settings(tmp_path))
+    s = settings(tmp_path)
+    for pid in ("image", "palette", "critique"):
+        assert status(found[pid], s) == "available", pid
+    for pid in ("video", "mesh", "code", "fit", "formula"):
+        assert status(found[pid], s) == "not_connected", pid
+
+
+def test_false_bool_setting_counts_as_unset(tmp_path: Path) -> None:
+    found, _ = discover(settings(tmp_path))
+    p = found["image"]
+    p.manifest = p.manifest.model_copy(update={"requires": ["EXPLORE_ENABLED"]})
+    assert status(p, settings(tmp_path, EXPLORE_ENABLED=True)) == "available"
+    assert status(p, settings(tmp_path, EXPLORE_ENABLED=False)) == "not_connected"

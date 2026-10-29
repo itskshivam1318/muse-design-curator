@@ -92,7 +92,7 @@ def test_invalid_json_reports_reason(tmp_path: Path) -> None:
 
 def test_every_builtin_loads_and_converts_to_tool() -> None:
     folders = sorted(p for p in BUILTIN.iterdir() if p.is_dir())
-    assert len(folders) == 14
+    assert len(folders) == 16
     for folder in folders:
         m = load_manifest(folder, builtin=True)
         assert m.id == folder.name

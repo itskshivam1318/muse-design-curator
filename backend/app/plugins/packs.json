@@ -21,7 +21,8 @@
       "video",
       "palette",
       "texture",
-      "techpack"
+      "techpack",
+      "fit"
     ]
   },
   {
@@ -53,6 +54,7 @@
     "name": "Formulation lab",
     "about": "Creams, coatings, food: design by ingredients.",
     "plugin_ids": [
+      "formula",
       "code",
       "webfill",
       "critique",

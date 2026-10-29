@@ -1,0 +1,27 @@
+{
+  "id": "formula",
+  "name": "Formula sheet",
+  "description": "Phases and percentages as editable attributes.",
+  "mark": "FX",
+  "tint": "#ebe4f5",
+  "ink": "#5b3e94",
+  "runner": "python",
+  "runs_on": "Python",
+  "inputs": {
+    "kinds": [
+      "image",
+      "note"
+    ]
+  },
+  "params": {
+    "type": "object",
+    "properties": {}
+  },
+  "outputs": [
+    "attributes"
+  ],
+  "requires": [
+    "PLUGIN_PLACEHOLDER"
+  ],
+  "entry": "main.py"
+}

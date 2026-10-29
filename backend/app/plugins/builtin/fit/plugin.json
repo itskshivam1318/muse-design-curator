@@ -1,0 +1,27 @@
+{
+  "id": "fit",
+  "name": "Fit check",
+  "description": "Simple size and proportion checks against a spec.",
+  "mark": "FIT",
+  "tint": "#e0efe6",
+  "ink": "#2c7a4b",
+  "runner": "python",
+  "runs_on": "Python",
+  "inputs": {
+    "kinds": [
+      "image",
+      "note"
+    ]
+  },
+  "params": {
+    "type": "object",
+    "properties": {}
+  },
+  "outputs": [
+    "notes"
+  ],
+  "requires": [
+    "PLUGIN_PLACEHOLDER"
+  ],
+  "entry": "main.py"
+}

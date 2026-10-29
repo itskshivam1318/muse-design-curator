@@ -32,7 +32,7 @@ def status(p: Plugin, settings: Settings | None = None) -> Status:
         return "not_connected"
     for name in p.manifest.requires:
         # a name that is not a setting (the placeholder marker) is always unset
-        if getattr(settings, name, None) in (None, ""):
+        if getattr(settings, name, None) in (None, "", False):
             return "not_connected"
     return "available"
 
