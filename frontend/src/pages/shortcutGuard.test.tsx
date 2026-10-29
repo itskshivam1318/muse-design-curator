@@ -1,6 +1,7 @@
 import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { insideOverlay, isTyping, toolShortcutAllowed } from './shortcutGuard'
+import { makeItem } from '../test/fixtures'
+import { insideOverlay, isTyping, itemShortcut, toolShortcutAllowed } from './shortcutGuard'
 
 afterEach(cleanup)
 
@@ -48,5 +49,29 @@ describe('toolShortcutAllowed', () => {
     expect(toolShortcutAllowed(key(getByText('in dialog'), { key: 'n' }))).toBe(false)
     expect(toolShortcutAllowed(key(getByText('in dialog'), { key: 'Escape' }))).toBe(true)
     expect(isTyping(getByLabelText('note'))).toBe(true)
+  })
+})
+
+describe('itemShortcut (v, i, x act on images, never on notes)', () => {
+  const img = makeItem({ id: 'img' })
+  const note = makeItem({ id: 'n1', kind: 'note', origin: 'note', note_text: 'Strap' })
+  const flags = { explore: true, locked: false }
+
+  it('does nothing with only a note selected', () => {
+    for (const key of ['v', 'i', 'x']) expect(itemShortcut(key, [note], flags)).toBeNull()
+  })
+
+  it('acts on the image only when a note and an image are selected', () => {
+    expect(itemShortcut('v', [note, img], flags)).toEqual({ kind: 'panel', panel: 'explore', itemId: 'img' })
+    expect(itemShortcut('v', [img, note], { ...flags, explore: false })).toEqual({ kind: 'panel', panel: 'vary', itemId: 'img' })
+    expect(itemShortcut('i', [note, img], flags)).toEqual({ kind: 'panel', panel: 'inspect', itemId: 'img' })
+    expect(itemShortcut('x', [note, img], flags)).toEqual({ kind: 'notThis', items: [img] })
+  })
+
+  it('keeps the old rules: one item for v and i, x not on a locked demo, other keys are not item shortcuts', () => {
+    const img2 = makeItem({ id: 'img2' })
+    expect(itemShortcut('v', [img, img2], flags)).toBeNull()
+    expect(itemShortcut('x', [img], { ...flags, locked: true })).toBeNull()
+    expect(itemShortcut('f', [img], flags)).toBeNull()
   })
 })

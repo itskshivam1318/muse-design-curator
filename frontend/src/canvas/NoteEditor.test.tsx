@@ -300,3 +300,18 @@ describe('note bar and Visualize', () => {
     expect(screen.queryByRole('group', { name: 'Send to node' })).toBeNull()
   })
 })
+
+describe('a note being edited', () => {
+  it('has no selection outline or handles drawn over the editor', () => {
+    setup({ items: [note()] })
+    act(() => selection.select(['n1']))
+    const stage = KonvaLib.stages.at(-1)!
+    expect(stage.find('.selection-handle').length).toBe(4)
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit text' }))
+    expect(stage.find('.selection-handle').length).toBe(0)
+    expect(stage.find('.item-outline').length).toBe(0)
+    fireEvent.keyDown(editor(), { key: 'Escape' })
+    expect(stage.find('.selection-handle').length).toBe(4)
+  })
+})

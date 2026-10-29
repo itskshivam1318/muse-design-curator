@@ -37,7 +37,7 @@ import { useBoard, useBoardLens, useItems, useProfile } from '../queries'
 import { Link } from '../Link'
 import { BoardShell } from '../shell/BoardShell'
 import { closeRail, noteLensProposal, openRail, railStore, setTool } from '../shell/tools'
-import { insideOverlay, isTyping } from './shortcutGuard'
+import { insideOverlay, isTyping, itemShortcut } from './shortcutGuard'
 import { runStore } from '../vary/runStore'
 
 export function BoardPage({ boardId }: { boardId: string }) {
@@ -139,14 +139,14 @@ export function BoardPage({ boardId }: { boardId: string }) {
           canvas.current?.fit()
           break
         case 'v':
-          if (chosen.length === 1) openPanel(exploreEnabled ? 'explore' : 'vary', chosen[0].id)
-          break
         case 'i':
-          if (chosen.length === 1) openPanel('inspect', chosen[0].id)
+        case 'x': {
+          // image shortcuts: a selected note is left out
+          const act = itemShortcut(e.key, chosen, { explore: exploreEnabled, locked })
+          if (act?.kind === 'panel') openPanel(act.panel, act.itemId)
+          else if (act?.kind === 'notThis') actions.toggleNotThis(act.items)
           break
-        case 'x':
-          if (!locked) actions.toggleNotThis(chosen)
-          break
+        }
         case 'delete':
         case 'backspace':
           if (chosen.length && !locked) {

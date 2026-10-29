@@ -570,8 +570,9 @@ export function Canvas({
                   item={it}
                   bounds={itemBounds(it)}
                   scale={view.scale}
-                  hovered={hovered === i.id}
-                  selected={selected.includes(i.id)}
+                  // the note being typed in: nothing drawn over its editor
+                  hovered={hovered === i.id && i.id !== editing?.id}
+                  selected={selected.includes(i.id) && i.id !== editing?.id}
                   reduced={reduced}
                   palette={palette}
                   verdictTone={itemVerdict(it, explorations, labels)?.tone}

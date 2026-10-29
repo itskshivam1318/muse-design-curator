@@ -267,12 +267,12 @@ export function ItemDecorations({ item, bounds, scale, hovered, selected, reduce
     <>
       {parsing && <Shimmer bounds={bounds} reduced={reduced} />}
       {(hovered || selected) && (
-        <Rect {...hoverOutlineRect(bounds, scale)} stroke={selected ? palette.accent : palette.ink} opacity={selected ? 1 : 0.55} />
+        <Rect name="item-outline" {...hoverOutlineRect(bounds, scale)} stroke={selected ? palette.accent : palette.ink} opacity={selected ? 1 : 0.55} />
       )}
       {showDot && <Circle {...statusDot(bounds, scale, selected)} fill={statusColor(item.parse_status, palette)} />}
       {selected &&
         handleRects(bounds, scale).map(({ key, ...h }) => (
-          <Rect key={key} {...h} fill={palette.panel} stroke={palette.accent} />
+          <Rect key={key} name="selection-handle" {...h} fill={palette.panel} stroke={palette.accent} />
         ))}
       {item.kind === 'video' && (hovered || selected) && (
         <Label x={bounds.x + inset} y={bounds.y + bounds.height - inset - badgeFont - badgePad * 2} listening={false}>
