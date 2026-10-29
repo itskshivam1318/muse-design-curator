@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { boardItems, createBoard, expectItemCount, openLibrary, selectItem, sitePath } from './helpers.ts'
+import { boardItems, createBoard, escapeRe, expectItemCount, openLibrary, selectItem, sitePath } from './helpers.ts'
 
 /**
  * Explore -> Visualize on mock providers: the mock reasoning provider returns eight options named
@@ -22,7 +22,7 @@ test('explore option then visualize', async ({ page }) => {
   const cards = page.getByTestId('axis-card')
   await expect(cards.first()).toBeVisible({ timeout: 30_000 })
   const n = await cards.count()
-  expect(n).toBeGreaterThanOrEqual(6)
+  expect(n).toBeGreaterThanOrEqual(6) // replaces the old option-note count: one text card per option
 
   const knownIds = new Set((await boardItems(boardId)).map((i) => i.id))
   await cards.first().click()
@@ -45,7 +45,7 @@ test('explore option then visualize', async ({ page }) => {
   const gen = (await boardItems(boardId)).find((i) => i.id === generatedId)!
   const label = gen.original_filename ?? gen.page_title ?? gen.page_url ?? gen.id
   await page.keyboard.press('Escape')
-  await selectItem(page, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  await selectItem(page, new RegExp(escapeRe(label)))
   await expect(page.getByRole('note', { name: 'Generated image' })).toHaveText(
     'generated · mock-image',
     { timeout: 10_000 },

@@ -57,11 +57,22 @@ provider (`provider.id`, `provider.is_mock`) with every item's values.
 to `backend/tests/fixtures/meta/live/`. Last run 2026-10-27 from India, all PASS: Spark text 5.2 s,
 schema-constrained JSON 8.4 s, SAM image 2.2 s, SAM video 2.7 s, `/embeddings` 404 (expected).
 
+## The calm board
+
+The board is a quiet canvas: a rail on the left (Library, Plugins, and the other panels), a small
+floating toolbar at the bottom, and nothing else until you ask. **Notes**: press `N` and click to
+write a sentence on the board; hover it for **Visualize**, which turns the sentence into an image
+(captioned `generated · <model>`) beside it. **The axis** is text first: pick an attribute with the
+Axis tool (`A`) and the options appear as plain text cards along a line. Open one to Visualize,
+Regenerate (take 2, 3, ...) and Keep; only a kept card shows its picture, and Un-keep turns it back
+into text. **Plugins** are nodes you add from the rail and place from the toolbar's Nodes menu; see
+[Plugins](#plugins) and [docs/plugins.md](docs/plugins.md).
+
 ## Explore → Visualize
 
-Select an item, press `V` (or the toolbar's Explore button), and pick an attribute of the board's lens.
+Select an item, press `A` (the Axis tool), and pick an attribute of the board's lens.
 Explore asks the reasoning model for a handful of options for that attribute ("in the dimension"),
-listed in the drawer and pinned beside the item as notes. More, Further, a steer line and Branch widen
+shown as text cards on the axis beside the item. More, Further, a steer line and Branch widen
 or deepen the set; Dismiss removes one. **Visualize** edits the source photo into the option with the
 image provider, adds the result as a new item captioned `generated · <model>`, and checks it: did the
 target change, and which other attributes stayed (the verdict, also shown under "Generated from" in

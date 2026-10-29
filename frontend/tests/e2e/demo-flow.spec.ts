@@ -7,6 +7,7 @@ import {
   canvas,
   closeLibrary,
   dropFiles,
+  escapeRe,
   expectItemCount,
   itemButton,
   openLibrary,
@@ -15,7 +16,6 @@ import {
 } from './helpers.ts'
 import { SITE_URL } from './ports.ts'
 
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const itemLabel = (i: ApiItem) => i.original_filename ?? i.page_title ?? i.page_url ?? i.id
 
 async function releaseProtected(panel: Locator): Promise<void> {
@@ -196,7 +196,7 @@ test('demo flow: board, references, lens, link, video, vary, keep, reject, nudge
     const before = await boardItems(boardId)
     await page.reload()
     await expectItemCount(page, before.length)
-    await openLibrary(page)
+    await openLibrary(page) // the Board signals panel lives in the Library, which is closed after a reload
     const bar = page.getByRole('region', { name: 'Board context' })
     await expect(bar.getByRole('button', { name: new RegExp(context.slice(0, 30)) })).toContainText('Watch')
     await expect(signals.getByText('Watch lens · curated')).toBeVisible()

@@ -16,6 +16,7 @@ export interface ApiItem {
   page_title: string | null
   page_url: string | null
   parent_item_id: string | null
+  note_text?: string | null
 }
 
 export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -101,3 +102,6 @@ export async function closeLibrary(page: Page): Promise<void> {
   if ((await btn.getAttribute('aria-pressed')) === 'true') await btn.click()
   await expect(page.getByRole('dialog', { name: 'Library' })).toHaveCount(0)
 }
+
+/** Escape a string for use inside a RegExp. */
+export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
