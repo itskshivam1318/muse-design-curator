@@ -529,3 +529,15 @@ def test_no_write_lock_held_during_model_call(tmp_path: Path, provider: Fake) ->
     assert outcome == ["ok"]
     engine.dispose()
     other.dispose()
+
+
+def test_extraction_prompt_excludes_notes(session: Session, provider: Fake) -> None:
+    from app.notes.service import create_note
+
+    board_id = lens_board(session, context="a quiet shop")
+    create_note(session, board_id, "honey, like old paper", 0, 0)
+    item = add_item(session, board_id)
+    service.parse_item(session, item.id)
+    prompt = provider.calls[0][2]
+    assert "a quiet shop" in prompt and "honey" not in prompt
+    assert "Notes on the board" not in prompt

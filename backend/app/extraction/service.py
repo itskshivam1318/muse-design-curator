@@ -45,7 +45,6 @@ from app.measure.palette import (
     to_rgb_array,
 )
 from app.measure.shape import shape_descriptor
-from app.notes.service import with_notes
 from app.providers import get_embedder, get_reasoning, get_segmentation
 from app.providers.reliability import ModelError
 from app.storage import files
@@ -380,8 +379,7 @@ def _run(session: Session, item_id: str, board_id: str) -> None:
     session.commit()  # release the write lock (masks) before the slow model call
 
     board = boards_repo.get(session, board_id)
-    context = with_notes(session, board_id, (board.context if board else "") or "")
-    records += model_extract(session, lens, image, sha, context)
+    records += model_extract(session, lens, image, sha, (board.context if board else "") or "")
     _finish(session, item_id, board_id, records, sha)
 
 
