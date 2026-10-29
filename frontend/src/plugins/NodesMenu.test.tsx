@@ -14,6 +14,8 @@ vi.mock('../api', async (orig) => ({
 const api = await import('../api')
 const { NodesMenu } = await import('./NodesMenu')
 const { NodeLayer } = await import('./NodeLayer')
+const { BottomToolbar } = await import('../shell/BottomToolbar')
+const { LOCKED_TITLE } = await import('../demo')
 const { sendNoteToNode, useNodeDrop } = await import('./nodeDrop')
 const { selection } = await import('../canvas/selection')
 const { dropTargetStore, viewportStore } = await import('./stores')
@@ -69,6 +71,24 @@ describe('NodesMenu', () => {
     expect(api.createNode).toHaveBeenCalledWith('b1', { plugin_id: 'image', x: 350, y: 220, input_item_ids: [] })
   })
 
+  it('is disabled on a locked demo, as is the Nodes tool', () => {
+    const qc = client()
+    qc.setQueryData(keys.demo, { demo_mode: true, unlocked: false, plugins_enabled: true })
+    render(
+      <>
+        <NodesMenu boardId="b1" onClose={vi.fn()} />
+        <BottomToolbar onNodes={vi.fn()} plugins explore={false} />
+      </>,
+      { wrapper: wrap(qc) },
+    )
+    const item = screen.getByRole('button', { name: 'Image' }) as HTMLButtonElement
+    expect(item.disabled).toBe(true)
+    expect(item.title).toBe(LOCKED_TITLE)
+    const nodes = screen.getByRole('button', { name: 'Nodes' }) as HTMLButtonElement
+    expect(nodes.disabled).toBe(true)
+    expect(nodes.title).toBe(LOCKED_TITLE)
+  })
+
   it('points to the Plugins panel when the board has none', () => {
     render(<NodesMenu boardId="b1" onClose={vi.fn()} />, { wrapper: wrap(client([])) })
     expect(screen.getByRole('button', { name: 'Open Plugins' })).toBeTruthy()
@@ -116,7 +136,7 @@ describe('NodeLayer', () => {
     expect(card.style.left).toBe('500px')
     expect(card.style.transform).toBe('scale(0.5)')
     expect(document.querySelectorAll('.node-lines path')).toHaveLength(1) // the removed input has no line
-    expect(screen.getByRole('button', { name: 'Remove input removed item' })).toBeTruthy()
+    expect(screen.getByText('1 input removed from the board')).toBeTruthy()
     expect(viewportStore.get()).toEqual({ view: { x: 0, y: 0, scale: 0.5 }, width: 800, height: 600 })
   })
 

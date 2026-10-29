@@ -341,6 +341,13 @@
 .tool-btn:hover {
   background: var(--well);
 }
+.tool-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.tool-btn:disabled:hover {
+  background: transparent;
+}
 .tool-btn[aria-pressed='true'] {
   background: var(--hover);
   font-weight: 600;

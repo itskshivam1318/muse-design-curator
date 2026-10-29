@@ -26,7 +26,7 @@ export function useNodeDrop(boardId: string, readOnly = false) {
         const node = under(p)
         if (!node) return false
         void addToNode(qc, node.id, itemIds).then(
-          (added) => added === 0 && nodeNoticeStore.set('The node already has these, or cannot read them'),
+          (r) => r.notice && nodeNoticeStore.set(r.notice),
           () => nodeNoticeStore.set('Could not add the items to the node'),
         )
         return true

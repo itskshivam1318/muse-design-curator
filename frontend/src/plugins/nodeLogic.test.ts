@@ -102,10 +102,18 @@ describe('canRun', () => {
     const one = makePlugin({ inputs: { kinds: ['image', 'note'], min: 1, max: 1 } })
     expect(canRun(one, makeNode({ input_item_ids: ['n1', 'i1'] }), items).reason).toBe('Use at most 1 input')
   })
-  it('is not when an input was removed from the board', () => {
-    const r = canRun(image, makeNode({ input_item_ids: ['n1', 'gone'] }), items)
-    expect(r.ok).toBe(false)
-    expect(r.reason).toMatch(/no longer on the board/)
+  it('skips inputs removed from the board and judges what is left', () => {
+    expect(canRun(image, makeNode({ input_item_ids: ['n1', 'gone'] }), items)).toEqual({ ok: true })
+    expect(canRun(image, makeNode({ input_item_ids: ['gone'] }), items)).toEqual({ ok: false, reason: 'Add an input' })
+    const two = makePlugin({ inputs: { kinds: ['image', 'note'], min: 2, max: 4 } })
+    expect(canRun(two, makeNode({ input_item_ids: ['n1', 'gone'] }), items).reason).toBe('Add 1 more input')
+  })
+  it('is not when an input is of a kind the plugin cannot read', () => {
+    const imagesOnly = makePlugin({ inputs: { kinds: ['image'], min: 1, max: 4 } })
+    expect(canRun(imagesOnly, makeNode({ input_item_ids: ['i1', 'n1'] }), items)).toEqual({
+      ok: false,
+      reason: "Image can't read note items",
+    })
   })
   it('is not when the plugin is unknown', () => {
     expect(canRun(undefined, makeNode(), items).ok).toBe(false)
@@ -115,7 +123,8 @@ describe('canRun', () => {
 function client(nodes: NodesResponse = { nodes: [], runs: {} }) {
   const qc = new QueryClient()
   qc.setQueryData(keys.nodes('b1'), nodes)
-  qc.setQueryData(keys.items('b1'), [note, photo, makeItem({ id: 'v1', kind: 'video' })])
+  qc.setQueryData(keys.items('b1'), [note, photo, makeItem({ id: 'v1', kind: 'video' }), makeItem({ id: 'i2' })])
+  qc.setQueryData(keys.plugins(), [image])
   return qc
 }
 
@@ -124,7 +133,7 @@ describe('addToNode', () => {
     const node = makeNode({ input_item_ids: ['n1'] })
     const qc = client({ nodes: [node], runs: {} })
     vi.mocked(api.patchNode).mockImplementation(async (_id, body) => ({ ...node, ...body }) as never)
-    await addToNode(qc, 'node1', ['n1', 'i1'])
+    expect(await addToNode(qc, 'node1', ['n1', 'i1'])).toEqual({ added: 1, notice: null })
     expect(api.patchNode).toHaveBeenCalledWith('node1', { input_item_ids: ['n1', 'i1'] })
     expect(qc.getQueryData<NodesResponse>(keys.nodes('b1'))?.nodes[0].input_item_ids).toEqual(['n1', 'i1'])
     expect(undoHistory.size).toBe(1)
@@ -133,19 +142,37 @@ describe('addToNode', () => {
     expect(api.patchNode).toHaveBeenLastCalledWith('node1', { input_item_ids: ['n1'] })
   })
 
-  it('skips items of a kind the plugin does not read', async () => {
+  it('skips items of a kind the plugin does not read, and says so', async () => {
     const node = makeNode({ input_item_ids: [] })
     const qc = client({ nodes: [node], runs: {} })
-    qc.setQueryData(keys.plugins(), [image])
     vi.mocked(api.patchNode).mockImplementation(async (_id, body) => ({ ...node, ...body }) as never)
-    await addToNode(qc, 'node1', ['v1', 'i1'])
+    expect(await addToNode(qc, 'node1', ['v1', 'i1'])).toEqual({ added: 1, notice: "Image can't read video items" })
     expect(api.patchNode).toHaveBeenCalledWith('node1', { input_item_ids: ['i1'] })
   })
 
-  it('does nothing when nothing new is added', async () => {
-    const qc = client({ nodes: [makeNode({ input_item_ids: ['n1'] })], runs: {} })
-    await addToNode(qc, 'node1', ['n1'])
+  it('says when the items are already inputs, and adds nothing', async () => {
+    const qc = client({ nodes: [makeNode({ input_item_ids: ['n1', 'i1'] })], runs: {} })
+    expect(await addToNode(qc, 'node1', ['n1'])).toEqual({ added: 0, notice: 'That item is already an input' })
+    expect(await addToNode(qc, 'node1', ['n1', 'i1'])).toEqual({ added: 0, notice: 'Those items are already inputs' })
     expect(api.patchNode).not.toHaveBeenCalled()
+  })
+
+  it('skips items missing from the cache, and adds nothing for an unknown plugin', async () => {
+    const qc = client({ nodes: [makeNode({ input_item_ids: [] })], runs: {} })
+    expect(await addToNode(qc, 'node1', ['nowhere'])).toEqual({ added: 0, notice: null })
+    qc.setQueryData(keys.plugins(), [])
+    expect(await addToNode(qc, 'node1', ['i1'])).toEqual({ added: 0, notice: 'This plugin is not loaded yet' })
+    expect(api.patchNode).not.toHaveBeenCalled()
+  })
+
+  it('stops at the plugin max inputs, with a notice', async () => {
+    const node = makeNode({ input_item_ids: ['n1', 'gone'] })
+    const qc = client({ nodes: [node], runs: {} })
+    qc.setQueryData(keys.plugins(), [makePlugin({ inputs: { kinds: ['image', 'note'], min: 1, max: 2 } })])
+    vi.mocked(api.patchNode).mockImplementation(async (_id, body) => ({ ...node, ...body }) as never)
+    // 'gone' is no longer on the board, so one slot is left
+    expect(await addToNode(qc, 'node1', ['i1', 'i2'])).toEqual({ added: 1, notice: 'Image takes at most 2 inputs' })
+    expect(api.patchNode).toHaveBeenCalledWith('node1', { input_item_ids: ['n1', 'gone', 'i1'] })
   })
 })
 

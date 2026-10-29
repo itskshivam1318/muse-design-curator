@@ -1,3 +1,4 @@
+import { LOCKED_TITLE, useDemo } from '../demo'
 import { setTool, type Tool, useTool } from './tools'
 
 interface Props {
@@ -19,6 +20,7 @@ const TOOLS: { tool: Tool; label: string; key: string }[] = [
 /** Floating centre-bottom: the board tools, then Nodes (a menu of the board's added plugins). */
 export function BottomToolbar({ onNodes, plugins, explore, nodesOpen = false }: Props) {
   const active = useTool()
+  const { locked } = useDemo()
   return (
     <div className="bottom-toolbar" role="toolbar" aria-label="Tools">
       {TOOLS.filter((t) => explore || t.tool !== 'axis').map((t) => (
@@ -34,7 +36,15 @@ export function BottomToolbar({ onNodes, plugins, explore, nodesOpen = false }: 
         </button>
       ))}
       {plugins && (
-        <button type="button" className="tool-btn" aria-haspopup="dialog" aria-expanded={nodesOpen} onClick={onNodes}>
+        <button
+          type="button"
+          className="tool-btn"
+          aria-haspopup="dialog"
+          aria-expanded={nodesOpen}
+          disabled={locked}
+          title={locked ? LOCKED_TITLE : undefined}
+          onClick={onNodes}
+        >
           Nodes
         </button>
       )}

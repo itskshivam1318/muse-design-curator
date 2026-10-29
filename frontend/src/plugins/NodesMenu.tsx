@@ -5,6 +5,7 @@ import { type Item, keys, type PluginInfo } from '../api'
 import { unionBounds } from '../canvas/geometry'
 import { itemBounds } from '../canvas/nodeProps'
 import { useSelection } from '../canvas/selection'
+import { LOCKED_TITLE, useDemo } from '../demo'
 import { useBoardPlugins, usePlugins } from '../queries'
 import { openRail } from '../shell/tools'
 import { acceptsItem, createNodeFromSelection, placeNode } from './nodeLogic'
@@ -13,6 +14,7 @@ import { viewportCenter } from './stores'
 
 export function NodesMenu({ boardId, onClose }: { boardId: string; onClose: () => void }) {
   const qc = useQueryClient()
+  const { locked } = useDemo()
   const ref = useRef<HTMLDivElement>(null)
   const all = usePlugins().data
   const added = useBoardPlugins(boardId).data
@@ -79,7 +81,13 @@ export function NodesMenu({ boardId, onClose }: { boardId: string; onClose: () =
           <ul className="nodes-menu-list" aria-label="Add a node">
             {plugins.map((p) => (
               <li key={p.id}>
-                <button type="button" className="nodes-menu-item" disabled={busy} onClick={() => void place(p)}>
+                <button
+                  type="button"
+                  className="nodes-menu-item"
+                  disabled={locked || busy}
+                  title={locked ? LOCKED_TITLE : undefined}
+                  onClick={() => void place(p)}
+                >
                   <PluginTile plugin={p} size={24} />
                   <span className="nodes-menu-name">{p.name}</span>
                   {p.status !== 'available' && <span className="plugin-tag">Not connected</span>}

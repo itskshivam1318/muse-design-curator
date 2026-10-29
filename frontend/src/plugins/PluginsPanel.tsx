@@ -2,6 +2,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { addBoardPlugin, keys, type PluginInfo, removeBoardPlugin } from '../api'
+import { LOCKED_TITLE, useDemo } from '../demo'
 import { useBoardPlugins, usePacks, usePlugins } from '../queries'
 import './plugins.css'
 
@@ -19,6 +20,7 @@ export function PluginTile({ plugin, size = 32 }: { plugin: Pick<PluginInfo, 'ma
 
 export function PluginsPanel({ boardId }: { boardId: string }) {
   const qc = useQueryClient()
+  const { locked } = useDemo()
   const plugins = usePlugins()
   const packs = usePacks()
   const added = useBoardPlugins(boardId).data ?? []
@@ -117,8 +119,8 @@ export function PluginsPanel({ boardId }: { boardId: string }) {
                     type="button"
                     className={on ? 'plugin-add is-added' : 'plugin-add'}
                     aria-label={`${on ? 'Added' : 'Add'} ${p.name}`}
-                    title={on ? 'Remove from this board' : undefined}
-                    disabled={busy === p.id}
+                    title={locked ? LOCKED_TITLE : on ? 'Remove from this board' : undefined}
+                    disabled={locked || busy === p.id}
                     onClick={() => void toggle(p)}
                   >
                     {on ? 'Added' : 'Add'}

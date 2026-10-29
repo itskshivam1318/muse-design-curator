@@ -1,7 +1,10 @@
 import type { Item } from '../api'
 
-/** Board shortcuts (v, i, x, f, Delete, n, a) must not fire while focus is inside an open dialog or drawer. */
-const OVERLAY = '[role="dialog"], [aria-modal="true"], .right-drawer'
+/**
+ * Board shortcuts (v, i, x, f, Delete, n, a) must not fire while focus is inside an open dialog or
+ * drawer, or on a plugin node card's controls (Backspace on its Run button is not "delete items").
+ */
+const OVERLAY = '[role="dialog"], [aria-modal="true"], .right-drawer, .node-card'
 
 export function insideOverlay(t: EventTarget | null): boolean {
   const el = t as HTMLElement | null

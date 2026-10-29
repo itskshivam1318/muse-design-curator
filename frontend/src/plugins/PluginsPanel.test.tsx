@@ -11,6 +11,7 @@ vi.mock('../api', async (orig) => ({
 }))
 const api = await import('../api')
 const { PluginsPanel } = await import('./PluginsPanel')
+const { LOCKED_TITLE } = await import('../demo')
 
 const plugins = [
   makePlugin(),
@@ -31,9 +32,9 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-function setup(added: string[] = []) {
+function setup(added: string[] = [], locked = false) {
   const qc = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } })
-  qc.setQueryData(keys.demo, { demo_mode: false, unlocked: false, plugins_enabled: true })
+  qc.setQueryData(keys.demo, { demo_mode: locked, unlocked: false, plugins_enabled: true })
   qc.setQueryData(keys.plugins(), plugins)
   qc.setQueryData(keys.packs(), packs)
   qc.setQueryData(keys.boardPlugins('b1'), added)
@@ -90,6 +91,16 @@ describe('PluginsPanel', () => {
     expect(add.disabled).toBe(false)
     fireEvent.click(add)
     expect(api.addBoardPlugin).toHaveBeenCalledWith('b1', 'video')
+  })
+
+  it('Add and Added are disabled on a locked demo', () => {
+    setup(['image'], true)
+    fireEvent.click(screen.getByRole('button', { name: /Fashion/ }))
+    const added = screen.getByRole('button', { name: 'Added Image' }) as HTMLButtonElement
+    const add = screen.getByRole('button', { name: 'Add Video' }) as HTMLButtonElement
+    expect(added.disabled).toBe(true)
+    expect(add.disabled).toBe(true)
+    expect(add.title).toBe(LOCKED_TITLE)
   })
 
   it('search narrows the rows', () => {

@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, type Item, keys, type NodesResponse, type PluginInfo, type PluginNode, type PluginRun } from '../api'
+import { insideOverlay } from '../pages/shortcutGuard'
 import { useNodes } from '../queries'
 import { BoardShell } from '../shell/BoardShell'
 import { setTool, toolStore } from '../shell/tools'
@@ -140,6 +141,19 @@ describe('NodeCard', () => {
     expect(screen.getByText('[video model] not connected')).toBeTruthy()
     expect(runButton().disabled).toBe(true)
     expect(screen.getByRole('button', { name: 'Track with SAM' })).toBeTruthy()
+  })
+
+  it('an input removed from the board is left out and does not block Run', () => {
+    setup({ node: makeNode({ input_item_ids: ['i1', 'gone'] }) })
+    expect(screen.getAllByRole('button', { name: /^Remove input/ })).toHaveLength(1)
+    expect(screen.getByText('1 input removed from the board')).toBeTruthy()
+    expect(runButton().disabled).toBe(false)
+  })
+
+  it('board shortcuts do not act while focus is on a card control', () => {
+    setup()
+    expect(insideOverlay(runButton())).toBe(true)
+    expect(insideOverlay(screen.getByRole('button', { name: 'Remove input watch.png' }))).toBe(true)
   })
 
   it('Run is disabled with the reason when there are no inputs', () => {

@@ -39,8 +39,8 @@ interface Props {
 
 const ACTIVE = new Set(['queued', 'running'])
 const short = (s: string, n = 22) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s)
-const inputLabel = (item: Item | undefined): string =>
-  !item ? 'removed item' : item.kind === 'note' ? (item.note_text ?? '').trim() || 'note' : itemTitle(item)
+const inputLabel = (item: Item): string =>
+  item.kind === 'note' ? (item.note_text ?? '').trim() || 'note' : itemTitle(item)
 
 function Dots() {
   return (
@@ -57,15 +57,15 @@ function Cross() {
   )
 }
 
-function Chip({ item, label, onRemove, readOnly }: { item: Item | undefined; label: string; onRemove: () => void; readOnly: boolean }) {
+function Chip({ item, label, onRemove, readOnly }: { item: Item; label: string; onRemove: () => void; readOnly: boolean }) {
   const thumb =
-    item && (item.kind === 'image' || item.kind === 'video') && item.thumb_path ? (
+    (item.kind === 'image' || item.kind === 'video') && item.thumb_path ? (
       <img className="node-chip-thumb" src={itemImageUrl(item, 'thumb')} alt="" />
     ) : (
-      <span className={`node-chip-thumb is-${item?.kind ?? 'removed'}`} aria-hidden="true" />
+      <span className={`node-chip-thumb is-${item.kind}`} aria-hidden="true" />
     )
   return (
-    <li className={item ? 'node-chip' : 'node-chip is-removed'} title={label}>
+    <li className="node-chip" title={label}>
       {thumb}
       <span className="node-chip-label">{short(label)}</span>
       <button
@@ -370,6 +370,9 @@ export function NodeCard({ boardId, node, plugin, run, items, view, readOnly = f
   }
 
   const screen = toScreenBounds(nodeBounds(node), view)
+  // inputs since removed from the board are left out (the run skips them too)
+  const liveInputs = node.input_item_ids.flatMap((id) => items.get(id) ?? [])
+  const removedInputs = node.input_item_ids.length - liveInputs.length
   const shown = shownFields(fields, node.params)
 
   return (
@@ -430,10 +433,10 @@ export function NodeCard({ boardId, node, plugin, run, items, view, readOnly = f
         </div>
       </div>
 
-      {node.input_item_ids.length > 0 ? (
+      {liveInputs.length > 0 ? (
         <ul className="node-chips" aria-label="Inputs">
-          {node.input_item_ids.map((id) => {
-            const item = items.get(id)
+          {liveInputs.map((item) => {
+            const id = item.id
             return (
               <Chip
                 key={id}
@@ -451,6 +454,11 @@ export function NodeCard({ boardId, node, plugin, run, items, view, readOnly = f
         </ul>
       ) : (
         <p className="node-hint">Drag items here, or select them before adding the node.</p>
+      )}
+      {removedInputs > 0 && (
+        <p className="node-hint">
+          {removedInputs} {removedInputs === 1 ? 'input' : 'inputs'} removed from the board
+        </p>
       )}
 
       {plugin && (

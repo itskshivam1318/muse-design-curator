@@ -108,9 +108,10 @@ export function canRun(
 ): { ok: boolean; reason?: string } {
   if (!plugin) return { ok: false, reason: 'This plugin is not installed' }
   if (plugin.status !== 'available') return { ok: false, reason: `${plugin.runs_on} not connected` }
-  const live = node.input_item_ids.filter((id) => items.has(id))
-  if (live.length < node.input_item_ids.length)
-    return { ok: false, reason: 'Remove the inputs no longer on the board' }
+  // inputs since removed from the board are skipped (the server does the same); judge what is left
+  const live = node.input_item_ids.flatMap((id) => items.get(id) ?? [])
+  const unreadable = live.find((i) => !acceptsItem(plugin, i))
+  if (unreadable) return { ok: false, reason: `${plugin.name} can't read ${unreadable.kind} items` }
   const { min, max } = plugin.inputs
   if (live.length < min) {
     const need = min - live.length
@@ -202,24 +203,50 @@ export function previewNode(qc: QueryClient, nodeId: string, at: Point): void {
 const boardItems = (qc: QueryClient, boardId: string) => qc.getQueryData<Item[]>(keys.items(boardId)) ?? []
 const pluginOf = (qc: QueryClient, id: string) => qc.getQueryData<PluginInfo[]>(keys.plugins())?.find((p) => p.id === id)
 
+export interface AddResult {
+  added: number
+  /** Why some or all of the items were not added, in plain words; null when all went in. */
+  notice: string | null
+}
+
 /**
- * Add items to a node's inputs (kinds it cannot read, and ones it has, are skipped); ⌘Z takes them
- * off again. Resolves to how many were added.
+ * Add items to a node's inputs; ⌘Z takes them off again. Skipped: items not on the board (or not in
+ * the cache), ones already in, kinds the plugin cannot read, and any past the plugin's max inputs.
+ * Nothing is added while the plugin itself is unknown.
  */
-export async function addToNode(qc: QueryClient, nodeId: string, itemIds: readonly string[]): Promise<number> {
+export async function addToNode(qc: QueryClient, nodeId: string, itemIds: readonly string[]): Promise<AddResult> {
   const found = findNode(qc, nodeId)
-  if (!found) return 0
+  if (!found) return { added: 0, notice: null }
   const { boardId, node } = found
   const plugin = pluginOf(qc, node.plugin_id)
-  const byId = new Map(boardItems(qc, boardId).map((i) => [i.id, i]))
-  const fresh = itemIds.filter((id) => {
-    if (node.input_item_ids.includes(id)) return false
+  if (!plugin) return { added: 0, notice: 'This plugin is not loaded yet' }
+  const byId = new Map(boardItems(qc, boardId).filter((i) => !i.staged).map((i) => [i.id, i]))
+  let already = 0
+  const unreadable = new Set<string>()
+  const fresh: string[] = []
+  for (const id of new Set(itemIds)) {
     const item = byId.get(id)
-    return !plugin || !item || acceptsItem(plugin, item)
-  })
-  if (fresh.length === 0) return 0
-  await updateNode(qc, nodeId, { input_item_ids: [...new Set([...node.input_item_ids, ...fresh])] }, { undoable: true })
-  return fresh.length
+    if (!item) continue
+    if (node.input_item_ids.includes(id)) already++
+    else if (!acceptsItem(plugin, item)) unreadable.add(item.kind)
+    else fresh.push(id)
+  }
+  const live = node.input_item_ids.filter((id) => byId.has(id)).length
+  const room = Math.max(0, plugin.inputs.max - live)
+  const taken = fresh.slice(0, room)
+  const notice =
+    taken.length < fresh.length
+      ? `${plugin.name} takes at most ${plugin.inputs.max} ${inputs(plugin.inputs.max)}`
+      : unreadable.size > 0
+        ? `${plugin.name} can't read ${[...unreadable].join(' or ')} items`
+        : already > 0 && taken.length === 0
+          ? already === 1
+            ? 'That item is already an input'
+            : 'Those items are already inputs'
+          : null
+  if (taken.length > 0)
+    await updateNode(qc, nodeId, { input_item_ids: [...node.input_item_ids, ...taken] }, { undoable: true })
+  return { added: taken.length, notice }
 }
 
 /** Remove a node from the board. */
