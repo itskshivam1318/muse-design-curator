@@ -137,7 +137,7 @@ def create_run(
             if run is not None:
                 return run
     item = items_repo.get(session, req.source_item_id)
-    if item is None or item.removed_at is not None or item.board_id != board_id:
+    if item is None or item.removed_at is not None or item.staged or item.board_id != board_id:
         raise AppError(404, "ITEM_NOT_FOUND", "Source item not found on this board")
     lens_row = lenses_repo.get(session, board.lens_id) if board.lens_id else None
     if lens_row is None or lens_row.status != "confirmed":
@@ -375,7 +375,9 @@ def _run(session: Session, run: VariationRun) -> None:
         run = runs_repo.get(session, run.id) or run
         _progress(session, run, "searching", live=info)
         session.commit()
-    on_board = on_board_from_items(items_repo.list_active(session, board.id), item.id)
+    on_board = on_board_from_items(
+        items_repo.list_active(session, board.id, include_staged=False), item.id
+    )
     kept, excluded = apply_exclusions(list(pool), spec, source, cfg, on_board)
     cands = [score_candidate(p, spec, source_attrs, cfg) for p in kept]
     rows: dict[str, Any] = {}

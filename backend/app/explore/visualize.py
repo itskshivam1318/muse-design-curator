@@ -1,7 +1,7 @@
 """Visualize one option: edit the source image, add the result to the board, parse and check it.
 
 The request marks the option `visualizing` and queues the job. The job edits the image and
-stores it as a generated item beside the option's note; a failure there leaves no item and puts
+stores it as a staged take (hidden from the canvas until kept); a failure there leaves no item and puts
 the option back. After that the item stays: a parse or check failure is stored on it.
 """
 
@@ -39,8 +39,6 @@ from app.storage import files
 log = logging.getLogger(__name__)
 
 JOB = "visualize_option"
-NOTE_OFFSET = 60  # source edge to the note's first fan column (the browser's OFFSET_X)
-NOTE_WIDTH = 220  # the browser's NOTE_W
 IMAGE_GAP = 40  # note edge to the generated item
 STACK_GAP = 24  # between images generated from the same option
 UNSAFE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
@@ -124,17 +122,14 @@ def _ingest(
     storage = files.save_original(data, sha, "png")
     thumb = files.save_thumb(img, sha)
     w, h = default_size(*img.size)
-    # right of the option's note; each repeat below the one before, so they never stack
-    note_x = o.x if o.x is not None else source.x + source.w + NOTE_OFFSET
-    note_y = o.y if o.y is not None else source.y
-    done = explore_repo.generated_count(session, o.id)
-    x, y = note_x + NOTE_WIDTH + IMAGE_GAP, note_y + done * (h + STACK_GAP)
+    # a take is staged, not drawn: it sits at the source until the user keeps it somewhere
+    x, y = source.x, source.y
     meta = ItemMeta(origin="generated", filename=_title(o.name), x=x, y=y)
     return create_item(
         session, source.board_id, meta,
         kind="image", sha256=sha, storage_path=storage, thumb_path=thumb, mime="image/png",
         width=img.size[0], height=img.size[1], w=w, h=h, rights_status="generated",
-        parent_item_id=source.id, explore_option_id=o.id,
+        parent_item_id=source.id, explore_option_id=o.id, staged=True,
         generation_json={"model": model, "prompt": o.edit_prompt, "option_id": o.id},
     )  # fmt: skip
 

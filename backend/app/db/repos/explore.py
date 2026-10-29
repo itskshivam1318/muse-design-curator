@@ -76,6 +76,22 @@ def generated_count(session: Session, option_id: str) -> int:
     return session.scalar(q) or 0
 
 
+def takes(session: Session, option_ids: list[str]) -> dict[str, list[str]]:
+    """Item ids of each option's takes (generated items still on the board), oldest first."""
+    out: dict[str, list[str]] = {i: [] for i in option_ids}
+    if not option_ids:
+        return out
+    q = (
+        select(BoardItem.explore_option_id, BoardItem.id)
+        .where(BoardItem.explore_option_id.in_(option_ids), BoardItem.removed_at.is_(None))
+        .order_by(BoardItem.id)
+    )
+    for option_id, item_id in session.execute(q):
+        if option_id is not None:
+            out[option_id].append(item_id)
+    return out
+
+
 def next_batch(session: Session, exploration_id: str) -> int:
     top = session.scalar(
         select(func.max(ExploreOption.batch)).where(ExploreOption.exploration_id == exploration_id)
@@ -83,19 +99,21 @@ def next_batch(session: Session, exploration_id: str) -> int:
     return (top or 0) + 1
 
 
-def option_to_dict(o: ExploreOption) -> dict[str, Any]:
+def option_to_dict(o: ExploreOption, takes: list[str] | None = None) -> dict[str, Any]:
     return {
         "id": o.id, "exploration_id": o.exploration_id,
         "parent_option_id": o.parent_option_id, "batch": o.batch, "steer": o.steer,
         "name": o.name, "description": o.description, "distance": o.distance,
         "value": o.value_json, "keeps": o.keeps_json, "edit_prompt": o.edit_prompt,
         "status": o.status, "last_error": o.last_error, "x": o.x, "y": o.y,
-        "created_at": o.created_at, "kept_item_id": o.kept_item_id,
+        "created_at": o.created_at, "kept_item_id": o.kept_item_id, "takes": takes or [],
     }  # fmt: skip
 
 
-def exploration_to_dict(e: Exploration, opts: list[ExploreOption]) -> dict[str, Any]:
+def exploration_to_dict(
+    e: Exploration, opts: list[ExploreOption], takes: dict[str, list[str]] | None = None
+) -> dict[str, Any]:
     return {
         "id": e.id, "board_id": e.board_id, "item_id": e.item_id, "key": e.key,
-        "created_at": e.created_at, "options": [option_to_dict(o) for o in opts],
+        "created_at": e.created_at, "options": [option_to_dict(o, (takes or {}).get(o.id)) for o in opts],
     }  # fmt: skip

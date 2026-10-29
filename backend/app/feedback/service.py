@@ -159,7 +159,7 @@ def _create_item(
     thumb = files.save_thumb(img, sha)
     w, h = default_size(*img.size)
     parent = items_repo.get(session, run.source_item_id)
-    active = items_repo.list_active(session, run.board_id)
+    active = items_repo.list_active(session, run.board_id, include_staged=False)
     z = max((i.z for i in active), default=-1) + 1
     if parent is not None:
         taken = [(i.x, i.y, i.w, i.h) for i in active]

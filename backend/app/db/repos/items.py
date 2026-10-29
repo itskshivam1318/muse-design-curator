@@ -18,8 +18,14 @@ def get(session: Session, item_id: str) -> BoardItem | None:
     return session.get(BoardItem, item_id)
 
 
-def list_active(session: Session, board_id: str) -> list[BoardItem]:
+def list_active(
+    session: Session, board_id: str, *, include_staged: bool = True
+) -> list[BoardItem]:
+    """The board's items, staged takes included unless `include_staged` is False. Work on the
+    board's images (profile, lens, retrieval, placement) passes False: a take is hidden."""
     q = select(BoardItem).where(BoardItem.board_id == board_id, BoardItem.removed_at.is_(None))
+    if not include_staged:
+        q = q.where(BoardItem.staged.is_(False))
     return list(session.scalars(q.order_by(BoardItem.z, BoardItem.id)))
 
 

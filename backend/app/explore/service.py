@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app import events
 from app.config import get_settings
-from app.db.models import Exploration, ExploreOption
+from app.db.models import BoardItem, Exploration, ExploreOption
 from app.db.repos import boards as boards_repo
 from app.db.repos import explore as explore_repo
 from app.db.session import after_commit
@@ -130,7 +130,10 @@ def visible(session: Session, exploration_id: str) -> list[ExploreOption]:
 
 
 def publish_later(session: Session, e: Exploration) -> None:
-    data = explore_repo.exploration_to_dict(e, visible(session, e.id))
+    opts = visible(session, e.id)
+    data = explore_repo.exploration_to_dict(
+        e, opts, explore_repo.takes(session, [o.id for o in opts])
+    )
     after_commit(session, partial(events.publish, e.board_id, EVENT, data))
 
 
@@ -146,6 +149,8 @@ def explore(
     """Add a batch of options to the item's exploration of `key`; returns its visible options."""
     require_enabled()
     item = _require_item(session, item_id)
+    if item.staged:
+        raise AppError(404, "ITEM_NOT_FOUND", "Item not found")
     if item.kind == "note":
         raise AppError(400, "NOT_AN_IMAGE", "A note has no image to explore")
     lens = current_lens(session, item.board_id)
@@ -202,7 +207,13 @@ def explore(
 
 
 def resting_status(session: Session, option_id: str) -> str:
-    """An option not dismissed or busy: visualized once it has an image on the board, else open."""
+    """An option not dismissed or busy: kept while a take is kept, visualized once it has an
+    image on the board, else open."""
+    o = explore_repo.get_option(session, option_id)
+    if o is not None and o.kept_item_id is not None:
+        kept = session.get(BoardItem, o.kept_item_id)
+        if kept is not None and kept.removed_at is None:
+            return "kept"
     return "visualized" if explore_repo.has_generated(session, option_id) else "open"
 
 

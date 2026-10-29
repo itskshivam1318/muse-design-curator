@@ -257,7 +257,9 @@ def compute_profile(
     votes: Mapping[str, float],
 ) -> BoardProfile:
     """Pure aggregation of reliable, enabled attribute values. No DB access."""
-    items = [i for i in items if getattr(i, "kind", None) != "note"]
+    items = [
+        i for i in items if getattr(i, "kind", None) != "note" and not getattr(i, "staged", False)
+    ]
     refs = [i for i in items if i.role == REFERENCE]
     counters = [i for i in items if i.role == COUNTER]
     specs = {a.key: a for a in lens.attributes} if lens else {}
@@ -380,7 +382,7 @@ def recompute(session: Session, board_id: str) -> int | None:
             lens = ensure_board_lens(session, board_id)
         except AppError:
             lens = None
-        items = items_repo.list_active(session, board_id)
+        items = items_repo.list_active(session, board_id, include_staged=False)
         attrs = {i.id: attrs_repo.for_item(session, i.id) for i in items}
         refs = [i for i in items if i.role == REFERENCE]
         profile = compute_profile(items, attrs, lens, domain_votes(session, refs))

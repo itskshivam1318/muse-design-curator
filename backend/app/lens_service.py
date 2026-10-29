@@ -58,7 +58,7 @@ def _require_board(session: Session, board_id: str) -> Board:
 def _eligible(session: Session, board_id: str) -> list[BoardItem]:
     return [
         i
-        for i in items_repo.list_active(session, board_id)
+        for i in items_repo.list_active(session, board_id, include_staged=False)
         if i.kind != "note" and i.parse_status in LENS_ITEM_STATUSES
     ]
 
@@ -137,7 +137,8 @@ def auto_attach_domain(session: Session, board_id: str) -> str | None:
     board = _require_board(session, board_id)
     if board.domain:
         return None
-    embedded = [i for i in items_repo.list_active(session, board.id) if i.embedding_json]
+    embedded = [i for i in items_repo.list_active(session, board.id, include_staged=False)
+        if i.embedding_json]
     if len(embedded) < AUTO_MIN_EMBEDDED:
         return None
     votes = domain_votes(session, embedded)
@@ -227,7 +228,9 @@ def needs_part_check(spec: LensSpec) -> bool:
 
 
 def _board_images(session: Session, board_id: str) -> list[bytes]:
-    sampled = sample_diverse(items_repo.list_active(session, board_id), MAX_PRUNE_IMAGES)
+    sampled = sample_diverse(
+        items_repo.list_active(session, board_id, include_staged=False), MAX_PRUNE_IMAGES
+    )
     return [b for b in (_image_bytes(i) for i in sampled) if b is not None]
 
 

@@ -35,7 +35,7 @@ def default_size(width: int, height: int) -> tuple[float, float]:
 
 def place(session: Session, board_id: str, meta: ItemMeta) -> tuple[float, float, int]:
     """Drop point if given, else right of the right-most item. Returns (x, y, z)."""
-    active = items_repo.list_active(session, board_id)
+    active = items_repo.list_active(session, board_id, include_staged=False)
     z = max((i.z for i in active), default=-1) + 1
     if meta.x is not None and meta.y is not None:
         return meta.x, meta.y, z

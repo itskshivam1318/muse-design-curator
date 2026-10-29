@@ -36,6 +36,7 @@ def existing_by_sha(session: Session, board_id: str, sha: str) -> BoardItem | No
             BoardItem.board_id == board_id,
             BoardItem.sha256 == sha,
             BoardItem.removed_at.is_(None),
+            BoardItem.staged.is_(False),
         )
     ).first()
 

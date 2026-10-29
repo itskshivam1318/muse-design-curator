@@ -64,8 +64,8 @@ def test_visualize_creates_generated_item_with_lineage(client: TestClient, world
     assert item.generation_json == {
         "model": "mock-image", "prompt": opt["edit_prompt"], "option_id": opt["id"]
     }  # fmt: skip
-    # no saved or drawn position: the note's first fan column, then past the note
-    assert item.x == src.x + src.w + 60 + 220 + 40 and item.y == src.y
+    assert item.staged is True  # a take: hidden until kept
+    assert (item.x, item.y) == (src.x, src.y)  # the note is not drawn: the source's spot
     assert item.original_filename == f"{opt['name']}.png"
     assert item.parse_status == "completed"
     assert option_row(world, opt["id"]).status == "visualized"
@@ -73,33 +73,16 @@ def test_visualize_creates_generated_item_with_lineage(client: TestClient, world
     assert listed["status"] == "visualized" and listed["last_error"] is None
 
 
-def test_generated_item_sits_right_of_a_placed_note(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+def test_takes_ignore_the_note_position(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
     opt = first_option(client, world)
-    client.patch(f"/api/options/{opt['id']}", json={"x": 100, "y": -50})
-    assert run(client, opt["id"]).status_code == 202
-    (item,) = generated(world, opt["id"])
-    assert (item.x, item.y) == (360, -50)
-
-
-def test_drawn_position_is_saved_and_repeats_do_not_stack(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
-    opt = first_option(client, world)  # never dragged: the browser sends where it drew the note
     assert run(client, opt["id"], {"x": 500, "y": 80}).status_code == 202
     o = option_row(world, opt["id"])
-    assert (o.x, o.y) == (500, 80)
-    assert run(client, opt["id"], {"x": 500, "y": 80}).status_code == 202
+    assert (o.x, o.y) == (500, 80)  # still saved for the note
+    assert run(client, opt["id"]).status_code == 202
+    src = items_repo.get(world["session"], source(world))
     a, b = generated(world, opt["id"])
-    assert (a.x, a.y) == (500 + 220 + 40, 80)
-    assert b.x == a.x and b.y == a.y + a.h + 24
-    overlap = a.x < b.x + b.w and b.x < a.x + a.w and a.y < b.y + b.h and b.y < a.y + a.h
-    assert not overlap
-
-
-def test_never_dragged_repeats_do_not_stack_without_a_body(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
-    opt = first_option(client, world)
-    run(client, opt["id"])
-    run(client, opt["id"])
-    a, b = generated(world, opt["id"])
-    assert a.x == b.x and b.y >= a.y + a.h
+    assert a.staged and b.staged
+    assert (a.x, a.y) == (b.x, b.y) == (src.x, src.y)
 
 
 def test_generated_title_is_sanitised(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
