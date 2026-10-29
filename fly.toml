@@ -1,7 +1,8 @@
-# fly.toml app configuration file generated for muse-curator on 2026-10-29T15:46:26+05:30
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
+# Fly.io: one machine serving the API (/api) and the built app (/) from the root Dockerfile.
+# SQLite, SSE and rate limits live in one process: never run more than one machine.
+#   fly deploy --ha=false
+# Board data lives on the muse_data volume. The first start copied the baked data/ snapshot onto
+# it (docker-entrypoint.sh); later deploys never overwrite /data, so testers' boards survive.
 
 app = 'muse-curator'
 primary_region = 'sin'

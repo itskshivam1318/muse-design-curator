@@ -14,6 +14,7 @@
 **/*.pyc
 backend/.venv
 backend/tests
+!backend/tests/fixtures/protected_defaults.json
 backend/.pytest_cache
 backend/.mypy_cache
 backend/.ruff_cache

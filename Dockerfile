@@ -15,6 +15,8 @@ WORKDIR /web
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
+# src/vary/logic.test.ts type-checks against the fixture shared with the backend tests
+COPY backend/tests/fixtures/protected_defaults.json /backend/tests/fixtures/
 RUN npm run build
 
 # ---- 2. the API runtime ----
