@@ -34,6 +34,7 @@ MAX_STDOUT = 1024 * 1024
 STDERR_TAIL = 4096
 OUTPUT_KINDS = ("images", "notes", "attributes", "text", "table")
 SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+MAX_IMAGE_RESULTS = 8  # image results per run, across all inputs
 PART_PROMPT = "Change only the {part}: {prompt}. Keep everything else exactly the same."
 
 
@@ -225,14 +226,6 @@ def _scalar_or_none(v: Any) -> bool:
 # ---- python runner -------------------------------------------------------------------------
 
 
-def _kill(proc: subprocess.Popen[bytes]) -> None:
-    try:
-        os.killpg(proc.pid, signal.SIGKILL)  # the plugin's children too
-    except (ProcessLookupError, PermissionError, AttributeError):
-        proc.kill()
-    proc.wait()
-
-
 def _image_paths_to_b64(out: Any, tmp: Path) -> Any:
     """A python plugin may return images as files it wrote in its temp dir."""
     if not isinstance(out, dict) or not isinstance(out.get("images"), list):
@@ -309,18 +302,27 @@ def _run_python(
         threads = [threading.Thread(target=t, daemon=True) for t in (feed, read_out, read_err)]
         for t in threads:
             t.start()
+        timed_out = False
         try:
             proc.wait(timeout=settings.PLUGIN_TIMEOUT_S)
         except subprocess.TimeoutExpired:
-            _kill(proc)
-            raise PluginError(
-                "PLUGIN_TIMEOUT", f"{p.manifest.name} ran longer than {settings.PLUGIN_TIMEOUT_S} s"
-            ) from None
+            timed_out = True
         finally:
+            # on every path: kill the whole group, so a background grandchild holding the pipes
+            # neither outlives the run nor keeps the readers blocked
+            _kill_quietly(proc)
+            proc.wait()
             for t in threads:
                 t.join(timeout=5)
-            for s in (proc.stdout, proc.stderr):
-                s.close()
+            for s in (proc.stdin, proc.stdout, proc.stderr):
+                try:
+                    s.close()
+                except OSError:  # stdin after a broken pipe
+                    pass
+        if timed_out:
+            raise PluginError(
+                "PLUGIN_TIMEOUT", f"{p.manifest.name} ran longer than {settings.PLUGIN_TIMEOUT_S} s"
+            )
         if too_large.is_set():
             raise _bad_output("output too large (over 1 MB)")
         tail = bytes(stderr[-STDERR_TAIL:]).decode("utf-8", "replace").strip()
@@ -336,8 +338,9 @@ def _run_python(
 
 
 def _kill_quietly(proc: subprocess.Popen[bytes]) -> None:
+    """SIGKILL the plugin's process group (its children too); nothing left is fine."""
     try:
-        os.killpg(proc.pid, signal.SIGKILL)
+        os.killpg(proc.pid, signal.SIGKILL)  # pgid == pid: start_new_session=True
     except (ProcessLookupError, PermissionError, AttributeError):
         try:
             proc.kill()
@@ -437,18 +440,22 @@ def _run_model(
     if m.model not in ("image.edit", "image.generate"):
         raise PluginError("PLUGIN_NOT_CONNECTED", f"the {m.name} model is not connected")
     prompt = _model_prompt(params, inputs)
-    count = int(params.get("count") or 1)
-    sources = [i.image for i in inputs if i.image is not None][:count]
+    count = max(1, int(params.get("count") or 1))  # results per input image
+    sources = [i.image for i in inputs if i.image is not None] if m.model == "image.edit" else []
+    jobs: list[bytes | None] = (
+        [s for s in sources for _ in range(count)] if sources else [None] * count
+    )
+    jobs = jobs[:MAX_IMAGE_RESULTS]
     provider = get_image_provider(settings)
     images = []
     try:
-        if m.model == "image.edit" and sources:
-            for n, src in enumerate(sources, 1):
-                progress(f"Editing image {n} of {len(sources)}")
+        for n, src in enumerate(jobs, 1):
+            if src is None:
+                progress(f"Generating image {n} of {len(jobs)}")
+                images.append(provider.generate(prompt))
+            else:
+                progress(f"Editing image {n} of {len(jobs)}")
                 images.append(provider.edit(src, prompt))
-        else:
-            progress("Generating an image")
-            images.append(provider.generate(prompt))
     except ModelError as e:
         raise PluginError("PLUGIN_MODEL_FAILED", f"the image model failed: {e.message}") from None
     caption = prompt if len(prompt) <= 200 else prompt[:199] + "…"

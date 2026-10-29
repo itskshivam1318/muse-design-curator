@@ -22,6 +22,7 @@ MAX_EXPLORE_IMAGES = 4
 MAX_STRUCTURED_IMAGES = 12
 BASETEN_URL = "https://inference.baseten.co/v1"
 SCHEMA_NAME = "design_language"
+PLUGIN_SCHEMA_NAME = "plugin_output"
 
 
 class ReasoningProvider(Protocol):
@@ -48,6 +49,33 @@ class ReasoningProvider(Protocol):
     def structured(
         self, images: list[bytes], schema: dict[str, Any], prompt: str
     ) -> dict[str, Any]: ...
+
+
+def strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """A copy of `schema` that strict structured output accepts: every object is closed
+    (additionalProperties: false) and lists all of its properties as required."""
+
+    maps = ("properties", "$defs", "definitions")  # name -> subschema, not schemas themselves
+
+    def walk(node: Any) -> Any:
+        if isinstance(node, list):
+            return [walk(x) for x in node]
+        if not isinstance(node, dict):
+            return node
+        out = {
+            k: {n: walk(sub) for n, sub in v.items()} if k in maps and isinstance(v, dict)
+            else walk(v)
+            for k, v in node.items()
+        }  # fmt: skip
+        if out.get("type") == "object" or isinstance(out.get("properties"), dict):
+            props = out.setdefault("properties", {})
+            out["additionalProperties"] = False
+            out["required"] = list(props)
+        return out
+
+    result = walk(copy.deepcopy(schema))
+    assert isinstance(result, dict)
+    return result
 
 
 def _limit(images: list[bytes], maximum: int) -> None:
@@ -92,29 +120,29 @@ class MuseSparkProvider:
         self.max_retries = max_retries
         self.timeout = timeout
 
-    def _fmt(self, schema: dict[str, Any], strict: bool = True) -> dict[str, Any]:
-        return {"format": {"type": "json_schema", "name": SCHEMA_NAME, "schema": schema,
-                           "strict": strict}}  # fmt: skip
+    def _fmt(self, schema: dict[str, Any], name: str = SCHEMA_NAME) -> dict[str, Any]:
+        return {"format": {"type": "json_schema", "name": name, "schema": schema,
+                           "strict": True}}  # fmt: skip
 
     def _kwargs(
         self, prompt: str, images: list[bytes], schema: dict[str, Any], effort: str,
-        strict: bool = True,
+        name: str = SCHEMA_NAME,
     ) -> dict[str, Any]:  # fmt: skip
         return {
             "model": self.model,
             "input": _responses_input(prompt, images),
-            "text": self._fmt(schema, strict),
+            "text": self._fmt(schema, name),
             "reasoning": {"effort": effort},
             "store": False,
         }
 
     def _run(
         self, prompt: str, images: list[bytes], schema: dict[str, Any], effort: str,
-        strict: bool = True,
+        name: str = SCHEMA_NAME,
     ) -> dict[str, Any]:  # fmt: skip
         def go() -> dict[str, Any]:
             resp = self.client.responses.create(
-                **self._kwargs(prompt, images, schema, effort, strict)
+                **self._kwargs(prompt, images, schema, effort, name)
             )
             return parse_json_text(resp.output_text)
 
@@ -158,10 +186,10 @@ class MuseSparkProvider:
     def structured(
         self, images: list[bytes], schema: dict[str, Any], prompt: str
     ) -> dict[str, Any]:
-        """Generic schema-shaped output for plugins. Plugin schemas are not written for strict
-        mode (open objects, optional keys), so the schema guides rather than constrains."""
+        """Generic schema-shaped output for plugins. Plugin schemas are written loosely (open
+        objects, optional keys), so they are closed with `strict_schema` for strict mode."""
         _limit(images, MAX_STRUCTURED_IMAGES)
-        return self._run(prompt, images, schema, "low", strict=False)
+        return self._run(prompt, images, strict_schema(schema), "low", PLUGIN_SCHEMA_NAME)
 
 
 class MuseSparkOpenProvider:

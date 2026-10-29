@@ -1,6 +1,8 @@
 import base64
 import io
 import json
+import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +23,7 @@ def py_plugin(
     tmp_path: Path, body: str, *, outputs: list[str] | None = None, **over: Any
 ) -> Plugin:
     d = tmp_path / "plug"
-    d.mkdir()
+    d.mkdir(parents=True)
     (d / "main.py").write_text(body)
     data = {
         "id": "demo", "name": "Demo", "description": "x", "mark": "D", "tint": "#fff",
@@ -104,6 +106,37 @@ def test_python_plugin_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     with pytest.raises(PluginError) as e:
         run(p, [note()])
     assert code(e) == "PLUGIN_TIMEOUT"
+    # the runner is left in a clean state: the next run on the same settings works
+    ok = py_plugin(tmp_path / "next", "def run(inputs, params, ctx):\n    return {'text': 'ok'}\n")
+    assert run(ok, [note()]) == {"text": "ok"}
+
+
+def test_python_plugin_background_child_is_killed(tmp_path: Path) -> None:
+    pidfile = tmp_path / "child.pid"
+    p = py_plugin(
+        tmp_path,
+        "import subprocess, sys\n"
+        "def run(inputs, params, ctx):\n"
+        "    # inherits the shim's stdout/stderr pipes and outlives the plugin process\n"
+        "    c = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+        "    open(params['pidfile'], 'w').write(str(c.pid))\n"
+        "    return {'text': 'done'}\n",
+        params={"type": "object", "properties": {"pidfile": {"type": "string"}}},
+    )
+    start = time.monotonic()
+    assert run(p, [note()], {"pidfile": str(pidfile)}) == {"text": "done"}
+    assert time.monotonic() - start < 4
+    pid = int(pidfile.read_text())
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.05)
+    else:
+        os.kill(pid, 9)
+        pytest.fail("background child of the plugin survived the run")
 
 
 def test_python_plugin_crash_reports_stderr(tmp_path: Path) -> None:
@@ -356,6 +389,7 @@ class RecordingImages:
     def __init__(self) -> None:
         self.edits: list[str] = []
         self.gens: list[str] = []
+        self.sources: list[bytes] = []
 
     def _png(self) -> bytes:
         buf = io.BytesIO()
@@ -364,6 +398,7 @@ class RecordingImages:
 
     def edit(self, image: bytes, prompt: str) -> bytes:
         self.edits.append(prompt)
+        self.sources.append(image)
         return self._png()
 
     def generate(self, prompt: str) -> bytes:
@@ -375,16 +410,12 @@ def test_model_runner_part_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = RecordingImages()
     monkeypatch.setattr(runners, "get_image_provider", lambda settings: fake)
     p = builtin("image")
-    out = run(p, [img("a"), img("b", 1), img("c", 2)],
-              {"mode": "part", "part": "legs", "prompt": "make them brass", "count": 2})  # fmt: skip
-    assert (
-        fake.edits
-        == [
-            "Change only the legs: make them brass. Keep everything else exactly the same.",
-        ]
-        * 2
-    )
-    assert len(out["images"]) == 2
+    inputs = [img("a"), img("b", 1), img("c", 2)]
+    out = run(p, inputs, {"mode": "part", "part": "legs", "prompt": "make them brass", "count": 2})
+    want = "Change only the legs: make them brass. Keep everything else exactly the same."
+    assert fake.edits == [want] * 6  # count = results per input image
+    assert fake.sources == [i.image for i in inputs for _ in range(2)]
+    assert len(out["images"]) == 6
     assert all(base64.b64decode(x["data_b64"]) for x in out["images"])
 
 
@@ -398,9 +429,21 @@ def test_model_runner_whole_appends_notes(monkeypatch: pytest.MonkeyPatch) -> No
 def test_model_runner_generates_without_images(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = RecordingImages()
     monkeypatch.setattr(runners, "get_image_provider", lambda settings: fake)
-    out = run(builtin("image"), [note()], {"mode": "whole", "prompt": "a stool"})
-    assert fake.gens == ["a stool\nsofter edges"] and not fake.edits
-    assert len(out["images"]) == 1
+    out = run(builtin("image"), [note()], {"mode": "whole", "prompt": "a stool", "count": 3})
+    assert fake.gens == ["a stool\nsofter edges"] * 3 and not fake.edits
+    assert len(out["images"]) == 3
+    run(builtin("image"), [note()], {"mode": "whole", "prompt": "a stool"})  # default count 1
+    assert len(fake.gens) == 4
+
+
+def test_model_runner_caps_results(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = RecordingImages()
+    monkeypatch.setattr(runners, "get_image_provider", lambda settings: fake)
+    inputs = [img("a"), img("b", 1), img("c", 2)]
+    out = run(builtin("image"), inputs, {"mode": "whole", "prompt": "dusk", "count": 4})
+    assert runners.MAX_IMAGE_RESULTS == 8
+    assert len(fake.edits) == 8 and len(out["images"]) == 8
+    assert fake.sources == [inputs[0].image] * 4 + [inputs[1].image] * 4
 
 
 def test_model_runner_needs_a_prompt() -> None:
