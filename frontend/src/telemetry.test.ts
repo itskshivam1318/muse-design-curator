@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { flush, setBoard, track } from './telemetry'
+import { describeUiAction, flush, setBoard, track, uiActivity } from './telemetry'
 
 describe('telemetry', () => {
   const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })))
@@ -59,5 +59,43 @@ describe('telemetry', () => {
     setBoard('brd_1')
     track('x')
     expect(() => flush()).not.toThrow()
+  })
+})
+
+describe('ui activity', () => {
+  afterEach(() => setBoard(null))
+
+  it('keeps a plain sentence for the actions worth showing, and skips the rest', () => {
+    setBoard('brd_1')
+    track('drawer.open', { itemId: 'i1', detail: { kind: 'inspect' } })
+    track('drawer.close', { itemId: 'i1', detail: { kind: 'inspect' } })
+    track('candidate.open', { detail: { candidate: 'c1' } })
+    track('vary.run', { itemId: 'i1', runId: 'r1', detail: { target: 'dial_color' } })
+    track('candidate.keep', { runId: 'r1' })
+    track('candidate.reject', { runId: 'r1' })
+    track('item.remove', { detail: { items: ['a', 'b'] } })
+    track('item.role', { detail: { items: ['a'], role: 'counter_example' } })
+    track('something.new')
+    expect(uiActivity.get().map((e) => e.text)).toEqual([
+      'Opened Inspect.',
+      'Started Find real examples for dial color.',
+      'Kept a real example.',
+      'Rejected a real example.',
+      'Removed 2 items.',
+      'Marked 1 item as not this.',
+    ])
+  })
+
+  it('keeps the last 50 and clears when the board changes', () => {
+    setBoard('brd_1')
+    for (let i = 0; i < 60; i++) track('item.remove', { detail: { items: ['a'] } })
+    expect(uiActivity.get()).toHaveLength(50)
+    setBoard('brd_2')
+    expect(uiActivity.get()).toHaveLength(0)
+  })
+
+  it('describeUiAction returns null for unknown actions', () => {
+    expect(describeUiAction('run.shown', {})).toBeNull()
+    expect(describeUiAction('nope', undefined)).toBeNull()
   })
 })

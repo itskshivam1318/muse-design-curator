@@ -35,27 +35,33 @@ interface Props {
   onOpen: (id: RailId | null) => void
   /** Plugins are on (server flag): show the Plugins icon. */
   plugins: boolean
+  /** A lens proposal waits in Library: a small dot on its icon. */
+  lensWaiting?: boolean
 }
 
 /** Slim left rail: one 40 px icon button per slide-out panel; clicking the open one closes it. */
-export function LeftRail({ open, onOpen, plugins }: Props) {
+export function LeftRail({ open, onOpen, plugins, lensWaiting = false }: Props) {
   const ids: RailId[] = plugins ? ['library', 'search', 'plugins', 'vocabulary'] : ['library', 'search', 'vocabulary']
   return (
     <nav className="left-rail" aria-label="Panels">
-      {ids.map((id) => (
+      {ids.map((id) => {
+        const dot = id === 'library' && lensWaiting
+        return (
         <button
           key={id}
           type="button"
           className="rail-btn"
           data-rail={id}
-          aria-label={RAIL_LABELS[id]}
+          aria-label={dot ? `${RAIL_LABELS[id]}, new lens to review` : RAIL_LABELS[id]}
           title={RAIL_LABELS[id]}
           aria-pressed={open === id}
           onClick={() => onOpen(open === id ? null : id)}
         >
           {ICONS[id]}
+          {dot && <span className="rail-dot" aria-hidden="true" />}
         </button>
-      ))}
+        )
+      })}
     </nav>
   )
 }

@@ -36,7 +36,7 @@ import { UploadStatus } from '../panels/UploadStatus'
 import { useBoard, useBoardLens, useItems, useProfile } from '../queries'
 import { Link } from '../Link'
 import { BoardShell } from '../shell/BoardShell'
-import { railStore, setTool } from '../shell/tools'
+import { closeRail, noteLensProposal, openRail, railStore, setTool } from '../shell/tools'
 import { insideOverlay, isTyping } from './shortcutGuard'
 import { runStore } from '../vary/runStore'
 
@@ -61,7 +61,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
     selection.reset()
     runStore.clear()
     setTool('select')
-    railStore.set(null)
+    closeRail()
     setTelemetryBoard(boardId)
     const disconnect = connectBoardEvents(boardId, qc, { onStatus: setLive })
     return () => {
@@ -159,7 +159,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
           // (the tool goes back to Select in BoardShell's own handler)
           if (runStore.get().openCandidate) runStore.open(null)
           else if (selectionStore.get().drawer) selection.closeDrawer()
-          else if (railStore.get()) railStore.set(null)
+          else if (railStore.get().open) closeRail()
           else selection.clear()
           break
         default:
@@ -190,11 +190,9 @@ export function BoardPage({ boardId }: { boardId: string }) {
     void qc.invalidateQueries({ queryKey: keys.board(boardId) })
   }
 
-  // a lens proposal waits in Library: open it there once, unless another panel is open
+  // a lens proposal waits in Library: open it there once, or flag Library if another panel is open
   const proposedId = lens.data?.status === 'proposed' && lens.data.id !== dismissedLens ? lens.data.id : null
-  useEffect(() => {
-    if (proposedId && !railStore.get()) railStore.set('library')
-  }, [proposedId])
+  useEffect(() => noteLensProposal(proposedId !== null), [proposedId])
 
   if (board.isError) {
     const notFound = board.error instanceof ApiError && board.error.status === 404
@@ -287,7 +285,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
               <Onboarding
                 itemCount={list.length}
                 onFocusContext={() => contextBar.current?.focus()}
-                onOpenAdd={() => railStore.set('library')}
+                onOpenAdd={() => openRail('library')}
               />
             )}
             <MaybeStrip boardId={boardId} streamOpen={live === 'open'} onKept={onKept} />

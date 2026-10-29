@@ -36,9 +36,36 @@ export const toolStore = createStore<Tool>('select')
 export const setTool = (t: Tool): void => toolStore.set(t)
 export const useTool = (): Tool => useSyncExternalStore(toolStore.subscribe, toolStore.get)
 
-/** The open left-rail panel, if any (BoardPage closes it in its Escape chain). */
-export const railStore = createStore<RailId | null>(null)
-export const useRail = (): RailId | null => useSyncExternalStore(railStore.subscribe, railStore.get)
+export interface RailState {
+  /** The open left-rail panel, if any (BoardPage closes it in its Escape chain). */
+  open: RailId | null
+  /** Who opened it: the person (the panel takes focus) or the board (it leaves focus be). */
+  reason: 'user' | 'auto'
+  /** A lens proposal waits in Library while another panel is open (a dot on the Library icon). */
+  lensWaiting: boolean
+}
+
+export const railStore = createStore<RailState>({ open: null, reason: 'user', lensWaiting: false })
+export const useRail = (): RailState => useSyncExternalStore(railStore.subscribe, railStore.get)
+
+export function openRail(id: RailId, reason: RailState['reason'] = 'user'): void {
+  const cur = railStore.get()
+  railStore.set({ open: id, reason, lensWaiting: id === 'library' ? false : cur.lensWaiting })
+}
+
+export function closeRail(): void {
+  const cur = railStore.get()
+  if (cur.open !== null) railStore.set({ ...cur, open: null })
+}
+
+/** A lens proposal appeared (or went): open Library for it, or flag Library if another panel is open. */
+export function noteLensProposal(present: boolean): void {
+  const cur = railStore.get()
+  if (!present) {
+    if (cur.lensWaiting) railStore.set({ ...cur, lensWaiting: false })
+  } else if (cur.open === null) openRail('library', 'auto')
+  else if (cur.open !== 'library') railStore.set({ ...cur, lensWaiting: true })
+}
 
 /** `n` note, `a` axis (only with explore on), `Escape` select; every other key is not a tool key. */
 export function toolForKey(key: string, flags: { explore: boolean }): Tool | null {

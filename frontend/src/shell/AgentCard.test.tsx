@@ -1,7 +1,8 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { selection } from '../canvas/selection'
 import { boardActivity } from '../events'
+import { setBoard, track } from '../telemetry'
 import { AgentCard } from './AgentCard'
 
 afterEach(() => {
@@ -59,5 +60,27 @@ describe('AgentCard', () => {
     expect(screen.getByRole('complementary', { name: 'Muse agent' })).toBeTruthy()
     act(() => selection.openDrawer('inspect', 'i1'))
     expect(screen.queryByRole('complementary', { name: 'Muse agent' })).toBeNull()
+  })
+})
+
+describe('AgentCard, both streams', () => {
+  afterEach(() => setBoard(null))
+
+  it('shows the newest of board events and UI actions, and lists both newest first', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-29T10:00:00Z'))
+    setBoard('b1')
+    boardActivity.push('Palette finished on 3 images.')
+    vi.setSystemTime(new Date('2026-10-29T10:01:00Z'))
+    track('drawer.open', { itemId: 'i1', detail: { kind: 'compare' } })
+    vi.useRealTimers()
+    render(<AgentCard boardId="b1" />)
+    expect(screen.getByText('Opened Compare.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Show activity' }))
+    const rows = within(screen.getByRole('list', { name: 'Activity' })).getAllByRole('listitem')
+    expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringContaining('Opened Compare.'),
+      expect.stringContaining('Palette finished on 3 images.'),
+    ])
   })
 })

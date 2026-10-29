@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import type { Item } from '../api'
 import { NodesMenu } from '../plugins/NodesMenu'
 import { RightDrawer } from '../panels/RightDrawer'
@@ -7,7 +7,7 @@ import { AgentCard } from './AgentCard'
 import { BottomToolbar } from './BottomToolbar'
 import { LeftRail } from './LeftRail'
 import { RailPanel } from './RailPanel'
-import { railStore, setTool, toolForKey, useRail } from './tools'
+import { closeRail as closeRailState, openRail, railStore, setTool, toolForKey, useRail } from './tools'
 import './shell.css'
 
 interface Props {
@@ -30,10 +30,16 @@ interface Props {
 
 /** The calm board: header, slim left rail with slide-outs, the canvas stage, tools and the agent card. */
 export function BoardShell({ boardId, items, header, canvas, library, overlays, onFocusItem, onFindExamples, plugins, explore }: Props) {
-  const openRail = useRail()
-  const rail = openRail === 'plugins' && !plugins ? null : openRail
+  const railState = useRail()
+  const rail = railState.open === 'plugins' && !plugins ? null : railState.open
   const [nodesOpen, setNodesOpen] = useState(false)
   const showNodes = nodesOpen && plugins
+  const stage = useRef<HTMLElement>(null)
+  // picked in Library: focus goes back to the board so its shortcuts work again
+  const focusItem = (item: Item) => {
+    onFocusItem(item)
+    stage.current?.focus()
+  }
 
   // tool shortcuts: n note, a axis, Escape select (never while typing)
   useEffect(() => {
@@ -47,8 +53,8 @@ export function BoardShell({ boardId, items, header, canvas, library, overlays, 
   }, [explore])
 
   const closeRail = () => {
-    const was = railStore.get()
-    railStore.set(null)
+    const was = railStore.get().open
+    closeRailState()
     if (was) document.querySelector<HTMLElement>(`.left-rail [data-rail="${was}"]`)?.focus()
   }
 
@@ -56,8 +62,13 @@ export function BoardShell({ boardId, items, header, canvas, library, overlays, 
     <div className="board-shell">
       <header className="board-header">{header}</header>
       <div className="board-body">
-        <LeftRail open={rail} onOpen={(id) => railStore.set(id)} plugins={plugins} />
-        <section className="board-stage" aria-label="Canvas">
+        <LeftRail
+          open={rail}
+          onOpen={(id) => (id ? openRail(id) : closeRailState())}
+          plugins={plugins}
+          lensWaiting={railState.lensWaiting}
+        />
+        <section className="board-stage" aria-label="Canvas" tabIndex={-1} ref={stage}>
           {canvas}
           {overlays}
           {rail && (
@@ -66,9 +77,10 @@ export function BoardShell({ boardId, items, header, canvas, library, overlays, 
               boardId={boardId}
               items={items}
               onClose={closeRail}
-              onFocusItem={onFocusItem}
+              onFocusItem={focusItem}
               onFindExamples={onFindExamples}
               library={library}
+              autoFocus={railState.reason === 'user'}
             />
           )}
           <div className="bottom-dock">

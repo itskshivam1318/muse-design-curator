@@ -5,7 +5,7 @@ import type { Item } from '../api'
 import { selection } from '../canvas/selection'
 import { makeItem } from '../test/fixtures'
 import { BoardShell } from './BoardShell'
-import { railStore, setTool, toolStore } from './tools'
+import { closeRail, noteLensProposal, openRail, setTool, toolStore } from './tools'
 
 beforeEach(() => {
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ demo_mode: false }), { status: 200 }))
@@ -15,7 +15,7 @@ afterEach(() => {
   cleanup()
   selection.reset()
   setTool('select')
-  railStore.set(null)
+  closeRail()
 })
 
 const items: Item[] = [
@@ -35,7 +35,15 @@ function setup(over: { plugins?: boolean; explore?: boolean } = {}) {
         items={items}
         header={<span>HEADER</span>}
         canvas={<textarea aria-label="Note text" />}
-        library={<p>LIBRARY EXTRAS</p>}
+        library={
+          <>
+            <p>LIBRARY EXTRAS</p>
+            <label>
+              Link to a page or image
+              <input type="url" />
+            </label>
+          </>
+        }
         onFocusItem={onFocusItem}
         onFindExamples={onFindExamples}
         plugins={over.plugins ?? true}
@@ -148,5 +156,54 @@ describe('BoardShell', () => {
     expect(screen.getByRole('complementary', { name: 'Muse agent' })).toBeTruthy()
     act(() => selection.openDrawer('inspect', 'i1'))
     expect(screen.queryByRole('complementary', { name: 'Muse agent' })).toBeNull()
+  })
+
+  it('picking an item in Library hands focus back to the board', () => {
+    setup()
+    fireEvent.click(rail().getByRole('button', { name: 'Library' }))
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Library' })).getByRole('button', { name: 'dial-macro.png' }))
+    expect(document.activeElement).toBe(screen.getByRole('region', { name: 'Canvas' }))
+  })
+
+  it('Escape in a text field of the panel keeps the panel and the typed text', () => {
+    setup()
+    fireEvent.click(rail().getByRole('button', { name: 'Library' }))
+    const input = screen.getByLabelText('Link to a page or image') as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'https://e.test/p' } })
+    input.focus()
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(screen.getByRole('dialog', { name: 'Library' })).toBeTruthy()
+    expect((screen.getByLabelText('Link to a page or image') as HTMLInputElement).value).toBe('https://e.test/p')
+  })
+
+  it('Escape elsewhere in the panel closes it and resets the tool to select', () => {
+    setup()
+    setTool('note')
+    fireEvent.click(rail().getByRole('button', { name: 'Library' }))
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Close Library' }), { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'Library' })).toBeNull()
+    expect(toolStore.get()).toBe('select')
+  })
+
+  it('opened from the rail, the panel takes focus; opened by the board, it does not', () => {
+    setup()
+    fireEvent.click(rail().getByRole('button', { name: 'Search' }))
+    expect(document.activeElement).toBe(screen.getByRole('dialog', { name: 'Search' }))
+    act(() => closeRail())
+    const ta = screen.getByLabelText('Note text')
+    ta.focus()
+    act(() => openRail('library', 'auto'))
+    expect(screen.getByRole('dialog', { name: 'Library' })).toBeTruthy()
+    expect(document.activeElement).toBe(ta)
+  })
+
+  it('a lens proposal while another panel is open puts a dot on Library', () => {
+    setup()
+    fireEvent.click(rail().getByRole('button', { name: 'Search' }))
+    act(() => noteLensProposal(true))
+    const lib = rail().getByRole('button', { name: 'Library, new lens to review' })
+    expect(lib.querySelector('.rail-dot')).toBeTruthy()
+    fireEvent.click(lib)
+    expect(rail().getByRole('button', { name: 'Library' }).querySelector('.rail-dot')).toBeNull()
   })
 })

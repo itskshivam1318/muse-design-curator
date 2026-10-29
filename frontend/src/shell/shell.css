@@ -462,3 +462,20 @@
     bottom: 220px;
   }
 }
+
+.rail-btn {
+  position: relative;
+}
+.rail-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--paper);
+}
+.board-stage:focus {
+  outline: none;
+}

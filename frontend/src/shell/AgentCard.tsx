@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useSelection } from '../canvas/selection'
-import { useBoardActivity } from '../events'
+import { useActivity } from './activity'
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
@@ -9,7 +9,7 @@ const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-d
  * (a shell this round: visible, disabled). Gives way to the right drawer.
  */
 export function AgentCard({ boardId }: { boardId: string }) {
-  const entries = useBoardActivity()
+  const entries = useActivity()
   const { drawer } = useSelection()
   const [expanded, setExpanded] = useState(false)
   if (drawer) return null

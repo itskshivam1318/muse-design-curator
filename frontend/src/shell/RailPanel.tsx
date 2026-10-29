@@ -2,9 +2,10 @@ import { type ReactNode, useEffect, useRef } from 'react'
 import { type Item, itemImageUrl } from '../api'
 import { useSelection } from '../canvas/selection'
 import { itemTitle } from '../format'
+import { isTyping } from '../pages/shortcutGuard'
 import { PluginsPanel } from '../plugins/PluginsPanel'
 import { visibleItems } from '../queries'
-import { RAIL_LABELS, type RailId } from './tools'
+import { RAIL_LABELS, type RailId, setTool } from './tools'
 
 interface Props {
   id: RailId
@@ -17,6 +18,8 @@ interface Props {
   onFindExamples: (item: Item) => void
   /** Library extras under the items list: add actions, board signals, lens review. */
   library?: ReactNode
+  /** Opened by the person (take focus) rather than by the board (leave focus be). */
+  autoFocus?: boolean
 }
 
 const label = (item: Item) => (item.kind === 'note' ? item.note_text?.trim() || 'Note' : itemTitle(item))
@@ -48,12 +51,12 @@ function ItemList({ items, name, onPick }: { items: Item[]; name: string; onPick
 }
 
 /** The slide-out beside the rail, over the canvas. Esc (or the rail icon again) closes it. */
-export function RailPanel({ id, boardId, items, onClose, onFocusItem, onFindExamples, library }: Props) {
+export function RailPanel({ id, boardId, items, onClose, onFocusItem, onFindExamples, library, autoFocus = true }: Props) {
   const ref = useRef<HTMLElement>(null)
-  // opened from its rail button: take focus; opened by the board (a lens to review): leave focus be
+  // opened by the person: take focus; opened by the board (a lens to review): leave focus be
   useEffect(() => {
-    if (document.activeElement?.closest('.left-rail')) ref.current?.focus()
-  }, [id])
+    if (autoFocus) ref.current?.focus()
+  }, [id, autoFocus])
   const visible = visibleItems(items)
   const images = visible.filter((i) => i.kind === 'image')
   const name = RAIL_LABELS[id]
@@ -65,8 +68,10 @@ export function RailPanel({ id, boardId, items, onClose, onFocusItem, onFindExam
       aria-label={name}
       tabIndex={-1}
       onKeyDown={(e) => {
-        if (e.key !== 'Escape') return
+        // a text field keeps its own Escape (and its text); the board's handlers skip typing targets too
+        if (e.key !== 'Escape' || isTyping(e.target)) return
         e.stopPropagation() // innermost first: the board's Escape chain must not also run
+        setTool('select')
         onClose()
       }}
     >

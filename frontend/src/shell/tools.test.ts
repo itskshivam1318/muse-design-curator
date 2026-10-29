@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { setTool, toolForKey, toolStore } from './tools'
+import { closeRail, noteLensProposal, openRail, railStore, setTool, toolForKey, toolStore } from './tools'
 
 afterEach(() => setTool('select'))
 
@@ -32,5 +32,38 @@ describe('toolStore', () => {
     setTool('note') // no change, no notification
     off()
     expect(calls).toBe(1)
+  })
+})
+
+describe('rail state', () => {
+  afterEach(() => closeRail())
+
+  it('records why a panel opened, and closing clears it', () => {
+    openRail('search')
+    expect(railStore.get()).toEqual({ open: 'search', reason: 'user', lensWaiting: false })
+    openRail('library', 'auto')
+    expect(railStore.get().reason).toBe('auto')
+    closeRail()
+    expect(railStore.get().open).toBeNull()
+  })
+
+  it('a new lens proposal opens Library when nothing is open', () => {
+    noteLensProposal(true)
+    expect(railStore.get()).toEqual({ open: 'library', reason: 'auto', lensWaiting: false })
+  })
+
+  it('a new lens proposal flags Library when another panel is open; opening Library clears it', () => {
+    openRail('search')
+    noteLensProposal(true)
+    expect(railStore.get()).toEqual({ open: 'search', reason: 'user', lensWaiting: true })
+    openRail('library')
+    expect(railStore.get().lensWaiting).toBe(false)
+  })
+
+  it('the flag goes when the proposal does', () => {
+    openRail('vocabulary')
+    noteLensProposal(true)
+    noteLensProposal(false)
+    expect(railStore.get().lensWaiting).toBe(false)
   })
 })
