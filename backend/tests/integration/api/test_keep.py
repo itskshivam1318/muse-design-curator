@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import demo, events
+from app.db.ids import now_iso
 from app.db.models import BoardItem
 from app.db.repos import items as items_repo
 from tests.integration.api.test_explore import board_list, error, explore, source
@@ -154,3 +155,49 @@ def test_demo_mode_requires_unlock(demo_on: None, client: TestClient) -> None:
     assert r.status_code == 403 and error(r) == "DEMO_LOCKED"
     assert client.post("/api/demo/unlock", json={"passcode": "open sesame"}).status_code == 200
     assert client.post("/api/options/x/unkeep").status_code == 404
+
+
+def test_keep_during_visualizing_keeps_the_claim(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    from app.explore import visualize
+
+    oid, (a, _b) = make_takes(client, world)
+    o = option_row(world, oid)
+    o.status, o.visualize_claimed_at = "visualizing", now_iso()
+    world["session"].commit()
+    r = keep(client, oid, a)
+    assert r.status_code == 200 and r.json()["status"] == "visualizing"
+    assert run(client, oid).status_code == 409  # claim still held
+    world["session"].expire_all()
+    visualize._settle(world["session"], oid, None)
+    world["session"].commit()
+    assert option_row(world, oid).status == "kept"
+
+
+def test_keep_on_dismissed_option_409(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    oid, (a, _b) = make_takes(client, world)
+    client.patch(f"/api/options/{oid}", json={"status": "dismissed"})
+    r = keep(client, oid, a)
+    assert r.status_code == 409 and error(r) == "OPTION_DISMISSED"
+    assert fresh(world, a).staged is True
+
+
+def test_keep_restages_every_other_take(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    oid, (a, b, c) = make_takes(client, world, n=3)
+    for i in (a, b):  # two unstaged by older data
+        fresh(world, i).staged = False
+    world["session"].commit()
+    keep(client, oid, c)
+    assert [fresh(world, i).staged for i in (a, b, c)] == [True, True, False]
+
+
+def test_upload_identical_to_staged_take_unstages_it(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    from app.storage import files
+
+    _oid, (a, _b) = make_takes(client, world)
+    item = fresh(world, a)
+    data = files.abs_path(item.storage_path).read_bytes()
+    r = client.post(
+        f"/api/boards/{world['watch']}/items", files=[("files[]", ("same.png", data, "image/png"))]
+    )
+    assert r.status_code < 300, r.text
+    assert fresh(world, a).staged is False

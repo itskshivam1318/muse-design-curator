@@ -68,14 +68,6 @@ def has_generated(session: Session, option_id: str) -> bool:
     return session.scalar(q.limit(1)) is not None
 
 
-def generated_count(session: Session, option_id: str) -> int:
-    """How many generated items made from this option are on the board."""
-    q = select(func.count(BoardItem.id)).where(
-        BoardItem.explore_option_id == option_id, BoardItem.removed_at.is_(None)
-    )
-    return session.scalar(q) or 0
-
-
 def takes(session: Session, option_ids: list[str]) -> dict[str, list[str]]:
     """Item ids of each option's takes (generated items still on the board), oldest first."""
     out: dict[str, list[str]] = {i: [] for i in option_ids}

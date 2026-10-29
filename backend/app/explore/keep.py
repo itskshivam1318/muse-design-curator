@@ -6,6 +6,7 @@ profile and the lens pool); keeping one un-stages it, and a second keep re-stage
 
 from functools import partial
 
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app import events
@@ -42,8 +43,8 @@ def _finish(session: Session, o: ExploreOption, board_id: str) -> ExploreOption:
 def keep_take(
     session: Session, option_id: str, item_id: str, at: tuple[float, float] | None = None
 ) -> ExploreOption:
-    """Make `item_id` the option's kept take: un-staged, at `at` when given. The take kept
-    before it goes back to the stage. Keeping the kept take again changes nothing but `at`."""
+    """Make `item_id` the option's kept take: un-staged, at `at` when given. Every other
+    take of the option goes back to the stage. Keeping the kept take again changes nothing but `at`."""
     require_enabled()
     o = _option(session, option_id)
     item = session.get(BoardItem, item_id)
@@ -51,11 +52,32 @@ def keep_take(
         raise AppError(404, "ITEM_NOT_FOUND", "Item not found")
     if item.explore_option_id != option_id:
         raise AppError(400, "NOT_A_TAKE", "This item is not a take of this option")
+    if o.status == "dismissed":
+        raise AppError(409, "OPTION_DISMISSED", "Restore this option before keeping a take")
     changed: list[BoardItem] = []
-    previous = session.get(BoardItem, o.kept_item_id) if o.kept_item_id else None
-    if previous is not None and previous.id != item.id and not previous.staged:
-        previous.staged = True
-        changed.append(previous)
+    others = list(
+        session.scalars(
+            select(BoardItem).where(
+                BoardItem.explore_option_id == option_id,
+                BoardItem.removed_at.is_(None),
+                BoardItem.id != item.id,
+                BoardItem.staged.is_(False),
+            )
+        )
+    )
+    session.execute(  # exactly one kept take: every other one goes back to the stage
+        update(BoardItem)
+        .where(
+            BoardItem.explore_option_id == option_id,
+            BoardItem.removed_at.is_(None),
+            BoardItem.id != item.id,
+            BoardItem.staged.is_(False),
+        )
+        .values(staged=True)
+    )
+    for other in others:
+        session.refresh(other)
+    changed.extend(others)
     if item.staged:
         item.staged = False
         changed.append(item)
@@ -64,7 +86,8 @@ def keep_take(
         if item not in changed:
             changed.append(item)
     o.kept_item_id = item.id
-    o.status = "kept"
+    if o.status != "visualizing":  # a running job holds its claim in the status; settle ends it
+        o.status = "kept"
     session.flush()
     for c in changed:
         _announce(session, c)

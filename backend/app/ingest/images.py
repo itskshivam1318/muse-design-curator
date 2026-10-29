@@ -36,7 +36,6 @@ def existing_by_sha(session: Session, board_id: str, sha: str) -> BoardItem | No
             BoardItem.board_id == board_id,
             BoardItem.sha256 == sha,
             BoardItem.removed_at.is_(None),
-            BoardItem.staged.is_(False),
         )
     ).first()
 
@@ -49,6 +48,18 @@ def ingest_image(session: Session, board_id: str, data: bytes, meta: ItemMeta) -
     sha = files.sha256_hex(data)
     dup = existing_by_sha(session, board_id, sha)
     if dup is not None:
+        if dup.staged and dup.explore_option_id:  # identical bytes to a hidden take: keep it
+            from app.db.models import ExploreOption
+            from app.explore.keep import keep_take
+
+            opt = session.get(ExploreOption, dup.explore_option_id)
+            if opt is not None and opt.status == "dismissed":
+                dup.staged = False
+                session.flush()
+                return IngestResult(dup, deduped=True)
+
+            at = (meta.x, meta.y) if meta.x is not None and meta.y is not None else None
+            keep_take(session, dup.explore_option_id, dup.id, at)
         return IngestResult(dup, deduped=True)
     storage = files.save_original(data, sha, ext)
     thumb = files.save_thumb(img, sha)

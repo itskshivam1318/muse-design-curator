@@ -39,7 +39,7 @@ from app.storage import files
 log = logging.getLogger(__name__)
 
 JOB = "visualize_option"
-IMAGE_GAP = 40  # note edge to the generated item
+IMAGE_GAP = 40  # note edge to the generated item (used by note visualize)
 STACK_GAP = 24  # between images generated from the same option
 UNSAFE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 CLAIM_TTL_S = 300  # a visualize claim older than this is from a job that died
