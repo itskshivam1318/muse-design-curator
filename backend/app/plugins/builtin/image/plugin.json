@@ -26,7 +26,10 @@
       },
       "part": {
         "type": "string",
-        "default": ""
+        "default": "",
+        "x-show-if": {
+          "mode": "part"
+        }
       },
       "prompt": {
         "type": "string"

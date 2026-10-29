@@ -37,6 +37,7 @@ import { useBoard, useBoardLens, useItems, useProfile } from '../queries'
 import { Link } from '../Link'
 import { BoardShell } from '../shell/BoardShell'
 import { closeRail, noteLensProposal, openRail, railStore, setTool } from '../shell/tools'
+import { sendNoteToNode } from '../plugins/nodeDrop'
 import { insideOverlay, isTyping, itemShortcut } from './shortcutGuard'
 import { runStore } from '../vary/runStore'
 
@@ -258,6 +259,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
             onOpenPanel={openPanel}
             spaceDown={spaceDown}
             readOnly={locked}
+            onSendToNode={pluginsEnabled ? (pluginId, noteId) => void sendNoteToNode(qc, boardId, pluginId, noteId) : undefined}
           />
         }
         library={

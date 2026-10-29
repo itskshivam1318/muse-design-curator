@@ -15,6 +15,8 @@ import { Layer, Line, Rect, Stage } from 'react-konva'
 import { isGenerated, type Item, type Point, type UploadOrigin } from '../api'
 import { useDemo } from '../demo'
 import { itemVerdict } from '../explore/verdict'
+import { useNodeDrop } from '../plugins/nodeDrop'
+import { NodeLayer } from '../plugins/NodeLayer'
 import { useBoardLens, useExplorations, visibleItems } from '../queries'
 import { setTool, useTool } from '../shell/tools'
 import type { ItemActions } from './actions'
@@ -147,6 +149,7 @@ export function Canvas({
   const palette = useCanvasPalette()
   const reduced = usePrefersReducedMotion()
   const fitted = useRef(false)
+  const nodeDrop = useNodeDrop(boardId, readOnly)
 
   const byId = useMemo(() => new Map(visible.map((i) => [i.id, i])), [visible])
   const positioned = useCallback(
@@ -329,6 +332,7 @@ export function Canvas({
       const next: Record<string, Point> = {}
       for (const [id, p] of starts) next[id] = { x: p.x + dx, y: p.y + dy }
       setOverrides(next)
+      nodeDrop.hover(pointerCanvas())
     },
     onDragEnd: (e, item) => {
       e.cancelBubble = true
@@ -336,6 +340,12 @@ export function Canvas({
       const s = starts?.get(item.id)
       dragStart.current = null
       if (!starts || !s) return
+      // released over a plugin node: the items become its inputs and stay where they were
+      if (nodeDrop.drop(pointerCanvas(), selected.includes(item.id) ? selected : [item.id])) {
+        e.target.position(s)
+        setOverrides({})
+        return
+      }
       const dx = e.target.x() - s.x
       const dy = e.target.y() - s.y
       const moves: Move[] = [...starts].map(([id, from]) => ({
@@ -596,6 +606,7 @@ export function Canvas({
           onWheel={onOverlayWheel}
         />
       )}
+      <NodeLayer boardId={boardId} items={axisItems} view={view} size={size} readOnly={readOnly} onWheel={onOverlayWheel} />
       {hoveredItem && hoveredItem.kind !== 'link' && hoveredItem.parse_status !== 'completed' && (
         <StatusTip item={positioned(hoveredItem)} view={view} />
       )}

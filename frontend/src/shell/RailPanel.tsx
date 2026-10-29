@@ -63,7 +63,7 @@ export function RailPanel({ id, boardId, items, onClose, onFocusItem, onFindExam
   return (
     <section
       ref={ref}
-      className="rail-panel"
+      className={id === 'plugins' ? 'rail-panel is-plugins' : 'rail-panel'}
       role="dialog"
       aria-label={name}
       tabIndex={-1}
