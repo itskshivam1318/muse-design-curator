@@ -42,11 +42,14 @@ def _recover_visualizing() -> None:
     """Options left `visualizing` by a previous process go back to rest (their job is gone)."""
     from app.api import deps
     from app.explore.visualize import recover_stuck
+    from app.notes.visualize import recover_stuck_notes
 
     try:
         with deps.new_session() as session:
             if n := recover_stuck(session):
                 log.info("reset %d options left visualizing", n)
+            if n := recover_stuck_notes(session):
+                log.info("freed %d notes left visualizing", n)
             session.commit()
     except Exception:
         log.exception("could not reset options left visualizing")

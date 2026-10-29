@@ -83,3 +83,22 @@ def test_get_image_provider_needs_key() -> None:
     assert isinstance(get_image_provider(Settings(IMAGE_PROVIDER="mock")), MockImageProvider)
     p = get_image_provider(Settings(IMAGE_PROVIDER="muse-image", MODEL_API_KEY="k"))
     assert isinstance(p, MuseImageProvider)
+
+
+def test_mock_generate_deterministic() -> None:
+    p = MockImageProvider()
+    a, b = p.generate("a honey jar"), p.generate("a honey jar")
+    assert a == b and a != p.generate("a steel kettle")
+    img = Image.open(io.BytesIO(a))
+    assert img.format == "PNG" and img.size == (768, 768)
+
+
+def test_muse_generate_request_shape(api: FakeApi) -> None:
+    import json
+
+    route = api.post(
+        f"{BASE}/images/generations", response(json={"data": [{"b64_json": _webp_b64()}]})
+    )
+    out = _provider(api).generate("a honey jar")
+    assert out.startswith(b"\x89PNG")
+    assert json.loads(route.last.content) == {"model": "muse-image-1.0", "prompt": "a honey jar"}

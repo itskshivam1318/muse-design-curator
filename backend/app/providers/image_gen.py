@@ -23,6 +23,8 @@ class ImageProvider(Protocol):
 
     def edit(self, image: bytes, prompt: str) -> bytes: ...
 
+    def generate(self, prompt: str) -> bytes: ...
+
 
 def _open(data: bytes) -> Image.Image:
     try:
@@ -69,6 +71,17 @@ class MuseImageProvider:
         raw = call_model(go, timeout=self.timeout, max_retries=self.max_retries)
         return _to_png(_open(raw))
 
+    def generate(self, prompt: str) -> bytes:
+        def go() -> bytes:
+            resp = self.client.images.generate(model=self.model, prompt=prompt)
+            b64 = resp.data[0].b64_json if resp.data else None
+            if not b64:
+                raise ModelError("MODEL_INVALID_RESPONSE", message="no image in generate response")
+            return base64.b64decode(b64)
+
+        raw = call_model(go, timeout=self.timeout, max_retries=self.max_retries)
+        return _to_png(_open(raw))
+
 
 class MockImageProvider:
     """Deterministic: the source blended 20% towards a colour derived from the prompt."""
@@ -82,3 +95,7 @@ class MockImageProvider:
         d = hashlib.sha256(prompt.encode()).digest()
         tint = Image.new("RGB", src.size, (d[0], d[1], d[2]))
         return _to_png(Image.blend(src, tint, 0.2))
+
+    def generate(self, prompt: str) -> bytes:
+        d = hashlib.sha256(prompt.encode()).digest()
+        return _to_png(Image.new("RGB", (768, 768), (d[0], d[1], d[2])))

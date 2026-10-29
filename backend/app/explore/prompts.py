@@ -103,7 +103,7 @@ def build_explore_prompt(
 def build_check_prompt(*, label: str, option_name: str, description: str) -> str:
     return (
         f'Look at the image. Does it show this for its {label}: "{option_name}"'
-        f" ({description})?\n"
+        f"{f' ({description})' if description else ''}?\n"
         "Answer `yes`, `no`, or `unclear` with a confidence from 0 to 1. If you can find the"
         " part that answers it, give `box` as [x0, y0, x1, y1] in 0..1 image coordinates,"
         " otherwise null. `note` is one short sentence on what you see."

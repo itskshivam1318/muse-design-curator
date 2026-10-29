@@ -100,3 +100,12 @@ def check_generated(
         "target": target, "kept": kept, "of": kept + len(drifted), "drifted": drifted,
         "unknown": unknown,
     }  # fmt: skip
+
+
+def check_target_only(image: bytes, note_text: str) -> dict[str, Any]:
+    """Ask the direct target question of a generated image against a note's text:
+    {"target_ok": True/False, or None when the answer is unclear, "answer": yes/no/unclear}."""
+    prompt = build_check_prompt(label="subject", option_name=note_text, description="")
+    target = clean_target(get_reasoning(get_settings()).check_target([image], prompt))
+    answer = target["answer"]
+    return {"target_ok": {"yes": True, "no": False}.get(answer), "answer": answer}
