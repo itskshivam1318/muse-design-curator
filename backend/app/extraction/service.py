@@ -45,6 +45,7 @@ from app.measure.palette import (
     to_rgb_array,
 )
 from app.measure.shape import shape_descriptor
+from app.notes.service import with_notes
 from app.providers import get_embedder, get_reasoning, get_segmentation
 from app.providers.reliability import ModelError
 from app.storage import files
@@ -316,6 +317,8 @@ def _claim(session: Session, item_id: str) -> bool:
 
 def parse_item(session: Session, item_id: str) -> None:
     item = _require_item(session, item_id)
+    if item.kind == "note":  # a note has no image to read
+        return
     board_id = item.board_id
     if not _claim(session, item_id):
         session.rollback()
@@ -377,7 +380,8 @@ def _run(session: Session, item_id: str, board_id: str) -> None:
     session.commit()  # release the write lock (masks) before the slow model call
 
     board = boards_repo.get(session, board_id)
-    records += model_extract(session, lens, image, sha, (board.context if board else "") or "")
+    context = with_notes(session, board_id, (board.context if board else "") or "")
+    records += model_extract(session, lens, image, sha, context)
     _finish(session, item_id, board_id, records, sha)
 
 
@@ -408,7 +412,11 @@ def request_parse(session: Session, item_id: str) -> bool:
     """Queue a (re-)parse unless one is running. False when the item is processing."""
     res = session.execute(
         update(BoardItem)
-        .where(BoardItem.id == item_id, BoardItem.parse_status.in_((*RETRYABLE, "pending")))
+        .where(
+            BoardItem.id == item_id,
+            BoardItem.kind != "note",
+            BoardItem.parse_status.in_((*RETRYABLE, "pending")),
+        )
         .values(parse_status="pending")
     )  # fmt: skip
     if not res.rowcount:  # type: ignore[attr-defined]

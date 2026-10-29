@@ -23,6 +23,7 @@ from app.ingest.images import ingest_image
 from app.ingest.links import ingest_link
 from app.ingest.sniff import sniff_image, sniff_video
 from app.ingest.video import choose_frame, ingest_video
+from app.notes.service import set_note_text
 
 router = APIRouter(prefix="/api")
 POSITION_FIELDS = frozenset({"x", "y", "w", "h", "z"})
@@ -164,6 +165,9 @@ def patch_item(
     fields = body.model_dump(exclude_none=True)
     if fields.keys() - POSITION_FIELDS:
         demo.require_unlocked(request)  # role and chosen frame are edits; moving is open
+    text = fields.pop("note_text", None)
+    if text is not None:
+        set_note_text(session, item_id, text)
     frame_id = fields.pop("chosen_frame_id", None)
     if frame_id is not None:
         choose_frame(session, item_id, frame_id)

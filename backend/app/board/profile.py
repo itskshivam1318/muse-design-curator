@@ -257,6 +257,7 @@ def compute_profile(
     votes: Mapping[str, float],
 ) -> BoardProfile:
     """Pure aggregation of reliable, enabled attribute values. No DB access."""
+    items = [i for i in items if getattr(i, "kind", None) != "note"]
     refs = [i for i in items if i.role == REFERENCE]
     counters = [i for i in items if i.role == COUNTER]
     specs = {a.key: a for a in lens.attributes} if lens else {}

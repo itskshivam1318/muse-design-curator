@@ -28,6 +28,7 @@ from app.domain.kinds import AttributeSpec
 from app.errors import AppError
 from app.explore.prompts import build_explore_prompt
 from app.extraction.service import _image_for, _require_item, current_lens
+from app.notes.service import with_notes
 from app.providers import get_reasoning
 from app.providers.reliability import ModelError
 from app.runs.orchestrator import source_records
@@ -145,6 +146,8 @@ def explore(
     """Add a batch of options to the item's exploration of `key`; returns its visible options."""
     require_enabled()
     item = _require_item(session, item_id)
+    if item.kind == "note":
+        raise AppError(400, "NOT_AN_IMAGE", "A note has no image to explore")
     lens = current_lens(session, item.board_id)
     if lens is None:
         raise AppError(409, "LENS_REQUIRED", "The board needs a lens before exploring")
@@ -169,7 +172,7 @@ def explore(
     steer = _text(steer) or None
     prompt = build_explore_prompt(
         spec=spec, current=current, attributes=attributes,
-        board_title=board.title if board else "", board_context=board.context if board else "",
+        board_title=board.title if board else "", board_context=with_notes(session, item.board_id, board.context if board else ""),
         existing_names=[o.name for o in existing],
         parent=(
             {"name": parent.name, "description": parent.description,

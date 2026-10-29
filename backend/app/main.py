@@ -16,6 +16,7 @@ from app.api import (
     items,
     lenses,
     media,
+    notes,
     runs,
     ui_events,
 )
@@ -89,6 +90,7 @@ app.include_router(boards.router)
 app.include_router(extension.router)
 app.include_router(items.router)
 app.include_router(media.router)
+app.include_router(notes.router)
 app.include_router(lenses.router)
 app.include_router(attributes.router)
 app.include_router(runs.router)

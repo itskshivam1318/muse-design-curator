@@ -28,6 +28,7 @@ class ItemPatch(BaseModel):
     z: int | None = None
     role: ItemRole | None = None
     chosen_frame_id: str | None = None
+    note_text: str | None = Field(default=None, max_length=2000)
 
 
 class Capture(BaseModel):

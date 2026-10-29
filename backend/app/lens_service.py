@@ -27,6 +27,7 @@ from app.db.repos import masks as masks_repo
 from app.db.session import after_commit
 from app.domain.lens import LensSpec, load_curated_lens, validate_lens
 from app.errors import AppError
+from app.notes.service import with_notes
 from app.providers import get_reasoning, get_segmentation
 from app.providers.reliability import ModelError
 from app.storage import files
@@ -56,7 +57,9 @@ def _require_board(session: Session, board_id: str) -> Board:
 
 def _eligible(session: Session, board_id: str) -> list[BoardItem]:
     return [
-        i for i in items_repo.list_active(session, board_id) if i.parse_status in LENS_ITEM_STATUSES
+        i
+        for i in items_repo.list_active(session, board_id)
+        if i.kind != "note" and i.parse_status in LENS_ITEM_STATUSES
     ]
 
 
@@ -298,7 +301,7 @@ def propose_lens_row(session: Session, board_id: str) -> Lens:
     images = [b for b in (_image_bytes(i) for i in sampled) if b is not None]
     settings = get_settings()
     raw = get_reasoning(settings).propose_lens(
-        images, board.context or "", LensSpec.model_json_schema()
+        images, with_notes(session, board.id, board.context or ""), LensSpec.model_json_schema()
     )
     domain = _domain_key(board)
     version = _next_version(session, board.id, domain)
