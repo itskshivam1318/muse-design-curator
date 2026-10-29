@@ -81,6 +81,8 @@ describe('ExplorePanel', () => {
     setup({ params: { key: 'case_finish' }, explorations: [exploration([opt({ id: 'o1' })])] })
     fireEvent.click(screen.getByRole('button', { name: 'More' }))
     await waitFor(() => expect(exploreItem).toHaveBeenCalledWith('i1', { key: 'case_finish', mode: 'more' }))
+    // the buttons are disabled until the first request settles
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Further' }) as HTMLButtonElement).disabled).toBe(false))
     fireEvent.click(screen.getByRole('button', { name: 'Further' }))
     await waitFor(() => expect(exploreItem).toHaveBeenLastCalledWith('i1', { key: 'case_finish', mode: 'further' }))
   })
@@ -116,6 +118,16 @@ describe('ExplorePanel', () => {
     act(() => qc.setQueryData(keys.explorations('b1'), [exploration([opt({ id: 'o1', last_error: 'GENERATION_FAILED' })])]))
     expect(await screen.findByText("Couldn't visualize, try again.")).toBeTruthy()
     expect(screen.queryByRole('status', { name: 'Visualizing' })).toBeNull()
+  })
+
+  it('a visualize already under way (409 VISUALIZE_IN_PROGRESS) keeps the spinner and shows no error', async () => {
+    vi.mocked(visualizeOption).mockRejectedValue(new ApiError(409, 'VISUALIZE_IN_PROGRESS', 'This option is already being visualized'))
+    const { qc } = setup({ params: { key: 'case_finish' }, explorations: [exploration([opt({ id: 'o1' })])] })
+    fireEvent.click(screen.getByRole('button', { name: 'Visualize Option o1' }))
+    await waitFor(() => expect(visualizeOption).toHaveBeenCalled())
+    expect(await screen.findByRole('status', { name: 'Visualizing' })).toBeTruthy()
+    expect(qc.getQueryData<Exploration[]>(keys.explorations('b1'))![0].options[0].status).toBe('visualizing')
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it('a refused visualize puts the row back and shows the message', async () => {

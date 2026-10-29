@@ -7,6 +7,7 @@ import { verdictText } from '../explore/verdict'
 import { useBoardLens } from '../queries'
 import { type AxisCard, type AxisRow, cardOptions, cardOptionId, drawnAxes, focusAxis, focusStore, keptOnCard } from './axis'
 import { AxisPopover } from './AxisPopover'
+import { selection } from './selection'
 import type { View } from './geometry'
 
 /** The axis a chip, the picker or a card click chose last. */
@@ -72,8 +73,11 @@ function Axes({ items, explorations, selectedId, view, locked = false, onWheel, 
       const option = found.exploration.options.find((o) => o.id === open.optionId && o.status !== 'dismissed')
       const card = found.row.cards.find((c) => c.option_id === cardOptionId(found.exploration, open.optionId))
       if (option && card) {
+        // a selected kept take has its toolbar above the card and chips below it: the popover goes beside
+        const keptSelected = keptOnCard(found.exploration, card.option_id, visible)?.item.id === selectedId
+        const at = keptSelected ? screenOf(card.x + card.w + 8, card.y) : screenOf(card.x, card.y + card.h + 8)
         popover = (
-          <div className="axis-pop-anchor" style={screenOf(card.x, card.y + card.h + 8)}>
+          <div className="axis-pop-anchor" style={at}>
             <AxisPopover
               key={option.id}
               option={option}
@@ -109,9 +113,11 @@ function Axes({ items, explorations, selectedId, view, locked = false, onWheel, 
         {axes.map((a) => {
           const own = new Set(a.rows.map((r) => r.exploration_id))
           return a.rows.map((row) => {
-            const active =
-              a.source.id === selectedId && (focusedAxis === row.exploration_id || !own.has(focusedAxis ?? ''))
             const exploration = a.explorations.find((e) => e.id === row.exploration_id)!
+            const keptHere = row.cards.some((c) => keptOnCard(exploration, c.option_id, visible)?.item.id === selectedId)
+            const active =
+              keptHere ||
+              (a.source.id === selectedId && (focusedAxis === row.exploration_id || !own.has(focusedAxis ?? '')))
             return (
               <AxisRowView
                 key={row.exploration_id}
@@ -121,10 +127,13 @@ function Axes({ items, explorations, selectedId, view, locked = false, onWheel, 
                 visible={visible}
                 labels={labels}
                 hovered={hovered}
+                selectedId={selectedId}
                 openOption={open?.kind === 'card' && open.explorationId === row.exploration_id ? cardOptionId(exploration, open.optionId) : null}
                 endOpen={open?.kind === 'end' && open.explorationId === row.exploration_id}
-                onCard={(optionId) => {
+                onCard={(optionId, keptItemId) => {
                   focusAxis(row.exploration_id)
+                  // a kept take is a board item: its card selects it (toolbar, chips, Delete, Inspect…)
+                  if (keptItemId) selection.select([keptItemId])
                   setOpen((cur) =>
                     cur?.kind === 'card' &&
                     cur.explorationId === row.exploration_id &&
@@ -156,6 +165,7 @@ function AxisRowView({
   visible,
   labels,
   hovered,
+  selectedId,
   openOption,
   endOpen,
   onCard,
@@ -167,9 +177,10 @@ function AxisRowView({
   visible: ReadonlyMap<string, Item>
   labels: ReadonlyMap<string, string>
   hovered: string | null
+  selectedId: string | null
   openOption: string | null
   endOpen: boolean
-  onCard: (optionId: string) => void
+  onCard: (optionId: string, keptItemId?: string) => void
   onEnd: () => void
 }) {
   const options = new Map(cardOptions(exploration).map((o) => [o.id, o]))
@@ -196,9 +207,10 @@ function AxisRowView({
             kept={kept}
             verdict={kept ? verdictText(kept.item.check, row.label, kept.option.name, labels).text : null}
             pressed={openOption === option.id}
+            selected={!!kept && kept.item.id === selectedId}
             hovered={hovered === option.id || (!!kept && hovered === kept.option.id)}
             // a kept card opens on the option whose take it shows (a branch's, maybe)
-            onClick={() => onCard(kept ? kept.option.id : option.id)}
+            onClick={() => (kept ? onCard(kept.option.id, kept.item.id) : onCard(option.id))}
           />
         )
       })}
@@ -220,6 +232,7 @@ function CardButton({
   kept,
   verdict,
   pressed,
+  selected,
   hovered,
   onClick,
 }: {
@@ -228,10 +241,11 @@ function CardButton({
   kept: { option: ExploreOption; item: Item } | null
   verdict: string | null
   pressed: boolean
+  selected: boolean
   hovered: boolean
   onClick: () => void
 }) {
-  const cls = ['axis-card', kept ? 'is-kept' : 'is-text', pressed && 'is-open', hovered && 'is-hovered']
+  const cls = ['axis-card', kept ? 'is-kept' : 'is-text', pressed && 'is-open', selected && 'is-selected', hovered && 'is-hovered']
     .filter(Boolean)
     .join(' ')
   const status = option.status === 'visualizing' ? 'visualizing' : option.last_error ? "couldn't visualize" : null

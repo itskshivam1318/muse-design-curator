@@ -1,4 +1,4 @@
-/** Undo stack (⌘Z) for position changes and explore-option edits (note moves, dismisses). */
+/** Undo stack (⌘Z) for position changes and explore-option edits (dismisses). */
 import type { Point } from '../api'
 
 export interface Move {

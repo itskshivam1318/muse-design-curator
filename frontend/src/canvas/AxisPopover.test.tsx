@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { type Exploration, type ExploreOption, type Item, keys } from '../api'
+import { ApiError, type Exploration, type ExploreOption, type Item, keys } from '../api'
 import { LENS } from '../test/attrs'
 import { makeItem } from '../test/fixtures'
 import { axisRows, keptSlot } from './axis'
@@ -14,6 +14,7 @@ vi.mock('../api', async (orig) => ({
   unkeepTake: vi.fn(),
   patchOption: vi.fn(),
   exploreItem: vi.fn(),
+  listItems: vi.fn(() => new Promise(() => {})),
 }))
 const { visualizeOption, keepTake, unkeepTake, patchOption, exploreItem } = await import('../api')
 const { AxisPopover } = await import('./AxisPopover')
@@ -30,14 +31,17 @@ const source = makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0, w: 200, h: 150 
 const take = (id: string, over: Partial<Item> = {}) =>
   makeItem({ id, board_id: 'b1', origin: 'generated', staged: true, explore_option_id: 'o1', parent_item_id: 'src', ...over })
 
-function setup(option: ExploreOption, extra: { siblings?: ExploreOption[]; items?: Item[]; locked?: boolean } = {}) {
+function setup(
+  option: ExploreOption,
+  extra: { siblings?: ExploreOption[]; items?: Item[]; locked?: boolean; itemsLater?: boolean } = {},
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   const exploration: Exploration = {
     id: 'e1', board_id: 'b1', item_id: 'src', key: 'dial_color', created_at: '2026-10-28T00:00:01Z',
     options: [opt({ id: 'o0', name: 'Sand' }), option, ...(extra.siblings ?? [])],
   }
   qc.setQueryData(keys.explorations('b1'), [exploration])
-  qc.setQueryData(keys.items('b1'), [source, ...(extra.items ?? [])])
+  if (!extra.itemsLater) qc.setQueryData(keys.items('b1'), [source, ...(extra.items ?? [])])
   qc.setQueryData(keys.lens('b1'), { spec: LENS })
   const onClose = vi.fn()
   const onOpenOption = vi.fn()
@@ -66,6 +70,24 @@ describe('AxisPopover', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Visualize' }))
     await waitFor(() => expect(visualizeOption).toHaveBeenCalledWith('o1'))
     expect(current().status).toBe('visualizing') // shown at once
+  })
+
+  it('a visualize already under way (409 VISUALIZE_IN_PROGRESS) stays visualizing with no error', async () => {
+    vi.mocked(visualizeOption).mockRejectedValue(new ApiError(409, 'VISUALIZE_IN_PROGRESS', 'This option is already being visualized'))
+    const { current } = setup(opt())
+    fireEvent.click(screen.getByRole('button', { name: 'Visualize' }))
+    await waitFor(() => expect(visualizeOption).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByRole('status').textContent).toMatch(/Visualizing Honey/))
+    expect(current().status).toBe('visualizing')
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('a refused visualize puts the option back and says why', async () => {
+    vi.mocked(visualizeOption).mockRejectedValue(new ApiError(403, 'DEMO_LOCKED', 'Unlock the demo'))
+    const { current } = setup(opt())
+    fireEvent.click(screen.getByRole('button', { name: 'Visualize' }))
+    expect((await screen.findByRole('alert')).textContent).toBe('Unlock the demo')
+    expect(current().status).toBe('open')
   })
 
   it('visualizing with no take yet shows progress', () => {
@@ -106,6 +128,57 @@ describe('AxisPopover', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Un-keep' }))
     await waitFor(() => expect(unkeepTake).toHaveBeenCalledWith('o1'))
     await waitFor(() => expect(current().kept_item_id).toBeNull())
+  })
+
+  it('Keep on take 2 while take 1 is kept leaves exactly one kept take', async () => {
+    const t1 = take('t1', { staged: false })
+    const t2 = take('t2')
+    const option = opt({ status: 'kept', takes: ['t1', 't2'], kept_item_id: 't1' })
+    vi.mocked(keepTake).mockResolvedValue({ ...option, kept_item_id: 't2' })
+    const { qc, current } = setup(option, { items: [t1, t2] })
+    expect(screen.getByText('Honey · take 1')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Next take' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Keep' }))
+    await waitFor(() => expect(current().kept_item_id).toBe('t2'))
+    const onBoard = qc.getQueryData<Item[]>(keys.items('b1'))!.filter((i) => i.explore_option_id === 'o1' && !i.staged)
+    expect(onBoard.map((i) => i.id)).toEqual(['t2'])
+  })
+
+  it('Keep pressed twice keeps once', async () => {
+    let settle: (o: ExploreOption) => void = () => {}
+    vi.mocked(keepTake).mockImplementation(() => new Promise((r) => (settle = r)))
+    const option = opt({ status: 'visualized', takes: ['t1'] })
+    setup(option, { items: [take('t1')] })
+    const keep = screen.getByRole('button', { name: 'Keep' })
+    fireEvent.click(keep)
+    fireEvent.click(keep)
+    await act(async () => settle({ ...option, status: 'kept', kept_item_id: 't1' }))
+    expect(keepTake).toHaveBeenCalledTimes(1)
+  })
+
+  it('opened on a kept option before the items load, it starts on the kept take', async () => {
+    const option = opt({ status: 'kept', takes: ['t1', 't2'], kept_item_id: 't1' })
+    const { qc } = setup(option, { itemsLater: true })
+    act(() => qc.setQueryData(keys.items('b1'), [source, take('t1', { staged: false }), take('t2')]))
+    expect(await screen.findByText('Honey · take 1')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Un-keep' })).toBeTruthy()
+  })
+
+  it('a take that arrives while open (after Regenerate) is shown', async () => {
+    vi.mocked(visualizeOption).mockResolvedValue(undefined)
+    const option = opt({ status: 'visualized', takes: ['t1'] })
+    const { qc } = setup(option, { items: [take('t1')] })
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate' }))
+    await waitFor(() => expect(visualizeOption).toHaveBeenCalledWith('o1'))
+    expect(screen.getByRole('status').textContent).toMatch(/Making take 2/)
+    // the job's events: the new staged item, then the option with its takes
+    act(() => {
+      qc.setQueryData<Item[]>(keys.items('b1'), (old) => [...old!, take('t2')])
+      qc.setQueryData<Exploration[]>(keys.explorations('b1'), (old) =>
+        old!.map((e) => ({ ...e, options: e.options.map((o) => (o.id === 'o1' ? { ...o, status: 'visualized', takes: ['t1', 't2'] } : o)) })),
+      )
+    })
+    expect(await screen.findByText('Honey · take 2')).toBeTruthy()
   })
 
   it('Regenerate calls visualizeOption again', async () => {

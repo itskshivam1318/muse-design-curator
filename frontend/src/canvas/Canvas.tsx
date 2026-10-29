@@ -136,8 +136,9 @@ export function Canvas({
   const shownExplorations = useMemo(() => (exploreEnabled ? (explorations ?? []) : []), [exploreEnabled, explorations])
   // a kept take is drawn as its axis card, not loose: it moves with its source
   const axisInfo = useMemo(() => drawnAxes(visible, shownExplorations, labels), [visible, shownExplorations, labels])
+  // the items drawn loose on the stage (a kept take shown as a card is still a board item: it is
+  // selected, listed and acted on like any other, its toolbar and chips at its card)
   const items = useMemo(() => visible.filter((i) => !axisInfo.hidden.has(i.id)), [visible, axisInfo])
-  const visibleById = useMemo(() => new Map(visible.map((i) => [i.id, i])), [visible])
   const dragStart = useRef<Map<string, Point> | null>(null)
   const [marquee, setMarquee] = useState<{ a: Point; b: Point; additive: boolean } | null>(null)
   const [dropActive, setDropActive] = useState(false)
@@ -147,10 +148,19 @@ export function Canvas({
   const reduced = usePrefersReducedMotion()
   const fitted = useRef(false)
 
-  const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items])
+  const byId = useMemo(() => new Map(visible.map((i) => [i.id, i])), [visible])
   const positioned = useCallback(
     (i: Item): Item => (overrides[i.id] ? { ...i, ...overrides[i.id] } : i),
     [overrides],
+  )
+  /** Where an item is on the canvas: its axis card for a kept take shown as one, else its own bounds. */
+  const boundsOf = useCallback(
+    (i: Item): Bounds => axisInfo.cards.get(i.id) ?? itemBounds(positioned(i)),
+    [axisInfo, positioned],
+  )
+  const listed = useMemo(
+    () => [...visible].sort((a, b) => a.z - b.z || a.created_at.localeCompare(b.created_at)),
+    [visible],
   )
   const ordered = useMemo(
     () => [...items].sort((a, b) => a.z - b.z || a.created_at.localeCompare(b.created_at)),
@@ -271,7 +281,7 @@ export function Canvas({
     if (!marquee) return
     const r = normalizeRect(marquee.a, marquee.b)
     const tiny = r.width * view.scale < 3 && r.height * view.scale < 3
-    const hits = tiny ? [] : items.filter((i) => rectsIntersect(r, itemBounds(i))).map((i) => i.id)
+    const hits = tiny ? [] : visible.filter((i) => rectsIntersect(r, boundsOf(i))).map((i) => i.id)
     if (marquee.additive) selection.add(hits)
     else selection.select(hits)
     setMarquee(null)
@@ -301,10 +311,10 @@ export function Canvas({
       const picked = selected.includes(item.id) ? selected : [item.id]
       if (!selected.includes(item.id)) selection.select([item.id])
       // a source carries the kept takes on its axes along, in the same move (one undo entry)
-      const ids = [...picked, ...keptFollowers(axisInfo.axes, new Set(picked), visibleById)]
+      const ids = [...picked, ...keptFollowers(axisInfo.axes, new Set(picked), byId)]
       dragStart.current = new Map(
         ids.flatMap((id) => {
-          const it = visibleById.get(id)
+          const it = byId.get(id)
           return it ? [[id, { x: it.x, y: it.y }] as const] : []
         }),
       )
@@ -405,7 +415,7 @@ export function Canvas({
     const it = byId.get(id)
     return it ? [positioned(it)] : []
   })
-  const selBounds = unionBounds(selectedItems.map(itemBounds))
+  const selBounds = unionBounds(selectedItems.map(boundsOf))
   const dragging = Object.keys(overrides).length > 0
   const stripItem = stripFor ? byId.get(stripFor) : undefined
   const hoveredItem = hovered ? byId.get(hovered) : undefined
@@ -417,10 +427,10 @@ export function Canvas({
     return [{ id: child.id, points: lineagePoints(itemBounds(positioned(parent)), itemBounds(positioned(child))) }]
   })
   const noteChildren = (noteId: string) => items.filter((i) => i.parent_item_id === noteId && isGenerated(i))
-  const lineage = items.flatMap((child) => {
+  const lineage = visible.flatMap((child) => {
     const parent = child.parent_item_id ? byId.get(child.parent_item_id) : undefined
     if (!parent || fromNote(child) || !(selected.includes(child.id) || selected.includes(parent.id))) return []
-    return [{ id: child.id, points: lineagePoints(itemBounds(positioned(parent)), itemBounds(positioned(child))) }]
+    return [{ id: child.id, points: lineagePoints(boundsOf(parent), boundsOf(child)) }]
   })
   // the axes follow a dragged source (and its kept takes) while the drag is under way
   const axisItems = visible.map(positioned)
@@ -469,7 +479,7 @@ export function Canvas({
         backgroundPosition: `${view.x}px ${view.y}px`,
       }}
       role="region"
-      aria-label={`Board canvas, ${items.length} ${items.length === 1 ? 'item' : 'items'}, zoom ${Math.round(view.scale * 100)}%`}
+      aria-label={`Board canvas, ${visible.length} ${visible.length === 1 ? 'item' : 'items'}, zoom ${Math.round(view.scale * 100)}%`}
       aria-describedby="canvas-help"
       onDragOver={onDragOver}
       onDragLeave={() => setDropActive(false)}
@@ -595,7 +605,7 @@ export function Canvas({
           <CreditCaption
             key={`credit-${i.id}`}
             item={i}
-            screen={toScreenBounds(itemBounds(i), view)}
+            screen={toScreenBounds(boundsOf(i), view)}
             verdict={itemVerdict(i, explorations, labels)}
           />
         ))}
@@ -618,7 +628,7 @@ export function Canvas({
         <ItemChips
           key={soleSelected.id}
           item={soleSelected}
-          screen={toScreenBounds(itemBounds(soleSelected), view)}
+          screen={toScreenBounds(boundsOf(soleSelected), view)}
           locked={readOnly}
         />
       )}
@@ -626,7 +636,7 @@ export function Canvas({
         <AxisPicker
           key={soleSelected.id}
           item={soleSelected}
-          screen={toScreenBounds(itemBounds(soleSelected), view)}
+          screen={toScreenBounds(boundsOf(soleSelected), view)}
           onDone={() => setTool('select')}
         />
       )}
@@ -682,7 +692,7 @@ export function Canvas({
         </button>
       )}
       {dropActive && <div className="drop-hint">Drop to add here</div>}
-      <ItemList items={ordered} selected={selected} />
+      <ItemList items={listed} selected={selected} />
     </div>
   )
 }

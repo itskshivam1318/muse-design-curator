@@ -1,12 +1,12 @@
 import { QueryClient } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, type Exploration, type ExploreOption, keys } from '../api'
+import { type Exploration, type ExploreOption, keys } from '../api'
 import { undoHistory } from '../canvas/history'
 import { hoverStore, setHoveredOption } from './hover'
 
 vi.mock('../api', async (orig) => ({ ...(await orig<typeof import('../api')>()), patchOption: vi.fn() }))
 const { patchOption } = await import('../api')
-const { dismissOption, moveOption } = await import('./optionActions')
+const { dismissOption } = await import('./optionActions')
 
 function opt(over: Partial<ExploreOption> = {}): ExploreOption {
   return {
@@ -39,28 +39,6 @@ beforeEach(() => {
 afterEach(() => setHoveredOption(null))
 
 describe('option actions', () => {
-  it('moving a note saves it at once, and undo puts it back', async () => {
-    vi.mocked(patchOption).mockImplementation((id, body) => Promise.resolve(opt({ id, x: body.x, y: body.y })))
-    const { qc, current } = setup()
-    const saving = moveOption(qc, 'b1', 'o1', { x: 260, y: -10 }, { x: 400, y: 80 })
-    expect(current()).toMatchObject({ x: 400, y: 80 }) // optimistic
-    await saving
-    expect(patchOption).toHaveBeenCalledWith('o1', { x: 400, y: 80 })
-    expect(undoHistory.size).toBe(1)
-    await undo()
-    expect(patchOption).toHaveBeenLastCalledWith('o1', { x: 260, y: -10 })
-    await vi.waitFor(() => expect(current()).toMatchObject({ x: 260, y: -10 }))
-    expect(undoHistory.size).toBe(0) // an undo is not itself recorded
-  })
-
-  it('a failed move puts the note back where it was and records nothing', async () => {
-    vi.mocked(patchOption).mockRejectedValue(new ApiError(403, 'DEMO_LOCKED', 'Unlock the demo'))
-    const { qc, current } = setup()
-    await expect(moveOption(qc, 'b1', 'o1', { x: 260, y: -10 }, { x: 400, y: 80 })).rejects.toThrow('Unlock the demo')
-    expect(current()).toMatchObject({ x: null, y: null })
-    expect(undoHistory.size).toBe(0)
-  })
-
   it('a dismiss is undone by reopening the option', async () => {
     vi.mocked(patchOption)
       .mockResolvedValueOnce(opt({ status: 'dismissed' }))

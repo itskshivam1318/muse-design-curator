@@ -107,6 +107,8 @@ describe('drawnAxes', () => {
     ]
     const out = drawnAxes([src, kept, staged], list)
     expect([...out.hidden]).toEqual(['k1'])
+    const card = out.axes[0].rows[0].cards[0]
+    expect(out.cards.get('k1')).toEqual({ x: card.x, y: card.y, width: card.w, height: card.h })
     expect(out.axes.map((a) => [a.source.id, a.rows.map((r) => r.exploration_id)])).toEqual([['src', ['e1']]])
   })
 

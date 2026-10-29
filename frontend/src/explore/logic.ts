@@ -1,5 +1,5 @@
 /** Pure helpers behind the Explore panel and the option notes. No React, no network. */
-import type { AttributeSpec, Exploration, ExploreOption, VariationRequest } from '../api'
+import { ApiError, type AttributeSpec, type Exploration, type ExploreOption, type VariationRequest } from '../api'
 import { vocabularyOf } from '../vary/logic'
 
 export interface OptionRow {
@@ -75,3 +75,7 @@ export function withOption(list: Exploration[] | undefined, option: ExploreOptio
     e.id === option.exploration_id ? { ...e, options: e.options.map((o) => (o.id === option.id ? option : o)) } : e,
   )
 }
+
+/** A visualize refused because one is already running for the option: its job's events will follow. */
+export const visualizeInProgress = (e: unknown): boolean =>
+  e instanceof ApiError && e.status === 409 && e.code === 'VISUALIZE_IN_PROGRESS'

@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { type KeyboardEvent, useMemo, useState } from 'react'
+import { type KeyboardEvent, useMemo, useRef, useState } from 'react'
 import {
   ApiError,
   type Exploration,
@@ -12,7 +12,7 @@ import {
   unkeepTake,
   visualizeOption,
 } from '../api'
-import { canFindReal, findRealRequest, optionTree, withExploration, withOption } from '../explore/logic'
+import { canFindReal, findRealRequest, optionTree, visualizeInProgress, withExploration, withOption } from '../explore/logic'
 import { dismissOption } from '../explore/optionActions'
 import { verdictText } from '../explore/verdict'
 import { useBoardLens, useExplorations, useItems } from '../queries'
@@ -58,9 +58,13 @@ export function AxisPopover({ option, exploration, source, onClose, onOpenOption
     return t ? [t] : []
   })
   const keptIndex = takes.findIndex((t) => t.id === live.kept_item_id)
-  const [pager, setPager] = useState({ count: takes.length, index: keptIndex >= 0 ? keptIndex : takes.length - 1 })
-  let index = pager.index
-  if (pager.count !== takes.length) {
+  // starts once the items are in (on the kept take, else the newest), so a first load is not a "new take"
+  const [pager, setPager] = useState<{ count: number; index: number } | null>(null)
+  let index = pager?.index ?? -1
+  if (allItems !== undefined && pager === null) {
+    index = keptIndex >= 0 ? keptIndex : takes.length - 1
+    setPager({ count: takes.length, index })
+  } else if (pager && pager.count !== takes.length) {
     // a new take arrived: show it; a take went away: stay in range
     index = takes.length > pager.count ? takes.length - 1 : Math.min(pager.index, takes.length - 1)
     setPager({ count: takes.length, index })
@@ -68,6 +72,8 @@ export function AxisPopover({ option, exploration, source, onClose, onOpenOption
   const current = index >= 0 ? takes[index] : undefined
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // one request at a time, even when a second press lands before the re-render disables the button
+  const inFlight = useRef(false)
 
   const rows = optionTree(exp.options)
   const at = rows.findIndex((r) => r.option.id === live.id)
@@ -78,6 +84,8 @@ export function AxisPopover({ option, exploration, source, onClose, onOpenOption
   const parent = live.parent_option_id ? exp.options.find((o) => o.id === live.parent_option_id) : undefined
 
   const act = async (work: () => Promise<void>, fallback: string) => {
+    if (inFlight.current) return
+    inFlight.current = true
     setBusy(true)
     setError(null)
     try {
@@ -85,6 +93,7 @@ export function AxisPopover({ option, exploration, source, onClose, onOpenOption
     } catch (e) {
       setError(errorText(e, fallback))
     } finally {
+      inFlight.current = false
       setBusy(false)
     }
   }
@@ -100,6 +109,7 @@ export function AxisPopover({ option, exploration, source, onClose, onOpenOption
       try {
         await visualizeOption(live.id)
       } catch (e) {
+        if (visualizeInProgress(e)) return // already running: stay visualizing, its events end it
         setOption(before)
         throw e
       }

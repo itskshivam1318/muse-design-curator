@@ -1807,6 +1807,9 @@ button.onboarding-step:hover {
 .axis-card.is-open {
   box-shadow: 0 0 0 2px var(--ink), 0 4px 14px rgba(20, 24, 30, 0.2);
 }
+.axis-card.is-selected {
+  box-shadow: 0 0 0 2px var(--accent), 0 4px 14px rgba(20, 24, 30, 0.2);
+}
 .axis-card.is-text.is-open {
   background: var(--ink);
   color: var(--raised);

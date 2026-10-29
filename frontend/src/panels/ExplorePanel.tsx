@@ -10,7 +10,7 @@ import {
   visualizeOption,
 } from '../api'
 import { setHoveredOption, hoverStore, useHoveredOption } from '../explore/hover'
-import { canFindReal, findRealRequest, optionTree, withExploration, withOption } from '../explore/logic'
+import { canFindReal, findRealRequest, optionTree, visualizeInProgress, withExploration, withOption } from '../explore/logic'
 import { dismissOption } from '../explore/optionActions'
 import { itemTitle } from '../format'
 import { useAttributes, useExplorations, useItems, useProfile } from '../queries'
@@ -169,6 +169,7 @@ function Dimension({
       try {
         await visualizeOption(o.id)
       } catch (e) {
+        if (visualizeInProgress(e)) return // already running: keep the spinner, its events end it
         set(o.status, o.last_error)
         throw e
       }

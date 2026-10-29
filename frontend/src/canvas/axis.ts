@@ -148,14 +148,15 @@ export interface DrawnAxis {
 
 /**
  * Every axis to draw over `items` (the canvas's visible items, as positioned), and the kept items
- * the cards show instead of drawing them loose. A source must be on the canvas: a staged or
- * removed source, or a kept take that a card already shows, draws no axis.
+ * the cards show instead of drawing them loose (`hidden`), with the card each one is shown as
+ * (`cards`: its toolbar and chips anchor there; it stays a normal, selectable item). A source must
+ * be on the canvas: a staged or removed source, or a kept take that a card already shows, draws no axis.
  */
 export function drawnAxes(
   items: readonly Item[],
   explorations: readonly Exploration[],
   labels?: ReadonlyMap<string, string>,
-): { axes: DrawnAxis[]; hidden: Set<string> } {
+): { axes: DrawnAxis[]; hidden: Set<string>; cards: Map<string, Bounds> } {
   const byId = new Map(items.filter((i) => !i.staged).map((i) => [i.id, i]))
   const bySource = new Map<string, Exploration[]>()
   for (const e of explorations) bySource.set(e.item_id, [...(bySource.get(e.item_id) ?? []), e])
@@ -189,7 +190,16 @@ export function drawnAxes(
     const rows = axisRows(itemBounds(item), list, labels)
     if (rows.length) axes.push({ source: item, rows, explorations: list })
   }
-  return { axes, hidden }
+  const cards = new Map<string, Bounds>()
+  for (const a of axes)
+    for (const row of a.rows) {
+      const e = a.explorations.find((x) => x.id === row.exploration_id)!
+      for (const c of row.cards) {
+        const k = keptOnCard(e, c.option_id, byId)
+        if (k && hidden.has(k.item.id)) cards.set(k.item.id, { x: c.x, y: c.y, width: c.w, height: c.h })
+      }
+    }
+  return { axes, hidden, cards }
 }
 
 /** The kept items shown on the axes of `sourceIds`: they move with their source. */

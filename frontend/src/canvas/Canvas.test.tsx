@@ -1,16 +1,21 @@
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { useEffect } from 'react'
 import Konva from 'konva'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type Exploration, type ExploreOption, type Item, keys } from '../api'
+import '../panels/registerPanels'
 import { stubCanvasContext } from '../test/canvasStub'
 import { makeItem } from '../test/fixtures'
 import type { ItemActions } from './actions'
-import { selection } from './selection'
+import { selection, selectionStore } from './selection'
 
-vi.mock('../api', async (orig) => ({ ...(await orig<typeof import('../api')>()), patchItem: vi.fn(() => Promise.resolve()) }))
-const { patchItem } = await import('../api')
+vi.mock('../api', async (orig) => ({
+  ...(await orig<typeof import('../api')>()),
+  patchItem: vi.fn(() => Promise.resolve()),
+  deleteItem: vi.fn(() => Promise.resolve()),
+}))
+const { patchItem, deleteItem } = await import('../api')
 const { useItemActions } = await import('./actions')
 const { Canvas } = await import('./Canvas')
 const { undoHistory } = await import('./history')
@@ -34,19 +39,19 @@ function client(explorations: Exploration[], items: Item[], explore = true) {
 let boardActions: ItemActions | null = null
 
 /** The board page in small: the canvas over the cached items, with the real item actions. */
-function Board() {
+function Board({ onOpenPanel = vi.fn() }: { onOpenPanel?: (...args: unknown[]) => void }) {
   const items = useQuery<Item[]>({ queryKey: keys.items('b1'), queryFn: () => [] }).data ?? []
   const actions = useItemActions('b1')
   useEffect(() => {
     boardActions = actions
   })
-  return <Canvas boardId="b1" items={items} actions={actions} onFiles={vi.fn()} onOpenPanel={vi.fn()} spaceDown={false} />
+  return <Canvas boardId="b1" items={items} actions={actions} onFiles={vi.fn()} onOpenPanel={onOpenPanel} spaceDown={false} />
 }
 
-function renderBoard(qc: QueryClient) {
+function renderBoard(qc: QueryClient, onOpenPanel?: (...args: unknown[]) => void) {
   return render(
     <QueryClientProvider client={qc}>
-      <Board />
+      <Board onOpenPanel={onOpenPanel} />
     </QueryClientProvider>,
   )
 }
@@ -98,7 +103,28 @@ describe('Canvas axes', () => {
       ),
     )
     expect(screen.getByRole('button', { name: 'Honey · kept' })).toBeTruthy()
-    expect(screen.getByRole('list', { name: 'Items on this board' }).textContent).not.toContain('Honey.png')
+    expect(screen.queryAllByTestId('axis-card')).toHaveLength(1)
+  })
+
+  it('a kept take stays a board item: its card selects it, then Inspect and Remove act on it', async () => {
+    const src = makeItem({ id: 'src', board_id: 'b1' })
+    const kept = makeItem({ id: 'k1', board_id: 'b1', original_filename: 'Honey.png', explore_option_id: 'o1', origin: 'generated' })
+    const qc = client(
+      [{ id: 'e1', board_id: 'b1', item_id: 'src', key: 'case_finish', options: [opt({ id: 'o1', name: 'Honey', status: 'kept', kept_item_id: 'k1', takes: ['k1'] })] }],
+      [src, kept],
+    )
+    const onOpenPanel = vi.fn()
+    renderBoard(qc, onOpenPanel)
+    // listed for keyboard and screen readers like any item
+    expect(screen.getByRole('list', { name: 'Items on this board' }).textContent).toContain('Honey.png')
+    fireEvent.click(screen.getByRole('button', { name: 'Honey · kept' }))
+    expect(selectionStore.get().selected).toEqual(['k1'])
+    expect(screen.getByRole('dialog', { name: 'Honey' })).toBeTruthy() // its popover opens too
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect' }))
+    expect(onOpenPanel).toHaveBeenCalledWith('inspect', 'k1')
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
+    expect(deleteItem).toHaveBeenCalledWith('k1')
+    expect(qc.getQueryData<Item[]>(keys.items('b1'))!.map((i) => i.id)).toEqual(['src'])
   })
 
   it('moving a source moves its kept items in the same undo entry; undo puts both back', () => {
