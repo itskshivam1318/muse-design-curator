@@ -1,0 +1,38 @@
+{
+  "id": "texture",
+  "name": "Texture tile",
+  "description": "Tileable texture from a region.",
+  "mark": "TEX",
+  "tint": "#f3f4f6",
+  "ink": "#3a4350",
+  "runner": "llm",
+  "runs_on": "Muse Spark",
+  "inputs": {
+    "kinds": [
+      "image"
+    ],
+    "max": 1
+  },
+  "params": {
+    "type": "object",
+    "properties": {}
+  },
+  "outputs": [
+    "images"
+  ],
+  "requires": [
+    "PLUGIN_PLACEHOLDER"
+  ],
+  "prompt": "prompt.md",
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "text"
+    ]
+  }
+}

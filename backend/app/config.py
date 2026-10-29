@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     IMAGE_PROVIDER: str = "muse-image"
     IMAGE_MODEL: str = "muse-image-1.0"
     EXPLORE_ENABLED: bool = True
+    PLUGINS_ENABLED: bool = True
+    PLUGINS_DIR: str = "data/plugins"
+    PLUGIN_TIMEOUT_S: int = 30
+    # Capabilities a placeholder plugin needs; unset means the plugin shows as not connected
+    VIDEO_MODEL: str | None = None
+    MESH_MODEL: str | None = None
+    CODE_SANDBOX: str | None = None
     EMBEDDER: str = "siglip2"
     BASETEN_API_KEY: str | None = None
     BASETEN_MODEL: str = "meta-models/muse-spark-open"

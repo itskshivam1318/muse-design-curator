@@ -1,0 +1,31 @@
+{
+  "id": "palette",
+  "name": "Palette & material",
+  "description": "Swatches from a group.",
+  "mark": "PAL",
+  "tint": "#f3f4f6",
+  "ink": "#3a4350",
+  "runner": "python",
+  "runs_on": "SAM 3.1 + Lab",
+  "inputs": {
+    "kinds": [
+      "image"
+    ]
+  },
+  "params": {
+    "type": "object",
+    "properties": {
+      "count": {
+        "type": "integer",
+        "minimum": 3,
+        "maximum": 8,
+        "default": 5
+      }
+    }
+  },
+  "outputs": [
+    "notes",
+    "attributes"
+  ],
+  "entry": "main.py"
+}

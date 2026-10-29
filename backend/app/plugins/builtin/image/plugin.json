@@ -1,0 +1,47 @@
+{
+  "id": "image",
+  "name": "Image",
+  "description": "Masked edits and new images from items and notes.",
+  "mark": "IMG",
+  "tint": "#dfe5f6",
+  "ink": "#2a4aae",
+  "runner": "model",
+  "runs_on": "Muse Spark · Baseten",
+  "inputs": {
+    "kinds": [
+      "image",
+      "note"
+    ]
+  },
+  "params": {
+    "type": "object",
+    "properties": {
+      "mode": {
+        "type": "string",
+        "enum": [
+          "part",
+          "whole"
+        ],
+        "default": "part"
+      },
+      "part": {
+        "type": "string",
+        "default": ""
+      },
+      "prompt": {
+        "type": "string"
+      },
+      "count": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 4,
+        "default": 1
+      }
+    }
+  },
+  "outputs": [
+    "images"
+  ],
+  "model": "image.edit",
+  "secondary": "Prompt"
+}

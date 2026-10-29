@@ -1,0 +1,29 @@
+{
+  "id": "code",
+  "name": "Python",
+  "description": "Run code on board items; write results back as attributes.",
+  "mark": "{}",
+  "tint": "#ebe4f5",
+  "ink": "#5b3e94",
+  "runner": "python",
+  "runs_on": "sandbox",
+  "inputs": {
+    "kinds": [
+      "image",
+      "note"
+    ]
+  },
+  "params": {
+    "type": "object",
+    "properties": {}
+  },
+  "outputs": [
+    "attributes",
+    "text"
+  ],
+  "requires": [
+    "CODE_SANDBOX"
+  ],
+  "entry": "main.py",
+  "secondary": "Edit code"
+}

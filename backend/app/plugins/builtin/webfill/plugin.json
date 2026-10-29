@@ -1,0 +1,39 @@
+{
+  "id": "webfill",
+  "name": "Web fill",
+  "description": "Fills price, specs, materials from the web with numbered citations.",
+  "mark": "WEB",
+  "tint": "#f3f4f6",
+  "ink": "#3a4350",
+  "runner": "llm",
+  "runs_on": "Muse Spark search",
+  "inputs": {
+    "kinds": [
+      "image",
+      "note",
+      "link"
+    ]
+  },
+  "params": {
+    "type": "object",
+    "properties": {}
+  },
+  "outputs": [
+    "attributes"
+  ],
+  "requires": [
+    "PLUGIN_PLACEHOLDER"
+  ],
+  "prompt": "prompt.md",
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "text"
+    ]
+  }
+}

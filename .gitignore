@@ -1,6 +1,7 @@
 .superpowers/
 .remember/
 data/
+data/plugins/
 node_modules/
 dist/
 .venv/

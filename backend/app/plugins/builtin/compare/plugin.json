@@ -1,0 +1,40 @@
+{
+  "id": "compare",
+  "name": "Compare",
+  "description": "Puts 2–4 items side by side on the same attributes.",
+  "mark": "CMP",
+  "tint": "#f3f4f6",
+  "ink": "#3a4350",
+  "runner": "llm",
+  "runs_on": "Muse Spark",
+  "inputs": {
+    "kinds": [
+      "image",
+      "note"
+    ],
+    "min": 2,
+    "max": 4
+  },
+  "params": {
+    "type": "object",
+    "properties": {}
+  },
+  "outputs": [
+    "table"
+  ],
+  "requires": [
+    "PLUGIN_PLACEHOLDER"
+  ],
+  "prompt": "prompt.md",
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "text"
+    ]
+  }
+}

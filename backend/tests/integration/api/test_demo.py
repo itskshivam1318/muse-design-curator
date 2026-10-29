@@ -81,7 +81,7 @@ def test_locked_writes_return_403(client: TestClient, world: dict[str, Any]) -> 
 def test_open_routes_work_while_locked(client: TestClient, world: dict[str, Any]) -> None:
     board = world["watch"]
     item = world["items"][board][0]
-    assert client.get("/api/demo/status").json() == {"demo_mode": True, "unlocked": False, "explore_enabled": True}
+    assert client.get("/api/demo/status").json() == {"demo_mode": True, "unlocked": False, "explore_enabled": True, "plugins_enabled": True}
     for path in ("/api/boards", f"/api/boards/{board}", f"/api/boards/{board}/items",
                  f"/api/boards/{board}/profile", f"/api/boards/{board}/lens",
                  f"/api/items/{item}/attributes", f"/api/items/{item}/image?size=thumb"):  # fmt: skip
@@ -104,7 +104,7 @@ def test_unlock_success_opens_writes(client: TestClient, clock: Clock) -> None:
     cookie = r.headers["set-cookie"]
     assert "dle_demo=" in cookie and "HttpOnly" in cookie and "samesite=lax" in cookie.lower()
     assert "Max-Age=43200" in cookie and "Secure" not in cookie  # plain http in tests
-    assert client.get("/api/demo/status").json() == {"demo_mode": True, "unlocked": True, "explore_enabled": True}
+    assert client.get("/api/demo/status").json() == {"demo_mode": True, "unlocked": True, "explore_enabled": True, "plugins_enabled": True}
     assert client.post("/api/boards", json={"title": "mine"}).status_code == 201
 
 
@@ -217,7 +217,7 @@ def test_proxy_header_ignored_unless_trusted(world: dict[str, Any]) -> None:
 
 def test_demo_off_changes_nothing(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DEMO_MODE", "0")
-    assert client.get("/api/demo/status").json() == {"demo_mode": False, "unlocked": True, "explore_enabled": True}
+    assert client.get("/api/demo/status").json() == {"demo_mode": False, "unlocked": True, "explore_enabled": True, "plugins_enabled": True}
     assert client.post("/api/boards", json={"title": "x"}).status_code == 201
     assert unlock(client).json()["error"]["code"] == "DEMO_MODE_OFF"
 
@@ -270,7 +270,7 @@ def test_non_ascii_cookie_is_locked_not_500(client: TestClient) -> None:
     assert not demo.cookie_valid(SECRET, "4102444800.é" + "a" * 63)
     raw = [(b"cookie", "dle_demo=4102444800.éé".encode())]  # raw UTF-8 bytes, not ASCII
     status = client.get("/api/demo/status", headers=raw)
-    assert status.json() == {"demo_mode": True, "unlocked": False, "explore_enabled": True}
+    assert status.json() == {"demo_mode": True, "unlocked": False, "explore_enabled": True, "plugins_enabled": True}
     assert locked(client.post("/api/boards", json={"title": "x"}, headers=raw))
 
 

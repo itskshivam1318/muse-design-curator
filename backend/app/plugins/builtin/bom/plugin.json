@@ -1,0 +1,38 @@
+{
+  "id": "bom",
+  "name": "Cost & BOM",
+  "description": "Parts and cost estimates with sources.",
+  "mark": "BOM",
+  "tint": "#f3f4f6",
+  "ink": "#3a4350",
+  "runner": "llm",
+  "runs_on": "Muse Spark search",
+  "inputs": {
+    "kinds": [
+      "image",
+      "note"
+    ]
+  },
+  "params": {
+    "type": "object",
+    "properties": {}
+  },
+  "outputs": [
+    "table"
+  ],
+  "requires": [
+    "PLUGIN_PLACEHOLDER"
+  ],
+  "prompt": "prompt.md",
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "text"
+    ]
+  }
+}

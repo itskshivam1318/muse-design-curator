@@ -1,0 +1,28 @@
+{
+  "id": "video",
+  "name": "Video",
+  "description": "Short clips from an image and a direction.",
+  "mark": "VID",
+  "tint": "#f6e6d6",
+  "ink": "#9a5410",
+  "runner": "model",
+  "runs_on": "[video model]",
+  "inputs": {
+    "kinds": [
+      "image",
+      "note"
+    ]
+  },
+  "params": {
+    "type": "object",
+    "properties": {}
+  },
+  "outputs": [
+    "images"
+  ],
+  "requires": [
+    "VIDEO_MODEL"
+  ],
+  "model": "video.generate",
+  "secondary": "Track with SAM"
+}

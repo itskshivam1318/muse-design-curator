@@ -1,0 +1,39 @@
+{
+  "id": "techpack",
+  "name": "Tech pack",
+  "description": "Spec sheet from a kept design.",
+  "mark": "SPEC",
+  "tint": "#f3f4f6",
+  "ink": "#3a4350",
+  "runner": "llm",
+  "runs_on": "Muse Spark",
+  "inputs": {
+    "kinds": [
+      "image",
+      "note"
+    ]
+  },
+  "params": {
+    "type": "object",
+    "properties": {}
+  },
+  "outputs": [
+    "text",
+    "table"
+  ],
+  "requires": [
+    "PLUGIN_PLACEHOLDER"
+  ],
+  "prompt": "prompt.md",
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "text"
+    ]
+  }
+}

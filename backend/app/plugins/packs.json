@@ -1,0 +1,62 @@
+[
+  {
+    "id": "product",
+    "name": "Product design",
+    "about": "Objects you hold or wear: watches, lamps, furniture.",
+    "plugin_ids": [
+      "image",
+      "mesh",
+      "critique",
+      "webfill",
+      "techpack",
+      "bom"
+    ]
+  },
+  {
+    "id": "fashion",
+    "name": "Fashion",
+    "about": "Garments and accessories.",
+    "plugin_ids": [
+      "image",
+      "video",
+      "palette",
+      "texture",
+      "techpack"
+    ]
+  },
+  {
+    "id": "interior",
+    "name": "Interior",
+    "about": "Rooms, light and materials.",
+    "plugin_ids": [
+      "image",
+      "palette",
+      "texture",
+      "bom",
+      "critique"
+    ]
+  },
+  {
+    "id": "auto",
+    "name": "Automotive",
+    "about": "Exterior and interior details.",
+    "plugin_ids": [
+      "image",
+      "mesh",
+      "video",
+      "critique",
+      "techpack"
+    ]
+  },
+  {
+    "id": "lab",
+    "name": "Formulation lab",
+    "about": "Creams, coatings, food: design by ingredients.",
+    "plugin_ids": [
+      "code",
+      "webfill",
+      "critique",
+      "image"
+    ]
+  }
+]

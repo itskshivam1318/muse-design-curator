@@ -21,6 +21,7 @@ def status(request: Request) -> dict[str, Any]:
         "demo_mode": settings.DEMO_MODE,
         "unlocked": demo.is_unlocked(request, settings),
         "explore_enabled": settings.EXPLORE_ENABLED,
+        "plugins_enabled": settings.PLUGINS_ENABLED,
     }
 
 

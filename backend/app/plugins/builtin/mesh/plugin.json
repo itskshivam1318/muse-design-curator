@@ -1,0 +1,27 @@
+{
+  "id": "mesh",
+  "name": "Image → 3D",
+  "description": "Mesh and texture from one or more views.",
+  "mark": "3D",
+  "tint": "#e0efe6",
+  "ink": "#2c7a4b",
+  "runner": "model",
+  "runs_on": "[3D model] · Modal",
+  "inputs": {
+    "kinds": [
+      "image"
+    ]
+  },
+  "params": {
+    "type": "object",
+    "properties": {}
+  },
+  "outputs": [
+    "images"
+  ],
+  "requires": [
+    "MESH_MODEL"
+  ],
+  "model": "mesh.from_image",
+  "secondary": "Download"
+}

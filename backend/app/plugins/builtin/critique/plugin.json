@@ -1,0 +1,65 @@
+{
+  "id": "critique",
+  "name": "Critique",
+  "description": "Checks picks against the brief and notes.",
+  "mark": "CR",
+  "tint": "#f3f4f6",
+  "ink": "#3a4350",
+  "runner": "llm",
+  "runs_on": "Muse Spark",
+  "inputs": {
+    "kinds": [
+      "image",
+      "note",
+      "video",
+      "link"
+    ]
+  },
+  "params": {
+    "type": "object",
+    "properties": {}
+  },
+  "outputs": [
+    "notes",
+    "text"
+  ],
+  "requires": [
+    "PLUGIN_PLACEHOLDER"
+  ],
+  "prompt": "prompt.md",
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "points": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "verdict": {
+              "type": "string",
+              "enum": [
+                "fits",
+                "misses",
+                "unclear"
+              ]
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "text"
+          ]
+        }
+      },
+      "summary": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "points",
+      "summary"
+    ]
+  }
+}
