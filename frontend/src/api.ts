@@ -4,7 +4,7 @@
  */
 
 export type ParseStatus = 'pending' | 'pending_lens' | 'processing' | 'completed' | 'failed'
-export type ItemKind = 'image' | 'video' | 'link'
+export type ItemKind = 'image' | 'video' | 'link' | 'note'
 export type ItemRole = 'reference' | 'counter_example'
 
 export interface Item {
@@ -39,8 +39,16 @@ export interface Item {
   licence?: ItemLicence | null
   /** Set on an image generated from an explore option. */
   explore_option_id: string | null
-  generation: { model: string; prompt: string; option_id: string } | null
+  /**
+   * Generation provenance. On a note it can instead hold `{ visualizing_since }` (the visualize
+   * claim): never read a non-null `generation` as "generated"; that is `origin === 'generated'`.
+   */
+  generation: { model?: string; prompt?: string; option_id?: string; visualizing_since?: string } | null
   check: GeneratedCheck | null
+  /** The text of a note card; null on every other kind. */
+  note_text: string | null
+  /** A staged item is a take or plugin result not yet kept on the board. */
+  staged: boolean
 }
 
 /** The comparator's verdict on a generated image: did the target land, what was kept. */
@@ -72,11 +80,15 @@ export interface ExploreOption {
   value: string | number | boolean | null
   keeps: string[]
   edit_prompt?: string
-  status: 'open' | 'dismissed' | 'visualizing' | 'visualized'
+  status: 'open' | 'dismissed' | 'visualizing' | 'visualized' | 'kept'
   last_error: string | null
   x: number | null
   y: number | null
   created_at?: string
+  /** The take that was kept onto the board, if any. */
+  kept_item_id: string | null
+  /** Item ids of the staged takes generated for this option. */
+  takes: string[]
 }
 
 export interface Exploration {
@@ -95,6 +107,70 @@ export interface ItemLicence {
   creator_name: string | null
   landing_url: string | null
   source: string
+}
+
+export interface PluginInfo {
+  id: string
+  name: string
+  description: string
+  mark: string
+  tint: string
+  ink: string
+  runner: 'python' | 'llm' | 'model'
+  runs_on: string
+  inputs: { kinds: string[]; min: number; max: number }
+  /** JSON schema of the plugin's params. */
+  params: Record<string, unknown>
+  outputs: string[]
+  secondary: string | null
+  status: 'available' | 'not_connected'
+  builtin: boolean
+}
+
+export interface PluginPack {
+  id: string
+  name: string
+  about: string
+  plugin_ids: string[]
+}
+
+export interface PluginNode {
+  id: string
+  board_id: string
+  plugin_id: string
+  x: number
+  y: number
+  w: number
+  h: number
+  input_item_ids: string[]
+  params: Record<string, unknown>
+  last_run_id: string | null
+}
+
+export type PluginRunStatus = 'queued' | 'running' | 'done' | 'failed'
+
+export interface PluginRun {
+  id: string
+  node_id: string
+  plugin_id: string
+  status: PluginRunStatus
+  progress: { message: string } | null
+  output: {
+    text?: unknown
+    table?: unknown
+    created_item_ids?: string[]
+    skipped_attributes?: unknown[]
+  } | null
+  error_code: string | null
+  error_message: string | null
+  created_at: string
+  finished_at: string | null
+}
+
+export interface NodesResponse {
+  nodes: PluginNode[]
+  /** The latest run of each node, by node id. */
+  runs: Record<string, PluginRun>
 }
 
 export interface Board {
@@ -421,6 +497,7 @@ export interface DemoStatus {
   unlocked: boolean
   /** Absent on the unlock response. */
   explore_enabled?: boolean
+  plugins_enabled?: boolean
 }
 
 export const keys = {
@@ -434,6 +511,10 @@ export const keys = {
   run: (runId: string) => ['run', runId] as const,
   explorations: (boardId: string) => ['explorations', boardId] as const,
   attributes: (itemId: string) => ['attributes', itemId] as const,
+  plugins: () => ['plugins'] as const,
+  packs: () => ['plugin-packs'] as const,
+  boardPlugins: (id: string) => ['boardPlugins', id] as const,
+  nodes: (id: string) => ['nodes', id] as const,
   attributeHistory: (itemId: string, key: string) => ['attributeHistory', itemId, key] as const,
 }
 
@@ -494,7 +575,7 @@ export const addLink = (boardId: string, url: string, at?: Point) =>
 
 export const patchItem = (
   id: string,
-  body: Partial<Pick<Item, 'x' | 'y' | 'w' | 'h' | 'z' | 'role'>> & { chosen_frame_id?: string },
+  body: Partial<Pick<Item, 'x' | 'y' | 'w' | 'h' | 'z' | 'role' | 'note_text'>> & { chosen_frame_id?: string },
 ) => request<Item>(`/items/${enc(id)}`, { method: 'PATCH', json: body })
 export const deleteItem = (id: string) => request<void>(`/items/${enc(id)}`, { method: 'DELETE' })
 export const listFrames = (itemId: string) =>
@@ -528,6 +609,43 @@ export const patchOption = (
 /** `at` is where the canvas draws the option's note; the server saves it and places the image beside it. */
 export const visualizeOption = (optionId: string, at?: Point) =>
   request<void>(`/options/${enc(optionId)}/visualize`, { method: 'POST', ...(at ? { json: at } : {}) })
+
+export const keepTake = (optionId: string, itemId: string, at?: Point) =>
+  request<ExploreOption>(`/options/${enc(optionId)}/keep`, {
+    method: 'POST',
+    json: { item_id: itemId, ...(at ? { x: at.x, y: at.y } : {}) },
+  })
+export const unkeepTake = (optionId: string) =>
+  request<ExploreOption>(`/options/${enc(optionId)}/unkeep`, { method: 'POST' })
+
+export const createNote = (boardId: string, body: { text: string; x: number; y: number; w?: number; h?: number }) =>
+  request<Item>(`/boards/${enc(boardId)}/notes`, { method: 'POST', json: body })
+export const patchNoteText = (itemId: string, text: string) => patchItem(itemId, { note_text: text })
+export const visualizeNote = (itemId: string) =>
+  request<{ note_id: string; status: string }>(`/items/${enc(itemId)}/visualize`, { method: 'POST' })
+
+export const listPlugins = () => request<{ plugins: PluginInfo[] }>('/plugins').then((r) => r.plugins)
+export const listPacks = () => request<{ packs: PluginPack[] }>('/plugin-packs').then((r) => r.packs)
+export const listBoardPlugins = (boardId: string) =>
+  request<{ plugin_ids: string[] }>(`/boards/${enc(boardId)}/plugins`).then((r) => r.plugin_ids)
+export const addBoardPlugin = (boardId: string, pluginId: string) =>
+  request<{ plugin_ids: string[] }>(`/boards/${enc(boardId)}/plugins`, {
+    method: 'POST',
+    json: { plugin_id: pluginId },
+  }).then((r) => r.plugin_ids)
+export const removeBoardPlugin = (boardId: string, pluginId: string) =>
+  request<void>(`/boards/${enc(boardId)}/plugins/${enc(pluginId)}`, { method: 'DELETE' })
+export const listNodes = (boardId: string) => request<NodesResponse>(`/boards/${enc(boardId)}/nodes`)
+export const createNode = (
+  boardId: string,
+  body: { plugin_id: string; x: number; y: number; input_item_ids?: string[] },
+) => request<PluginNode>(`/boards/${enc(boardId)}/nodes`, { method: 'POST', json: body })
+export const patchNode = (
+  nodeId: string,
+  body: { x?: number; y?: number; input_item_ids?: string[]; params?: Record<string, unknown> },
+) => request<PluginNode>(`/nodes/${enc(nodeId)}`, { method: 'PATCH', json: body })
+export const deleteNode = (nodeId: string) => request<void>(`/nodes/${enc(nodeId)}`, { method: 'DELETE' })
+export const runNode = (nodeId: string) => request<PluginRun>(`/nodes/${enc(nodeId)}/run`, { method: 'POST' })
 
 export const pairCode = () =>
   request<{ code: string; expires_at: string }>('/extension/pair-code', { method: 'POST' })

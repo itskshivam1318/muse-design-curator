@@ -1,6 +1,17 @@
 /** Board server-sent events: keeps the React Query cache in step with the server. */
 import type { QueryClient } from '@tanstack/react-query'
-import { API_ORIGIN, type Board, type Exploration, type Item, keys, type ProfileSnapshot } from './api'
+import { useSyncExternalStore } from 'react'
+import {
+  API_ORIGIN,
+  type Board,
+  type Exploration,
+  type Item,
+  keys,
+  type NodesResponse,
+  type PluginInfo,
+  type PluginRun,
+  type ProfileSnapshot,
+} from './api'
 
 export const EVENT_TYPES = [
   'item.added',
@@ -14,9 +25,104 @@ export const EVENT_TYPES = [
   'explore.updated',
   'run.progress',
   'run.completed',
+  'note.visualizing',
+  'note.visualized',
+  'note.visualize_failed',
+  'plugin_run.queued',
+  'plugin_run.progress',
+  'plugin_run.done',
+  'plugin_run.failed',
 ] as const
 
 export type BoardEventType = (typeof EVENT_TYPES)[number]
+
+type Listener = () => void
+
+function createStore<S>(initial: S) {
+  let state = initial
+  const listeners = new Set<Listener>()
+  return {
+    get: () => state,
+    set(next: S) {
+      state = next
+      listeners.forEach((l) => l())
+    },
+    subscribe(l: Listener) {
+      listeners.add(l)
+      return () => listeners.delete(l)
+    },
+  }
+}
+
+/** Notes whose image is being made right now (note ids; ids are unique across boards). */
+export const noteVisualizeStore = createStore<{ ids: ReadonlySet<string> }>({ ids: new Set() })
+
+export const useNoteVisualizing = (noteId: string): boolean =>
+  useSyncExternalStore(noteVisualizeStore.subscribe, () => noteVisualizeStore.get().ids.has(noteId))
+
+function setVisualizing(noteId: string, on: boolean): void {
+  const ids = new Set(noteVisualizeStore.get().ids)
+  if (on === ids.has(noteId)) return
+  if (on) ids.add(noteId)
+  else ids.delete(noteId)
+  noteVisualizeStore.set({ ids })
+}
+
+export interface ActivityEntry {
+  at: string
+  text: string
+}
+const ACTIVITY_MAX = 50
+
+const activityStore = createStore<{ entries: readonly ActivityEntry[] }>({ entries: [] })
+
+/** The last 50 things that happened on the board, oldest first, as plain sentences. */
+export const boardActivity = {
+  get: activityStore.get,
+  subscribe: activityStore.subscribe,
+  push(text: string) {
+    const entries = [...activityStore.get().entries, { at: new Date().toISOString(), text }]
+    activityStore.set({ entries: entries.slice(-ACTIVITY_MAX) })
+  },
+  clear() {
+    activityStore.set({ entries: [] })
+  },
+}
+
+export const useBoardActivity = (): readonly ActivityEntry[] =>
+  useSyncExternalStore(boardActivity.subscribe, () => boardActivity.get().entries).slice()
+
+export interface DescribeContext {
+  pluginName?: string
+  noteLabel?: string
+}
+
+/** A plain sentence for an event worth telling the person about; null for the rest. */
+export function describeEvent(type: string, data: unknown, ctx: DescribeContext = {}): string | null {
+  const d = (data ?? {}) as Record<string, unknown>
+  const plugin = ctx.pluginName ?? 'Plugin'
+  switch (type) {
+    case 'plugin_run.queued':
+      return `${plugin} is running`
+    case 'plugin_run.done': {
+      const made = (d.output as PluginRun['output'] | undefined)?.created_item_ids?.length ?? 0
+      return made > 0 ? `${plugin} finished: ${made} ${made === 1 ? 'note' : 'notes'} added` : `${plugin} finished`
+    }
+    case 'plugin_run.failed':
+      return typeof d.error_message === 'string' && d.error_message
+        ? `${plugin} failed: ${d.error_message}`
+        : `${plugin} failed`
+    case 'note.visualizing':
+      return 'Visualizing note'
+    case 'note.visualized':
+      return `${ctx.noteLabel ?? 'Note'} visualized`
+    case 'note.visualize_failed':
+      return typeof d.error === 'string' && d.error
+        ? `${ctx.noteLabel ?? 'Note'} could not be visualized: ${d.error}`
+        : `${ctx.noteLabel ?? 'Note'} could not be visualized`
+  }
+  return null
+}
 
 function upsert(items: Item[] | undefined, item: Item): Item[] {
   const list = items ?? []
@@ -36,10 +142,86 @@ export function upsertItems(qc: QueryClient, boardId: string, added: Item[]): vo
   qc.setQueryData<Item[]>(keys.items(boardId), (old) => added.reduce(upsert, old ?? []))
 }
 
+const RUN_STATUS: Record<string, PluginRun['status']> = {
+  'plugin_run.queued': 'queued',
+  'plugin_run.progress': 'running',
+  'plugin_run.done': 'done',
+  'plugin_run.failed': 'failed',
+}
+
+function applyRunEvent(qc: QueryClient, boardId: string, type: string, d: Record<string, unknown>): void {
+  const nodeId = String(d.node_id)
+  const runId = String(d.run_id)
+  qc.setQueryData<NodesResponse>(keys.nodes(boardId), (old) => {
+    if (!old) return old
+    const node = old.nodes.find((n) => n.id === nodeId)
+    const cur = old.runs[nodeId]
+    // a late event of an older run must not overwrite the node's newer one
+    if (cur && cur.id !== runId && node?.last_run_id === cur.id && type !== 'plugin_run.queued') return old
+    const base: PluginRun = cur?.id === runId ? cur : {
+      id: runId, node_id: nodeId, plugin_id: node?.plugin_id ?? '', status: 'queued', progress: null,
+      output: null, error_code: null, error_message: null, created_at: new Date().toISOString(),
+      finished_at: null,
+    }  // prettier-ignore
+    const status = RUN_STATUS[type]
+    const next: PluginRun = { ...base, status }
+    if (type === 'plugin_run.progress') next.progress = (d.progress as PluginRun['progress']) ?? base.progress
+    if (type === 'plugin_run.done') {
+      next.progress = null
+      next.output = (d.output as PluginRun['output']) ?? null
+      next.finished_at = new Date().toISOString()
+    }
+    if (type === 'plugin_run.failed') {
+      next.progress = null
+      next.error_code = (d.error_code as string | undefined) ?? null
+      next.error_message = (d.error_message as string | undefined) ?? null
+      next.finished_at = new Date().toISOString()
+    }
+    return {
+      nodes: old.nodes.map((n) => (n.id === nodeId ? { ...n, last_run_id: runId } : n)),
+      runs: { ...old.runs, [nodeId]: next },
+    }
+  })
+}
+
+function noteLabel(qc: QueryClient, boardId: string, noteId: unknown): string | undefined {
+  const text = qc.getQueryData<Item[]>(keys.items(boardId))?.find((i) => i.id === noteId)?.note_text?.trim()
+  if (!text) return undefined
+  return text.length > 40 ? `${text.slice(0, 40).trimEnd()}...` : text
+}
+
+function pluginName(qc: QueryClient, boardId: string, nodeId: unknown): string | undefined {
+  const nodes = qc.getQueryData<NodesResponse>(keys.nodes(boardId))?.nodes
+  const pluginId = nodes?.find((n) => n.id === nodeId)?.plugin_id
+  return qc.getQueryData<PluginInfo[]>(keys.plugins())?.find((p) => p.id === pluginId)?.name
+}
+
 /** Apply one event to the cache. Pure with respect to the network: it never fetches. */
 export function applyEvent(qc: QueryClient, boardId: string, type: string, data: unknown): void {
   const d = (data ?? {}) as Record<string, unknown>
+  applyToCache(qc, boardId, type, d)
+  const text = describeEvent(type, d, {
+    pluginName: pluginName(qc, boardId, d.node_id),
+    noteLabel: noteLabel(qc, boardId, d.note_id),
+  })
+  if (text) boardActivity.push(text)
+}
+
+function applyToCache(qc: QueryClient, boardId: string, type: string, d: Record<string, unknown>): void {
   switch (type) {
+    case 'note.visualizing':
+      setVisualizing(String(d.note_id), true)
+      return
+    case 'note.visualized':
+    case 'note.visualize_failed':
+      setVisualizing(String(d.note_id), false)
+      return
+    case 'plugin_run.queued':
+    case 'plugin_run.progress':
+    case 'plugin_run.done':
+    case 'plugin_run.failed':
+      applyRunEvent(qc, boardId, type, d)
+      return
     case 'item.added':
     case 'item.updated': {
       const item = d as unknown as Item

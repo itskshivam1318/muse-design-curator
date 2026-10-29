@@ -1,5 +1,21 @@
 import { useQuery } from '@tanstack/react-query'
-import { getAttributes, getBoard, getBoardLens, getProfile, getRun, keys, listExplorations, listFrames, listItems } from './api'
+import {
+  getAttributes,
+  getBoard,
+  getBoardLens,
+  getProfile,
+  getRun,
+  type Item,
+  keys,
+  listBoardPlugins,
+  listExplorations,
+  listFrames,
+  listItems,
+  listNodes,
+  listPacks,
+  listPlugins,
+} from './api'
+import { useDemo } from './demo'
 
 export const useBoard = (id: string) => useQuery({ queryKey: keys.board(id), queryFn: () => getBoard(id) })
 export const useItems = (id: string) => useQuery({ queryKey: keys.items(id), queryFn: () => listItems(id) })
@@ -22,6 +38,34 @@ export const useAttributes = (itemId: string | null) =>
     queryFn: () => getAttributes(itemId ?? ''),
     enabled: itemId !== null,
   })
+
+/** Items that belong on the board: staged takes and plugin results wait elsewhere until kept. */
+export const visibleItems = (items: Item[]): Item[] => items.filter((i) => !i.staged)
+
+/**
+ * Plugin queries only run when the server has plugins on (plugin endpoints 404 otherwise), so a
+ * board without them never lands in an error state.
+ */
+export function usePlugins() {
+  const { pluginsEnabled } = useDemo()
+  return useQuery({ queryKey: keys.plugins(), queryFn: listPlugins, enabled: pluginsEnabled })
+}
+export function usePacks() {
+  const { pluginsEnabled } = useDemo()
+  return useQuery({ queryKey: keys.packs(), queryFn: listPacks, enabled: pluginsEnabled })
+}
+export function useBoardPlugins(boardId: string) {
+  const { pluginsEnabled } = useDemo()
+  return useQuery({
+    queryKey: keys.boardPlugins(boardId),
+    queryFn: () => listBoardPlugins(boardId),
+    enabled: pluginsEnabled,
+  })
+}
+export function useNodes(boardId: string) {
+  const { pluginsEnabled } = useDemo()
+  return useQuery({ queryKey: keys.nodes(boardId), queryFn: () => listNodes(boardId), enabled: pluginsEnabled })
+}
 
 export const POLL_MS = 1500
 /** Safety net while the stream is open, in case a progress event is lost. */

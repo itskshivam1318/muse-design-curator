@@ -1,7 +1,8 @@
 import { QueryClient } from '@tanstack/react-query'
 import { describe, expect, it } from 'vitest'
-import { type Exploration, type Item, keys } from './api'
-import { applyEvent } from './events'
+import { type Exploration, type Item, keys, type NodesResponse, type PluginNode, type PluginRun } from './api'
+import { applyEvent, boardActivity, describeEvent, noteVisualizeStore } from './events'
+import { visibleItems } from './queries'
 import { makeItem } from './test/fixtures'
 
 function qcWith(items: Item[]) {
@@ -77,5 +78,101 @@ describe('applyEvent', () => {
     qc.setQueryData(keys.lens('b'), null)
     applyEvent(qc, 'b', 'lens.proposed', { lens_id: 'lens_1', version: 1 })
     expect(qc.getQueryState(keys.lens('b'))?.isInvalidated).toBe(true)
+  })
+})
+
+const node = (over: Partial<PluginNode> = {}): PluginNode => ({
+  id: 'n1', board_id: 'b', plugin_id: 'palette', x: 0, y: 0, w: 300, h: 360,
+  input_item_ids: [], params: {}, last_run_id: null, ...over,
+})
+const run = (over: Partial<PluginRun> = {}): PluginRun => ({
+  id: 'r1', node_id: 'n1', plugin_id: 'palette', status: 'queued', progress: null, output: null,
+  error_code: null, error_message: null, created_at: 'x', finished_at: null, ...over,
+})
+
+describe('plugin runs', () => {
+  const nodesQc = () => {
+    const qc = new QueryClient()
+    qc.setQueryData<NodesResponse>(keys.nodes('b'), { nodes: [node()], runs: {} })
+    qc.setQueryData(keys.plugins(), [{ id: 'palette', name: 'Palette & material' }])
+    return qc
+  }
+  const runOf = (qc: QueryClient) => qc.getQueryData<NodesResponse>(keys.nodes('b'))!.runs.n1
+
+  it('test plugin_run.done updates node run', () => {
+    const qc = nodesQc()
+    applyEvent(qc, 'b', 'plugin_run.queued', { node_id: 'n1', run_id: 'r1' })
+    expect(runOf(qc)).toMatchObject({ id: 'r1', status: 'queued' })
+    applyEvent(qc, 'b', 'plugin_run.progress', { node_id: 'n1', run_id: 'r1', progress: { message: 'Looking' } })
+    expect(runOf(qc)).toMatchObject({ status: 'running', progress: { message: 'Looking' } })
+    applyEvent(qc, 'b', 'plugin_run.done', { node_id: 'n1', run_id: 'r1', output: { created_item_ids: ['a'] } })
+    expect(runOf(qc)).toMatchObject({ status: 'done', progress: null, output: { created_item_ids: ['a'] } })
+    expect(qc.getQueryData<NodesResponse>(keys.nodes('b'))!.nodes[0].last_run_id).toBe('r1')
+  })
+
+  it('plugin_run.failed records the error', () => {
+    const qc = nodesQc()
+    applyEvent(qc, 'b', 'plugin_run.failed', { node_id: 'n1', run_id: 'r2', error_code: 'X', error_message: 'boom' })
+    expect(runOf(qc)).toMatchObject({ id: 'r2', status: 'failed', error_code: 'X', error_message: 'boom' })
+  })
+
+  it('a stale event for an older run does not overwrite a newer one', () => {
+    const qc = nodesQc()
+    qc.setQueryData<NodesResponse>(keys.nodes('b'), { nodes: [node({ last_run_id: 'r2' })], runs: { n1: run({ id: 'r2', status: 'running' }) } })
+    applyEvent(qc, 'b', 'plugin_run.done', { node_id: 'n1', run_id: 'r1', output: {} })
+    expect(runOf(qc)).toMatchObject({ id: 'r2', status: 'running' })
+  })
+
+  it('without a nodes cache it refetches nothing and does not throw', () => {
+    const qc = new QueryClient()
+    expect(() => applyEvent(qc, 'b', 'plugin_run.done', { node_id: 'n1', run_id: 'r1' })).not.toThrow()
+    expect(qc.getQueryData(keys.nodes('b'))).toBeUndefined()
+  })
+})
+
+describe('note visualizing', () => {
+  it('test note.visualized clears visualizing', () => {
+    const qc = new QueryClient()
+    applyEvent(qc, 'b', 'note.visualizing', { note_id: 'n9' })
+    expect(noteVisualizeStore.get().ids.has('n9')).toBe(true)
+    applyEvent(qc, 'b', 'note.visualized', { note_id: 'n9', item_id: 'i2' })
+    expect(noteVisualizeStore.get().ids.has('n9')).toBe(false)
+    applyEvent(qc, 'b', 'note.visualizing', { note_id: 'n9' })
+    applyEvent(qc, 'b', 'note.visualize_failed', { note_id: 'n9', error: 'nope' })
+    expect(noteVisualizeStore.get().ids.has('n9')).toBe(false)
+  })
+})
+
+describe('describeEvent', () => {
+  it('test describeEvent sentences', () => {
+    const ctx = { pluginName: 'Palette & material' }
+    expect(describeEvent('plugin_run.done', { output: { created_item_ids: ['a'] } }, ctx)).toBe('Palette & material finished: 1 note added')
+    expect(describeEvent('plugin_run.done', { output: { created_item_ids: ['a', 'b'] } }, ctx)).toBe('Palette & material finished: 2 notes added')
+    expect(describeEvent('plugin_run.done', { output: {} }, ctx)).toBe('Palette & material finished')
+    expect(describeEvent('plugin_run.failed', { error_message: 'no key' }, ctx)).toBe('Palette & material failed: no key')
+    expect(describeEvent('plugin_run.queued', {}, ctx)).toBe('Palette & material is running')
+    expect(describeEvent('note.visualized', {}, { noteLabel: 'Honey' })).toBe('Honey visualized')
+    expect(describeEvent('note.visualized', {})).toBe('Note visualized')
+    expect(describeEvent('note.visualizing', {})).toBe('Visualizing note')
+    expect(describeEvent('note.visualize_failed', { error: 'x' })).toBe('Note could not be visualized: x')
+    expect(describeEvent('item.added', {})).toBeNull()
+  })
+
+  it('applyEvent feeds boardActivity (newest last, capped at 50)', () => {
+    const qc = new QueryClient()
+    qc.setQueryData<NodesResponse>(keys.nodes('b'), { nodes: [node()], runs: {} })
+    qc.setQueryData(keys.plugins(), [{ id: 'palette', name: 'Palette' }])
+    boardActivity.clear()
+    applyEvent(qc, 'b', 'plugin_run.done', { node_id: 'n1', run_id: 'r1', output: { created_item_ids: ['a'] } })
+    expect(boardActivity.get().entries.at(-1)?.text).toBe('Palette finished: 1 note added')
+    for (let i = 0; i < 60; i++) applyEvent(qc, 'b', 'note.visualized', { note_id: `n${i}` })
+    expect(boardActivity.get().entries).toHaveLength(50)
+  })
+})
+
+describe('visibleItems', () => {
+  it('test visibleItems drops staged', () => {
+    const items = [makeItem({ id: 'a' }), makeItem({ id: 'b', staged: true })]
+    expect(visibleItems(items).map((i) => i.id)).toEqual(['a'])
   })
 })

@@ -11,7 +11,7 @@ const { dismissOption, moveOption } = await import('./optionActions')
 function opt(over: Partial<ExploreOption> = {}): ExploreOption {
   return {
     id: 'o1', exploration_id: 'e1', parent_option_id: null, batch: 1, steer: null, name: 'Brushed',
-    description: '', distance: 'near', value: 'brushed', keeps: [], status: 'open', last_error: null,
+    description: '', distance: 'near', value: 'brushed', keeps: [], status: 'open', last_error: null, kept_item_id: null, takes: [],
     x: null, y: null, ...over,
   }
 }

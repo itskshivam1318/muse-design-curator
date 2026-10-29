@@ -7,7 +7,7 @@ import { lineagePoints } from './nodeProps'
 function opt(over: Partial<ExploreOption> & { id: string }): ExploreOption {
   return {
     exploration_id: 'e1', parent_option_id: null, batch: 1, steer: null, name: `Option ${over.id}`,
-    description: '', distance: 'near', value: 'v', keeps: [], status: 'open', last_error: null,
+    description: '', distance: 'near', value: 'v', keeps: [], status: 'open', last_error: null, kept_item_id: null, takes: [],
     x: null, y: null, created_at: `2026-10-28T00:00:0${over.id.slice(-1)}Z`, ...over,
   }
 }

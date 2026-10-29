@@ -24,7 +24,7 @@ function opt(over: Partial<ExploreOption> & { id: string }): ExploreOption {
   return {
     exploration_id: 'e1', parent_option_id: null, batch: 1, steer: null, name: `Option ${over.id}`,
     description: `Looks like ${over.id}`, distance: 'near', value: 'brushed', keeps: ['dial_color'],
-    status: 'open', last_error: null, x: null, y: null, created_at: '2026-10-28T00:00:00Z', ...over,
+    status: 'open', last_error: null, kept_item_id: null, takes: [], x: null, y: null, created_at: '2026-10-28T00:00:00Z', ...over,
   }
 }
 

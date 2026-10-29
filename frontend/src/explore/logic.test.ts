@@ -5,7 +5,7 @@ import { canFindReal, findRealRequest, optionTree } from './logic'
 function opt(over: Partial<ExploreOption> & { id: string }): ExploreOption {
   return {
     exploration_id: 'e1', parent_option_id: null, batch: 1, steer: null, name: over.id, description: '',
-    distance: 'near', value: over.id, keeps: [], status: 'open', last_error: null, x: null, y: null,
+    distance: 'near', value: over.id, keeps: [], status: 'open', last_error: null, kept_item_id: null, takes: [], x: null, y: null,
     created_at: '2026-10-28T00:00:00Z', ...over,
   }
 }

@@ -22,7 +22,7 @@ const palette: CanvasPalette = {
 const option: ExploreOption = {
   id: 'o1', exploration_id: 'e1', parent_option_id: null, batch: 1, steer: null, name: 'Brushed steel',
   description: 'A satin grain that softens reflections.', distance: 'bold', value: 'brushed', keeps: [],
-  status: 'open', last_error: null, x: 300, y: 40,
+  status: 'open', last_error: null, kept_item_id: null, takes: [], x: 300, y: 40,
 }
 
 function setup(over: { editable?: boolean; option?: Partial<ExploreOption> } = {}) {
