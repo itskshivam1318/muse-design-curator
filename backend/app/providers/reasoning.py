@@ -19,6 +19,7 @@ MAX_EXTRACT_IMAGES = 6
 MAX_PROPOSE_IMAGES = 20
 MAX_VERIFY_IMAGES = 50
 MAX_EXPLORE_IMAGES = 4
+MAX_STRUCTURED_IMAGES = 12
 BASETEN_URL = "https://inference.baseten.co/v1"
 SCHEMA_NAME = "design_language"
 
@@ -43,6 +44,10 @@ class ReasoningProvider(Protocol):
     def explore_options(self, images: list[bytes], prompt: str) -> dict[str, Any]: ...
 
     def check_target(self, images: list[bytes], prompt: str) -> dict[str, Any]: ...
+
+    def structured(
+        self, images: list[bytes], schema: dict[str, Any], prompt: str
+    ) -> dict[str, Any]: ...
 
 
 def _limit(images: list[bytes], maximum: int) -> None:
@@ -87,26 +92,30 @@ class MuseSparkProvider:
         self.max_retries = max_retries
         self.timeout = timeout
 
-    def _fmt(self, schema: dict[str, Any]) -> dict[str, Any]:
+    def _fmt(self, schema: dict[str, Any], strict: bool = True) -> dict[str, Any]:
         return {"format": {"type": "json_schema", "name": SCHEMA_NAME, "schema": schema,
-                           "strict": True}}  # fmt: skip
+                           "strict": strict}}  # fmt: skip
 
     def _kwargs(
-        self, prompt: str, images: list[bytes], schema: dict[str, Any], effort: str
-    ) -> dict[str, Any]:
+        self, prompt: str, images: list[bytes], schema: dict[str, Any], effort: str,
+        strict: bool = True,
+    ) -> dict[str, Any]:  # fmt: skip
         return {
             "model": self.model,
             "input": _responses_input(prompt, images),
-            "text": self._fmt(schema),
+            "text": self._fmt(schema, strict),
             "reasoning": {"effort": effort},
             "store": False,
         }
 
     def _run(
-        self, prompt: str, images: list[bytes], schema: dict[str, Any], effort: str
-    ) -> dict[str, Any]:
+        self, prompt: str, images: list[bytes], schema: dict[str, Any], effort: str,
+        strict: bool = True,
+    ) -> dict[str, Any]:  # fmt: skip
         def go() -> dict[str, Any]:
-            resp = self.client.responses.create(**self._kwargs(prompt, images, schema, effort))
+            resp = self.client.responses.create(
+                **self._kwargs(prompt, images, schema, effort, strict)
+            )
             return parse_json_text(resp.output_text)
 
         return call_model(go, timeout=self.timeout, max_retries=self.max_retries)
@@ -145,6 +154,14 @@ class MuseSparkProvider:
     def check_target(self, images: list[bytes], prompt: str) -> dict[str, Any]:
         _limit(images, MAX_EXPLORE_IMAGES)
         return self._run(prompt, images, CHECK_SCHEMA, "low")
+
+    def structured(
+        self, images: list[bytes], schema: dict[str, Any], prompt: str
+    ) -> dict[str, Any]:
+        """Generic schema-shaped output for plugins. Plugin schemas are not written for strict
+        mode (open objects, optional keys), so the schema guides rather than constrains."""
+        _limit(images, MAX_STRUCTURED_IMAGES)
+        return self._run(prompt, images, schema, "low", strict=False)
 
 
 class MuseSparkOpenProvider:
@@ -218,6 +235,12 @@ class MuseSparkOpenProvider:
     def check_target(self, images: list[bytes], prompt: str) -> dict[str, Any]:
         _limit(images, MAX_EXPLORE_IMAGES)
         return self._run(prompt, images, CHECK_SCHEMA)
+
+    def structured(
+        self, images: list[bytes], schema: dict[str, Any], prompt: str
+    ) -> dict[str, Any]:
+        _limit(images, MAX_STRUCTURED_IMAGES)
+        return self._run(prompt, images, schema)
 
 
 GENERIC_LENS: dict[str, Any] = {
@@ -301,6 +324,12 @@ class MockReasoningProvider:
         n = int(hashlib.sha256(prompt.encode()).hexdigest()[:8], 16)
         return {"answer": ("yes", "no", "unclear")[n % 3], "confidence": round(0.5 + (n % 40) / 100, 2),
                 "box": None, "note": ""}  # fmt: skip
+
+    def structured(
+        self, images: list[bytes], schema: dict[str, Any], prompt: str
+    ) -> dict[str, Any]:
+        _limit(images, MAX_STRUCTURED_IMAGES)
+        return self._make(images, schema, prompt)
 
     def _make(self, images: list[bytes], schema: dict[str, Any], prompt: str) -> dict[str, Any]:
         h = hashlib.sha256()

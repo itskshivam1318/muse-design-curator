@@ -59,5 +59,9 @@
       "points",
       "summary"
     ]
+  },
+  "output_map": {
+    "notes": "points",
+    "text": "summary"
   }
 }
