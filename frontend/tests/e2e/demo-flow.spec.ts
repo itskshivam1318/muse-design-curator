@@ -5,9 +5,11 @@ import {
   boardIdOf,
   boardItems,
   canvas,
+  closeLibrary,
   dropFiles,
   expectItemCount,
   itemButton,
+  openLibrary,
   selectItem,
   sitePath,
 } from './helpers.ts'
@@ -54,6 +56,7 @@ test('demo flow: board, references, lens, link, video, vary, keep, reject, nudge
 
   await test.step('2. upload 3 images and drop 2 more; onboarding progress fills', async () => {
     await expect(page.getByRole('region', { name: 'Getting started' })).toBeVisible()
+    await openLibrary(page)
     await page
       .getByLabel('Choose images or video to upload')
       .setInputFiles(['watch_01.jpg', 'watch_02.jpg', 'watch_03.jpg'].map(sitePath))
@@ -77,7 +80,7 @@ test('demo flow: board, references, lens, link, video, vary, keep, reject, nudge
   })
 
   await test.step('4. paste a link to a page with og:image; it becomes an item', async () => {
-    await page.getByRole('button', { name: 'Add to board' }).click()
+    await openLibrary(page)
     await page.getByRole('button', { name: /Paste a link/ }).click()
     await page.getByLabel('Link to a page or image').fill(`${SITE_URL}/article.html`)
     await page.getByRole('button', { name: 'Add link' }).click()
@@ -86,8 +89,10 @@ test('demo flow: board, references, lens, link, video, vary, keep, reject, nudge
   })
 
   await test.step('5. upload an MP4; frames appear; choose frame 2', async () => {
+    await openLibrary(page)
     await page.getByLabel('Choose images or video to upload').setInputFiles(sitePath('clip.mp4'))
     await expectItemCount(page, 7)
+    await closeLibrary(page) // it covers the strip and the board's left side
     await selectItem(page, /^video clip\.mp4/)
     await page.keyboard.press('f') // fit the board so the video is on screen
     // hover the video on the canvas (just under its toolbar) to reveal the frames strip
@@ -191,6 +196,7 @@ test('demo flow: board, references, lens, link, video, vary, keep, reject, nudge
     const before = await boardItems(boardId)
     await page.reload()
     await expectItemCount(page, before.length)
+    await openLibrary(page)
     const bar = page.getByRole('region', { name: 'Board context' })
     await expect(bar.getByRole('button', { name: new RegExp(context.slice(0, 30)) })).toContainText('Watch')
     await expect(signals.getByText('Watch lens · curated')).toBeVisible()

@@ -2,7 +2,7 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { type BrowserContext, chromium, expect, test, type Worker } from '@playwright/test'
-import { apiJson, boardItems, expectItemCount, itemButton } from './helpers.ts'
+import { apiJson, boardItems, expectItemCount, itemButton, openLibrary } from './helpers.ts'
 import { API_URL, APP_URL, SITE_URL } from './ports.ts'
 
 // the extension APIs, as seen inside the service worker (types live in the extension package)
@@ -63,7 +63,7 @@ test('extension: pair, right-click "Add to board" on an image, the item appears 
   let code = ''
   await test.step('the app shows a pairing code', async () => {
     await app.goto(`${APP_URL}/boards/${board.id}`)
-    await app.getByRole('button', { name: 'Add to board' }).click()
+    await openLibrary(app)
     await app.getByRole('button', { name: /Get the Chrome extension/ }).click()
     const shown = app.locator('.pair-code')
     await expect(shown).toHaveText(/^\d{3} \d{3}$/)

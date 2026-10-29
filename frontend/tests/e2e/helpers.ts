@@ -71,3 +71,33 @@ export async function dropFiles(page: Page, target: Locator, paths: string[], mi
   await target.dispatchEvent('dragover', { dataTransfer, ...at })
   await target.dispatchEvent('drop', { dataTransfer, ...at })
 }
+
+/** Open the Library rail panel: upload, link and extension pairing live there. */
+export async function openLibrary(page: Page): Promise<void> {
+  const btn = page.getByRole('button', { name: /^Library/ })
+  if ((await btn.getAttribute('aria-pressed')) !== 'true') await btn.click()
+  await expect(page.getByRole('group', { name: 'Add to board' })).toBeVisible()
+}
+
+/** Create a board and (optionally) set its context sentence. */
+export async function createBoard(page: Page, title: string, context?: string): Promise<string> {
+  await page.goto('/')
+  await page.getByLabel('New board').fill(title)
+  await page.getByRole('button', { name: 'Create board' }).click()
+  await expect(page).toHaveURL(/\/boards\/brd_/)
+  const boardId = boardIdOf(page)
+  if (context) {
+    const bar = page.getByRole('region', { name: 'Board context' })
+    await bar.getByRole('button', { name: /Say what it's for/ }).click()
+    await bar.getByLabel('What is this board for?').fill(context)
+    await bar.getByRole('button', { name: 'Save' }).click()
+  }
+  return boardId
+}
+
+/** Close the Library panel (it covers the left of the board). */
+export async function closeLibrary(page: Page): Promise<void> {
+  const btn = page.getByRole('button', { name: /^Library/ })
+  if ((await btn.getAttribute('aria-pressed')) === 'true') await btn.click()
+  await expect(page.getByRole('dialog', { name: 'Library' })).toHaveCount(0)
+}
