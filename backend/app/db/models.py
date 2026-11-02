@@ -46,6 +46,10 @@ class Board(Base):
     lens_id: Mapped[str | None] = mapped_column(String)  # no FK: lenses.board_id references boards
     created_at: Mapped[str] = _created()
     updated_at: Mapped[str] = mapped_column(String, default=now_iso, onupdate=now_iso)
+    learned_json: Mapped[Any] = _json()
+    # accepted board dimensions: list of {label, dim_type, kind}
+    dimensions_json: Mapped[Any] = _json()
+    declined_json: Mapped[Any] = _json()
 
 
 ITEM_KINDS = ("image", "video", "link", "note")
@@ -53,6 +57,10 @@ ORIGINS = ("upload", "drop", "paste", "link", "extension", "candidate", "seed", 
 RIGHTS = ("user_supplied", "licensed", "generated")
 PARSE_STATUS = ("pending", "pending_lens", "processing", "completed", "failed")
 ROLES = ("reference", "counter_example")
+CONTENT_TYPES = ("image", "ui", "text")
+DIM_TYPES = ("physical", "abstract")
+REGION_KINDS = ("mask", "box", "text_range")
+PART_SOURCES = ("ai", "you")
 
 
 class CorpusItem(Base):
@@ -140,9 +148,15 @@ class BoardItem(Base):
     check_json: Mapped[Any] = _json()
     note_text: Mapped[str | None] = mapped_column(String)
     staged: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    content_type: Mapped[str | None] = mapped_column(String)
+    extracted_part: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[str] = _created()
     __table_args__ = (
         CheckConstraint(_in("kind", ITEM_KINDS), name="ck_item_kind"),
+        CheckConstraint(
+            "content_type IS NULL OR " + _in("content_type", CONTENT_TYPES),
+            name="ck_item_content_type",
+        ),
         CheckConstraint(_in("origin", ORIGINS), name="ck_item_origin"),
         CheckConstraint(_in("rights_status", RIGHTS), name="ck_item_rights"),
         CheckConstraint(_in("parse_status", PARSE_STATUS), name="ck_item_parse_status"),
@@ -228,7 +242,34 @@ class ItemAttribute(Base):
     model_confidence: Mapped[float | None] = mapped_column(Float)
     measured_json: Mapped[Any] = _json()
     updated_at: Mapped[str] = mapped_column(String, default=now_iso, onupdate=now_iso)
-    __table_args__ = (UniqueConstraint("item_id", "key"),)
+    dim_type: Mapped[str] = mapped_column(String, default="abstract", server_default="abstract")
+    prompt: Mapped[str | None] = mapped_column(String)
+    spec_json: Mapped[Any] = _json()  # serialized AttributeSpec
+    removed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    __table_args__ = (
+        UniqueConstraint("item_id", "key"),
+        CheckConstraint(_in("dim_type", DIM_TYPES), name="ck_attribute_dim_type"),
+    )
+
+
+class ItemPart(Base):
+    __tablename__ = "item_parts"
+    id: Mapped[str] = _id("part")
+    item_id: Mapped[str] = mapped_column(ForeignKey("board_items.id"), index=True)
+    key: Mapped[str] = mapped_column(String)
+    label: Mapped[str] = mapped_column(String)
+    # box [x0,y0,x1,y1] in 0..1, text_range [start,end], mask null until located
+    region_kind: Mapped[str] = mapped_column(String)
+    region_json: Mapped[Any] = _json()
+    mask_path: Mapped[str | None] = mapped_column(String)
+    source: Mapped[str] = mapped_column(String)
+    removed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    created_at: Mapped[str] = _created()
+    __table_args__ = (
+        UniqueConstraint("item_id", "key"),
+        CheckConstraint(_in("region_kind", REGION_KINDS), name="ck_part_region_kind"),
+        CheckConstraint(_in("source", PART_SOURCES), name="ck_part_source"),
+    )
 
 
 class AttributeEvent(Base):
