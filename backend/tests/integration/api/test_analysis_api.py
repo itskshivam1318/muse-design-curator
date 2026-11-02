@@ -87,7 +87,7 @@ def test_get_analysis_shape(client: TestClient, item: tuple[str, str]) -> None:
         "key", "label", "type", "part", "prompt", "kind", "value", "confidence", "source",
         "status",
     }  # fmt: skip
-    assert dims["subject"]["type"] == "abstract" and dims["subject"]["source"] == "model"
+    assert dims["subject"]["type"] == "abstract" and dims["subject"]["source"] == "ai"
     assert dims["body_colour"]["type"] == "physical" and dims["body_colour"]["part"] == "body"
     assert client.get("/api/items/nope/analysis").status_code == 404
 
@@ -200,7 +200,7 @@ def test_dimension_create_update_remove(client: TestClient, item: tuple[str, str
     assert r.status_code == 201, r.json()
     assert (r.json()["key"], r.json()["source"], r.json()["status"]) == (
         "warmth",
-        "user",
+        "you",
         "missing",
     )
     r = client.patch(f"/api/items/{item_id}/dimensions/warmth", json={"prompt": "Warm or cool?"})
@@ -332,10 +332,10 @@ def test_decline_offer_is_keyed_by_part_and_idempotent(client: TestClient, quiet
     assert client.post("/api/boards/nope/offers/accept", json=mood).status_code == 404
 
 
-def test_visualize_route_still_takes_renderer_id(client: TestClient, item: tuple[str, str]) -> None:
-    # the body shape is unchanged: an unknown option is a 404, not a validation error
-    r = client.post("/api/options/nope/visualize", json={"renderer_id": "muse_image"})
-    assert r.status_code == 404
+def test_visualize_route_reads_renderer_id(client: TestClient, world: Any) -> None:
+    opt = first_option(client, world)
+    r = client.post(f"/api/options/{opt['id']}/visualize", json={"renderer_id": "no_such_renderer"})
+    assert r.status_code == 400 and r.json()["error"]["code"] == "RENDERER_NOT_FOUND"
 
 
 # ---- the demo guard ----
@@ -380,3 +380,16 @@ def test_demo_mode_blocks_label_edits(
     assert client.patch(base, json={"x": 5}).status_code == 200
     assert client.post("/api/demo/unlock", json={"passcode": "open sesame"}).status_code == 200
     assert client.patch(base, json={"content_type": "ui"}).status_code == 200
+
+
+def test_measured_and_legacy_rows_read_as_ai(client: TestClient, item: tuple[str, str]) -> None:
+    _board, item_id = item
+    with db() as s:
+        add_row(s, item_id, "measured_one", source="measured")
+        add_row(s, item_id, "typed_one", source="user")
+        s.commit()
+    dims = {
+        d["key"]: d["source"]
+        for d in client.get(f"/api/items/{item_id}/analysis").json()["dimensions"]
+    }
+    assert dims["measured_one"] == "ai" and dims["typed_one"] == "you"

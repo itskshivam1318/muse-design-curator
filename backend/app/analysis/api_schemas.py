@@ -1,13 +1,13 @@
 """Request and response shapes of the analysis routes, and the views built from stored rows."""
 
 from dataclasses import asdict
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.analysis.context import dimension_offers
+from app.analysis.context import USER_SOURCES, dimension_offers
 from app.analysis.spec import dimension_type
 from app.analysis.types import AttrKind, DimType, Region, RegionKind
 from app.db.models import BoardItem, ItemAttribute, ItemPart
@@ -33,7 +33,7 @@ class DimensionView(BaseModel):
     kind: AttrKind
     value: Any = None
     confidence: float
-    source: str
+    source: Literal["ai", "you"]  # the person's own rows are "you"; model and measured are "ai"
     status: str  # "stale" for a dimension the latest analysis no longer found
 
 
@@ -64,7 +64,9 @@ class DimensionCreate(BaseModel):
 class DimensionPatch(BaseModel):
     label: str | None = Field(default=None, min_length=1, max_length=80)
     type: DimType | None = None
-    part: str | None = None
+    part: str | None = Field(
+        default=None, description="The part a physical dimension reads. None means no change."
+    )
     prompt: str | None = Field(default=None, max_length=300)
 
 
@@ -88,7 +90,8 @@ def dimension_view(r: ItemAttribute) -> DimensionView:
         {
             "key": r.key, "label": r.label, "type": dimension_type(r), "part": r.part,
             "prompt": r.prompt, "kind": r.kind, "value": r.value_json,
-            "confidence": r.confidence, "source": r.source, "status": r.status,
+            "confidence": r.confidence, "source": "you" if r.source in USER_SOURCES else "ai",
+            "status": r.status,
         }
     )  # fmt: skip
 
