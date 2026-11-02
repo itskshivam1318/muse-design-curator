@@ -1,5 +1,5 @@
 /**
- * Option edits shared by the axis popover and the drawer: dismiss an option.
+ * Option edits shared by the petal card: dismiss an option.
  * It lands in the board's undo stack, so ⌘Z puts it back wherever it was made.
  */
 import type { QueryClient } from '@tanstack/react-query'
@@ -13,7 +13,7 @@ const resync = (qc: QueryClient, boardId: string) => () => {
   void qc.invalidateQueries({ queryKey: keys.explorations(boardId) })
 }
 
-/** Dismiss an option (drawer or axis popover Dismiss); undo reopens it. */
+/** Dismiss an option (the petal card's Not this, Drop or Dismiss); undo reopens it. */
 export async function dismissOption(qc: QueryClient, boardId: string, option: ExploreOption): Promise<void> {
   const next = await patchOption(option.id, { status: 'dismissed' })
   qc.setQueryData<Exploration[]>(keys.explorations(boardId), (old) => withOption(old, next))

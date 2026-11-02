@@ -11,6 +11,7 @@ import {
   RING,
   calloutSlots,
   layoutFlowers,
+  placeBeside,
   placeFlower,
   visibleFlowers,
   type FlowerInput,
@@ -180,5 +181,24 @@ describe('layoutFlowers', () => {
     const vp = { x: -50, y: -50, width: 80, height: 80 }
     expect(rectsIntersect(far, vp)).toBe(false)
     expect(visibleFlowers(out, vp)).toEqual(['c'])
+  })
+})
+
+describe('placeBeside', () => {
+  it('puts the box just outside the anchor along dir when the way is clear', () => {
+    const petal = { x: 0, y: 0, width: 88, height: 88 }
+    const b = placeBeside(petal, 0, { width: 200, height: 150 }, [petal])
+    expect(b.x).toBeGreaterThan(petal.x + petal.width)
+    expect(b.y + b.height / 2).toBeCloseTo(44)
+  })
+
+  it('steps around obstacles and never overlaps one', () => {
+    const petal = { x: 0, y: 0, width: 88, height: 88 }
+    const wall = { x: 100, y: -400, width: 300, height: 900 }
+    const b = placeBeside(petal, 0, { width: 200, height: 150 }, [petal, wall])
+    expect(rectsIntersect(b, wall)).toBe(false)
+    expect(rectsIntersect(b, petal)).toBe(false)
+    // deterministic
+    expect(placeBeside(petal, 0, { width: 200, height: 150 }, [petal, wall])).toEqual(b)
   })
 })

@@ -1,22 +1,22 @@
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { useEffect } from 'react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import Konva from 'konva'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type AnalysisView, type Exploration, type ExploreOption, type Item, keys } from '../api'
 import '../panels/registerPanels'
 import { stubCanvasContext } from '../test/canvasStub'
 import { makeItem } from '../test/fixtures'
-import type { ItemActions } from './actions'
-import { selection, selectionStore } from './selection'
+import { selection } from './selection'
 
 vi.mock('../api', async (orig) => ({
   ...(await orig<typeof import('../api')>()),
-  patchItem: vi.fn(() => Promise.resolve()),
-  deleteItem: vi.fn(() => Promise.resolve()),
   getRegion: vi.fn(() => Promise.resolve({ kind: 'mask', box: [0.4, 0.2, 0.6, 0.5], mask_url: '/api/media/masks/hands.png' })),
+  exploreItem: vi.fn(),
+  visualizeOption: vi.fn(),
+  getRenderers: vi.fn(() => Promise.resolve([])),
 }))
-const { patchItem, deleteItem, getRegion } = await import('../api')
+const { getRegion, exploreItem, visualizeOption } = await import('../api')
+const { setCollapsed } = await import('../map/collapse')
 const { useItemActions } = await import('./actions')
 const { Canvas } = await import('./Canvas')
 const { undoHistory } = await import('./history')
@@ -37,15 +37,10 @@ function client(explorations: Exploration[], items: Item[], explore = true) {
   return qc
 }
 
-let boardActions: ItemActions | null = null
-
 /** The board page in small: the canvas over the cached items, with the real item actions. */
 function Board({ onOpenPanel = vi.fn() }: { onOpenPanel?: (...args: unknown[]) => void }) {
   const items = useQuery<Item[]>({ queryKey: keys.items('b1'), queryFn: () => [] }).data ?? []
   const actions = useItemActions('b1')
-  useEffect(() => {
-    boardActions = actions
-  })
   return <Canvas boardId="b1" items={items} actions={actions} onFiles={vi.fn()} onOpenPanel={onOpenPanel} spaceDown={false} />
 }
 
@@ -65,97 +60,101 @@ afterEach(() => {
   vi.unstubAllGlobals()
   selection.clear()
   undoHistory.clear()
-  boardActions = null
+  localStorage.clear()
 })
 
-describe('Canvas axes', () => {
-  it('lists one axis card per non-dismissed option of a visible source', () => {
-    renderBoard(
-      client(
-        [
-          { id: 'e1', board_id: 'b1', item_id: 'src', key: 'case_finish', options: [opt({ id: 'o1' }), opt({ id: 'o2', status: 'dismissed' }), opt({ id: 'o3' })] },
-          { id: 'e2', board_id: 'b1', item_id: 'removed', key: 'case_finish', options: [opt({ id: 'o4', exploration_id: 'e2' })] },
-        ],
-        [makeItem({ id: 'src', board_id: 'b1' })],
-      ),
-    )
-    const cards = screen.getAllByTestId('axis-card')
-    expect(cards.map((n) => n.getAttribute('data-option-id'))).toEqual(['o1', 'o3'])
+describe('Canvas flowers', () => {
+  const analysis: AnalysisView = {
+    content_type: 'image',
+    parse_status: 'completed',
+    parts: [{ key: 'hands', label: 'Hands', region_kind: 'box', region: [0.8, 0.4, 0.9, 0.6], mask_url: null, source: 'ai' }],
+    dimensions: [
+      { key: 'hand_style', label: 'Hand style', type: 'physical', part: 'hands', prompt: null, kind: 'enum', value: 'syringe', confidence: 0.9, source: 'ai', status: 'extracted' },
+    ],
+  }
+  /** A real-sized canvas, so the stage draws and flowers reach the viewport. */
+  const sized = () => {
+    stubCanvasContext()
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1600)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(1200)
+  }
+
+  it('clicking a dimension opens a hub with note petals and generates nothing', async () => {
+    sized()
+    const e: Exploration = { id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1', name: 'Copper' }), opt({ id: 'o2', name: 'Ember' })] }
+    vi.mocked(exploreItem).mockResolvedValue(e)
+    const qc = client([], [makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })])
+    qc.setQueryData(keys.analysis('src'), analysis)
+    renderBoard(qc)
+    act(() => selection.select(['src']))
+    fireEvent.click(screen.getByRole('button', { name: 'Hand style · syringe' }))
+    await waitFor(() => expect(exploreItem).toHaveBeenCalledWith('src', { key: 'hand_style', mode: 'initial' }))
+    const flower = await screen.findByRole('group', { name: 'Hand style flower' })
+    expect(within(flower).getByText('2 options · 0 kept')).toBeTruthy()
+    const petals = within(flower).getAllByTestId('petal')
+    expect(petals.map((p) => p.className)).toEqual(['petal is-note', 'petal is-note'])
+    expect(visualizeOption).not.toHaveBeenCalled()
   })
 
-  it('draws no axes when explore is off', () => {
-    renderBoard(
-      client(
-        [{ id: 'e1', board_id: 'b1', item_id: 'src', key: 'case_finish', options: [opt({ id: 'o1' })] }],
-        [makeItem({ id: 'src', board_id: 'b1' })],
-        false,
-      ),
-    )
-    expect(screen.queryAllByTestId('axis-card')).toEqual([])
-  })
-
-  it('a kept take is drawn as its axis card, not as a loose item', () => {
-    const src = makeItem({ id: 'src', board_id: 'b1' })
-    const kept = makeItem({ id: 'k1', board_id: 'b1', original_filename: 'Honey.png', explore_option_id: 'o1', origin: 'generated' })
-    renderBoard(
-      client(
-        [{ id: 'e1', board_id: 'b1', item_id: 'src', key: 'case_finish', options: [opt({ id: 'o1', name: 'Honey', status: 'kept', kept_item_id: 'k1', takes: ['k1'] })] }],
-        [src, kept],
-      ),
-    )
-    expect(screen.getByRole('button', { name: 'Honey · kept' })).toBeTruthy()
-    expect(screen.queryAllByTestId('axis-card')).toHaveLength(1)
-  })
-
-  it('a kept take stays a board item: its card selects it, then Inspect and Remove act on it', async () => {
-    const src = makeItem({ id: 'src', board_id: 'b1' })
-    const kept = makeItem({ id: 'k1', board_id: 'b1', original_filename: 'Honey.png', explore_option_id: 'o1', origin: 'generated' })
+  it('clicking a dimension that already has a flower opens it again without exploring', async () => {
+    sized()
+    setCollapsed('b1', 'e1', true)
     const qc = client(
-      [{ id: 'e1', board_id: 'b1', item_id: 'src', key: 'case_finish', options: [opt({ id: 'o1', name: 'Honey', status: 'kept', kept_item_id: 'k1', takes: ['k1'] })] }],
+      [{ id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1' })] }],
+      [makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })],
+    )
+    qc.setQueryData(keys.analysis('src'), analysis)
+    renderBoard(qc)
+    expect(screen.getByRole('button', { name: 'Hand style · 1 options · 0 kept' })).toBeTruthy() // the badge
+    act(() => selection.select(['src']))
+    fireEvent.click(screen.getByRole('button', { name: 'Hand style · syringe' }))
+    await waitFor(() => expect(screen.getAllByTestId('petal')).toHaveLength(1))
+    expect(exploreItem).not.toHaveBeenCalled()
+  })
+
+  it('draws no flowers when explore is off', () => {
+    sized()
+    const qc = client(
+      [{ id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1' })] }],
+      [makeItem({ id: 'src', board_id: 'b1' })],
+      false,
+    )
+    qc.setQueryData(keys.analysis('src'), analysis)
+    renderBoard(qc)
+    expect(screen.queryAllByTestId('petal')).toEqual([])
+  })
+
+  it('kept result is an ordinary item on the board, not hidden', () => {
+    sized()
+    const src = makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })
+    const kept = makeItem({ id: 'k1', board_id: 'b1', x: 700, y: 0, original_filename: 'Honey.png', explore_option_id: 'o1', origin: 'generated', parent_item_id: 'src' })
+    const qc = client(
+      [{ id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1', name: 'Honey', status: 'kept', kept_item_id: 'k1', takes: ['k1'] })] }],
       [src, kept],
     )
-    const onOpenPanel = vi.fn()
-    renderBoard(qc, onOpenPanel)
-    // listed for keyboard and screen readers like any item
+    qc.setQueryData(keys.analysis('src'), analysis)
+    renderBoard(qc)
+    // drawn on the stage where it was placed, and listed like any item
+    const node = Konva.stages.at(-1)!.findOne('#k1')!
+    expect(node.visible()).toBe(true)
+    expect(node.x()).toBe(700)
     expect(screen.getByRole('list', { name: 'Items on this board' }).textContent).toContain('Honey.png')
-    fireEvent.click(screen.getByRole('button', { name: 'Honey · kept' }))
-    expect(selectionStore.get().selected).toEqual(['k1'])
-    expect(screen.getByRole('dialog', { name: 'Honey' })).toBeTruthy() // its popover opens too
-    fireEvent.click(screen.getByRole('button', { name: 'Inspect' }))
-    expect(onOpenPanel).toHaveBeenCalledWith('inspect', 'k1')
-    fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
-    expect(deleteItem).toHaveBeenCalledWith('k1')
-    expect(qc.getQueryData<Item[]>(keys.items('b1'))!.map((i) => i.id)).toEqual(['src'])
+    // its petal shows it kept
+    expect(document.querySelector('[data-option-id="o1"]')!.className).toContain('is-kept')
   })
 
-  it('moving a source moves its kept items in the same undo entry; undo puts both back', () => {
-    stubCanvasContext()
-    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1000)
-    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(800)
+  it('a kept result gets its own callouts when selected', () => {
+    sized()
     const src = makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })
-    const kept = makeItem({ id: 'k1', board_id: 'b1', x: 240, y: 28, explore_option_id: 'o1', origin: 'generated' })
-    const other = makeItem({ id: 'far', board_id: 'b1', x: 900, y: 900 })
+    const kept = makeItem({ id: 'k1', board_id: 'b1', x: 700, y: 0, explore_option_id: 'o1', origin: 'generated', parent_item_id: 'src' })
     const qc = client(
-      [{ id: 'e1', board_id: 'b1', item_id: 'src', key: 'case_finish', options: [opt({ id: 'o1', status: 'kept', kept_item_id: 'k1', takes: ['k1'] })] }],
-      [src, kept, other],
+      [{ id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1', status: 'kept', kept_item_id: 'k1', takes: ['k1'] })] }],
+      [src, kept],
     )
+    qc.setQueryData(keys.analysis('k1'), analysis)
     renderBoard(qc)
-    const node = Konva.stages.at(-1)!.findOne('#src')!
-    act(() => {
-      node.fire('dragstart', { evt: new MouseEvent('dragstart') })
-      node.position({ x: 30, y: 40 })
-      node.fire('dragmove', { evt: new MouseEvent('dragmove') })
-      node.fire('dragend', { evt: new MouseEvent('dragend') })
-    })
-    const pos = () => Object.fromEntries(qc.getQueryData<Item[]>(keys.items('b1'))!.map((i) => [i.id, [i.x, i.y]]))
-    expect(pos()).toEqual({ src: [30, 40], k1: [270, 68], far: [900, 900] })
-    expect(patchItem).toHaveBeenCalledWith('k1', { x: 270, y: 68 })
-    expect(undoHistory.size).toBe(1)
-    act(() => {
-      boardActions!.undo()
-    })
-    expect(pos()).toEqual({ src: [0, 0], k1: [240, 28], far: [900, 900] })
-    expect(undoHistory.size).toBe(0)
+    act(() => selection.select(['k1']))
+    expect(screen.getByRole('group', { name: 'Hands' })).toBeTruthy()
   })
 })
 

@@ -1,0 +1,55 @@
+/** Where the callout cards sit around an item: shared by the callouts and the flowers that start at them. */
+import type { AnalysisView, Item } from '../api'
+import type { Bounds } from '../canvas/geometry'
+import { itemBounds } from '../canvas/nodeProps'
+import { calloutSlots } from './layout'
+import { partAnchor } from './regions'
+
+/** The Whole item card's key among the part keys (part keys are slugs: no colon). */
+export const WHOLE = 'whole:item'
+
+// card geometry (canvas units), mirrored by the .callout CSS
+const PAD = 8
+const HEAD_H = 24
+const ROW_H = 30
+const ROW_GAP = 4
+const FORM_H = 34
+
+/** The card's height for its rows: header, one row per dimension, the action row, open forms. */
+const cardHeight = (rows: number, actionRows: number, forms: number) =>
+  PAD * 2 + HEAD_H + (rows + actionRows) * (ROW_H + ROW_GAP) + forms * FORM_H
+
+/** The card a dimension sits on: its part's, or Whole item (abstract, or a part that is gone). */
+export function cardOf(analysis: AnalysisView, key: string): string | null {
+  const d = analysis.dimensions.find((x) => x.key === key)
+  if (!d) return null
+  return d.type === 'physical' && d.part && analysis.parts.some((p) => p.key === d.part) ? d.part : WHOLE
+}
+
+/**
+ * Where each card goes around `item` (keyed by part key, and WHOLE): the same slots the callouts draw,
+ * so flowers can start at their dimension's card even while it is not shown. `formsOn` counts the
+ * open add-forms on a card (they make it taller).
+ */
+export function calloutBounds(
+  item: Item,
+  analysis: AnalysisView,
+  obstacles: Bounds[],
+  formsOn: (card: string) => number = () => 0,
+): Map<string, Bounds> {
+  const bounds = itemBounds(item)
+  const count = (part: string) => analysis.dimensions.filter((d) => d.type === 'physical' && d.part === part).length
+  const abstract = analysis.dimensions.filter((d) => d.type === 'abstract').length
+  return calloutSlots(
+    bounds,
+    [
+      ...analysis.parts.map((p) => ({
+        key: p.key,
+        anchor: partAnchor(bounds, p, item.note_text),
+        height: cardHeight(count(p.key), 1, formsOn(p.key)),
+      })),
+      { key: WHOLE, anchor: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height }, height: cardHeight(abstract, 2, formsOn(WHOLE)) },
+    ],
+    obstacles,
+  )
+}

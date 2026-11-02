@@ -22,25 +22,11 @@ import {
 import { formatValue } from '../attrValues'
 import type { Bounds, View } from '../canvas/geometry'
 import { itemBounds } from '../canvas/nodeProps'
-import { calloutSlots } from './layout'
+import { calloutBounds, WHOLE } from './cards'
 import { partAnchor, REGION_TAG } from './regions'
 
-/** The Whole item card's key among the part keys (part keys are slugs: no colon). */
-const WHOLE = 'whole:item'
 const WHOLE_LABEL = 'Whole item'
 const STALE_TITLE = 'old dimension, not found on this item'
-
-
-// card geometry (canvas units), mirrored by the .callout CSS
-const PAD = 8
-const HEAD_H = 24
-const ROW_H = 30
-const ROW_GAP = 4
-const FORM_H = 34
-
-/** The card's height for its rows: header, one row per dimension, the action row, open forms. */
-const cardHeight = (rows: number, actionRows: number, forms: number) =>
-  PAD * 2 + HEAD_H + (rows + actionRows) * (ROW_H + ROW_GAP) + forms * FORM_H
 
 /** The point of `b` closest to `p` (where a leader line meets its card). */
 const nearestOn = (b: Bounds, p: Point): Point => ({
@@ -54,7 +40,7 @@ interface Props {
   item: Item
   analysis: AnalysisView
   view: View
-  /** Clicking a dimension explores it; the promise settles when the options are there. */
+  /** Clicking a dimension opens its flower (exploring it first if it has none); settles when it is open. */
   onOpenDimension?: (key: string) => unknown
   onHoverPart: (key: string | null) => void
   /** Other things on the board the cards keep clear of. */
@@ -85,18 +71,7 @@ export function Callouts({ item, analysis, view, onOpenDimension, onHoverPart, o
   const formsOn = (card: string) =>
     (form?.kind === 'dimension' && form.card === card ? 1 : 0) + (card === WHOLE && form?.kind === 'part' ? 1 : 0)
   const anchors = new Map(parts.map((p) => [p.key, partAnchor(bounds, p, item.note_text)]))
-  const slots = calloutSlots(
-    bounds,
-    [
-      ...parts.map((p) => ({ key: p.key, anchor: anchors.get(p.key)!, height: cardHeight(physical(p.key).length, 1, formsOn(p.key)) })),
-      {
-        key: WHOLE,
-        anchor: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height },
-        height: cardHeight(abstract.length, 2, formsOn(WHOLE)),
-      },
-    ],
-    obstacles,
-  )
+  const slots = calloutBounds(item, analysis, obstacles, formsOn)
 
   const run = async (card: string, tag: string, fn: () => Promise<unknown>, fallback: string) => {
     setBusy(tag)

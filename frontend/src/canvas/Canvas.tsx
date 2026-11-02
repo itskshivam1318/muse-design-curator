@@ -18,14 +18,14 @@ import { useDemo } from '../demo'
 import { withExploration } from '../explore/logic'
 import { itemVerdict } from '../explore/verdict'
 import { Callouts } from '../map/Callouts'
+import { setCollapsed } from '../map/collapse'
+import { FlowerLayer } from '../map/Flower'
 import { RegionOverlay } from '../map/RegionOverlay'
 import { useNodeDrop } from '../plugins/nodeDrop'
 import { NodeLayer } from '../plugins/NodeLayer'
 import { useAnalysis, useBoardLens, useExplorations, useRegion, visibleItems } from '../queries'
 import { setTool, useTool } from '../shell/tools'
 import type { ItemActions } from './actions'
-import { cardOptions, drawnAxes, focusAxis, keptFollowers, rowBounds } from './axis'
-import { AxisLayer } from './AxisLayer'
 import { handleDrop } from './drop'
 import { FramesStrip } from './FramesStrip'
 import {
@@ -139,13 +139,8 @@ export function Canvas({
   const explorations = useExplorations(boardId).data
   const lensAttrs = useBoardLens(boardId).data?.spec.attributes
   const labels = useMemo(() => new Map((lensAttrs ?? []).map((a) => [a.key, a.label])), [lensAttrs])
-  // explore off: no axes (the server lists no explorations either)
-  const shownExplorations = useMemo(() => (exploreEnabled ? (explorations ?? []) : []), [exploreEnabled, explorations])
-  // a kept take is drawn as its axis card, not loose: it moves with its source
-  const axisInfo = useMemo(() => drawnAxes(visible, shownExplorations, labels), [visible, shownExplorations, labels])
-  // the items drawn loose on the stage (a kept take shown as a card is still a board item: it is
-  // selected, listed and acted on like any other, its toolbar and chips at its card)
-  const items = useMemo(() => visible.filter((i) => !axisInfo.hidden.has(i.id)), [visible, axisInfo])
+  // every board item is drawn where it is, kept results included (flowers only use free space)
+  const items = visible
   const dragStart = useRef<Map<string, Point> | null>(null)
   const [marquee, setMarquee] = useState<{ a: Point; b: Point; additive: boolean } | null>(null)
   const [dropActive, setDropActive] = useState(false)
@@ -161,11 +156,7 @@ export function Canvas({
     (i: Item): Item => (overrides[i.id] ? { ...i, ...overrides[i.id] } : i),
     [overrides],
   )
-  /** Where an item is on the canvas: its axis card for a kept take shown as one, else its own bounds. */
-  const boundsOf = useCallback(
-    (i: Item): Bounds => axisInfo.cards.get(i.id) ?? itemBounds(positioned(i)),
-    [axisInfo, positioned],
-  )
+  const boundsOf = useCallback((i: Item): Bounds => itemBounds(positioned(i)), [positioned])
   const listed = useMemo(
     () => [...visible].sort((a, b) => a.z - b.z || a.created_at.localeCompare(b.created_at)),
     [visible],
@@ -181,9 +172,8 @@ export function Canvas({
 
   const fit = useCallback(() => {
     if (size.width === 0) return
-    const axes = axisInfo.axes.flatMap((a) => a.rows.map(rowBounds))
-    setView(fitView([...items.map(itemBounds), ...axes], size, fitInsets(size.width)))
-  }, [items, axisInfo, size])
+    setView(fitView(items.map(itemBounds), size, fitInsets(size.width)))
+  }, [items, size])
 
   // fit when the board's items first arrive, and when an empty board gets its first batch
   useEffect(() => {
@@ -231,9 +221,9 @@ export function Canvas({
     const stage = stageRef.current
     wheel(e.evt, stage?.getPointerPosition() ?? { x: size.width / 2, y: size.height / 2 })
   }
-  // over the axis cards (HTML above the stage) the wheel still pans and zooms the canvas
+  // over the flowers and callouts (HTML above the stage) the wheel still pans and zooms the canvas
   const onOverlayWheel = (e: ReactWheelEvent) => {
-    if (!container || (e.target as HTMLElement).closest('.axis-popover')) return
+    if (!container || (e.target as HTMLElement).closest('.petal-card')) return
     const r = container.getBoundingClientRect()
     wheel(e, { x: e.clientX - r.left, y: e.clientY - r.top })
   }
@@ -318,10 +308,8 @@ export function Canvas({
       e.cancelBubble = true
       const picked = selected.includes(item.id) ? selected : [item.id]
       if (!selected.includes(item.id)) selection.select([item.id])
-      // a source carries the kept takes on its axes along, in the same move (one undo entry)
-      const ids = [...picked, ...keptFollowers(axisInfo.axes, new Set(picked), byId)]
       dragStart.current = new Map(
-        ids.flatMap((id) => {
+        picked.flatMap((id) => {
           const it = byId.get(id)
           return it ? [[id, { x: it.x, y: it.y }] as const] : []
         }),
@@ -447,8 +435,8 @@ export function Canvas({
     if (!parent || fromNote(child) || !(selected.includes(child.id) || selected.includes(parent.id))) return []
     return [{ id: child.id, points: lineagePoints(boundsOf(parent), boundsOf(child)) }]
   })
-  // the axes follow a dragged source (and its kept takes) while the drag is under way
-  const axisItems = visible.map(positioned)
+  // plugin nodes follow a dragged input while the drag is under way
+  const drawnItems = visible.map(positioned)
   // ---- notes: the editor and the bar ----
   const editedNote = editing?.id ? byId.get(editing.id) : undefined
   const editorAt: { x: number; y: number; text: string } | null = editing
@@ -478,11 +466,10 @@ export function Canvas({
   )
   const onlyNotes = selectedItems.length > 0 && selectedItems.every((i) => i.kind === 'note')
   // ---- the selected item's part callouts and the hovered part's region ----
-  // not on a link, nor on a kept take drawn as its axis card (it has no loose bounds to sit around)
+  // not on a link
   const calloutItem =
     soleSelected &&
     soleSelected.kind !== 'link' &&
-    !axisInfo.hidden.has(soleSelected.id) &&
     !dragging &&
     !marquee &&
     soleSelected.id !== editing?.id
@@ -501,16 +488,16 @@ export function Canvas({
       ? (hoveredRegion.region.range as [number, number])
       : null
   const calloutObstacles = calloutItem ? items.filter((i) => i.id !== calloutItem.id).map((i) => itemBounds(positioned(i))) : []
-  // a dimension clicked on a callout: focus its axis when it has one, else ask for options first
+  // a dimension clicked on a callout: open its flower when it has one, else ask for options first (notes, no media)
   const openDimension = async (item: Item, key: string) => {
-    const live = explorations?.find((e) => e.item_id === item.id && e.key === key && cardOptions(e).length > 0)
+    const live = explorations?.find((e) => e.item_id === item.id && e.key === key)
     if (live) {
-      focusAxis(live.id)
+      setCollapsed(boardId, live.id, false)
       return
     }
     const e = await exploreItem(item.id, { key, mode: 'initial' })
     qc.setQueryData<Exploration[]>(keys.explorations(boardId), (old) => withExploration(old, e))
-    focusAxis(e.id)
+    setCollapsed(boardId, e.id, false)
   }
   const addNoteAtCenter = () => {
     const c = toCanvasPoint({ x: size.width / 2, y: size.height / 2 }, viewRef.current)
@@ -538,8 +525,8 @@ export function Canvas({
       <p id="canvas-help" className="sr-only">
         Space and drag or two-finger scroll to pan; control and scroll or pinch to zoom. F fits the board to the screen. With
         items selected: I inspect (or double-click), X mark not this, Delete remove, Command Z undo a move or a dismissed option. A
-        selected item shows its parts as callouts around it: hover one to see its region, click a dimension on a part to explore
-        it. Explore axes run to the right of their source: each option is a card; open one to visualize, keep or regenerate it.
+        selected item shows its parts as callouts around it: hover one to see its region, click a dimension to open its flower:
+        its options sit around a hub as petals; open one to render, keep or drop it. The hub's minus button collapses a flower.
       </p>
       {size.width > 0 && (
         <Stage
@@ -639,17 +626,10 @@ export function Canvas({
         </Stage>
       )}
 
-      {shownExplorations.length > 0 && (
-        <AxisLayer
-          items={axisItems}
-          explorations={shownExplorations}
-          selectedId={soleSelected?.id ?? null}
-          view={view}
-          locked={readOnly}
-          onWheel={onOverlayWheel}
-        />
+      {exploreEnabled && (
+        <FlowerLayer boardId={boardId} items={visible} view={view} size={size} locked={readOnly} onWheel={onOverlayWheel} />
       )}
-      <NodeLayer boardId={boardId} items={axisItems} view={view} size={size} readOnly={readOnly} onWheel={onOverlayWheel} />
+      <NodeLayer boardId={boardId} items={drawnItems} view={view} size={size} readOnly={readOnly} onWheel={onOverlayWheel} />
       {hoveredItem && hoveredItem.kind !== 'link' && hoveredItem.kind !== 'note' && hoveredItem.parse_status !== 'completed' && (
         <StatusTip item={positioned(hoveredItem)} view={view} />
       )}

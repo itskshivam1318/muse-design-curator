@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Exploration } from '../api'
 import { makeItem } from '../test/fixtures'
-import { itemVerdict, verdictText } from './verdict'
+import { itemVerdict, resultCheck, verdictText } from './verdict'
 
 const yes = { answer: 'yes' as const, confidence: 0.9, note: '' }
 
@@ -76,5 +76,21 @@ describe('itemVerdict', () => {
     expect(none({ target: t('yes'), kept: 3, of: 3, unknown: 2 })).toMatchObject({
       text: '✓ · 3 of 3 kept · 2 unclear', tone: 'ok',
     })
+  })
+})
+
+describe('resultCheck', () => {
+  const labels = new Map([['case_finish', 'Case finish']])
+  it('passed, drifted, missed, unclear, failed and pending', () => {
+    expect(resultCheck({ target: yes, kept: 3, of: 3, drifted: [] }, 'Hand style', 'Copper', labels)).toEqual({
+      text: '✓ Reads as Copper · 3 of 3 kept', tone: 'ok',
+    })
+    expect(resultCheck({ target: yes, kept: 2, of: 3, drifted: ['case_finish'] }, 'Hand style', 'Copper', labels)).toEqual({
+      text: '✕ Case finish drifted. Not added.', tone: 'drift',
+    })
+    expect(resultCheck({ target: { ...yes, answer: 'no' } }, 'Hand style', 'Copper').tone).toBe('drift')
+    expect(resultCheck({ target: { ...yes, answer: 'unclear' } }, 'Hand style', 'Copper').tone).toBe('warn')
+    expect(resultCheck({ error: 'boom' }, 'Hand style', 'Copper').tone).toBe('warn')
+    expect(resultCheck(null, 'Hand style', 'Copper').tone).toBe('pending')
   })
 })

@@ -51,3 +51,25 @@ export function itemVerdict(
   if ((c.unknown ?? 0) > 0) text += ` · ${c.unknown} unclear`
   return { text, tone: drifted.length ? 'warn' : 'ok', optionName: '' }
 }
+
+export type ResultTone = 'ok' | 'drift' | 'warn' | 'pending'
+
+/**
+ * A rendered result's check line on its petal card. Drifted (another dimension moved, or the target
+ * did not land) is never added to the board; unclear or a failed check can still be kept by eye.
+ */
+export function resultCheck(
+  check: GeneratedCheck | null,
+  label: string,
+  optionName: string,
+  labels?: ReadonlyMap<string, string>,
+): { text: string; tone: ResultTone } {
+  if (!check) return { text: 'Checking…', tone: 'pending' }
+  if (check.error) return { text: 'Check failed, look before keeping', tone: 'warn' }
+  const drifted = check.drifted ?? []
+  if (drifted.length) return { text: `✕ ${drifted.map((k) => labels?.get(k) ?? k).join(', ')} drifted. Not added.`, tone: 'drift' }
+  const answer = check.target?.answer
+  if (answer === 'no') return { text: `✕ ${label} didn't change to ${optionName}. Not added.`, tone: 'drift' }
+  if (answer !== 'yes') return { text: `${label}: unclear, look before keeping`, tone: 'warn' }
+  return { text: `✓ Reads as ${optionName} · ${check.kept ?? 0} of ${check.of ?? 0} kept`, tone: 'ok' }
+}

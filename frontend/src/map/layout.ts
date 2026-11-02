@@ -98,18 +98,40 @@ function build(input: FlowerInput, dir: number, steps: number): FlowerLayout {
   return { hub, petals, lines, bounds: unionBounds([hub, ...petals])! }
 }
 
-export function placeFlower(input: FlowerInput, obstacles: Bounds[]): FlowerLayout {
+/**
+ * The outward sweep shared by flowers and kept results: along `dir`, then the DIR_OFFSETS directions, stepping
+ * outward until the candidate (padded by PETAL_GAP) hits nothing; past the cap, keep stepping along `dir`.
+ * Obstacles are finite, so this terminates.
+ */
+function sweep<T extends { bounds: Bounds }>(dir: number, make: (dir: number, steps: number) => T, obstacles: Bounds[]): T {
   for (const off of DIR_OFFSETS) {
     for (let steps = 0; steps <= MAX_OUTWARD_STEPS; steps++) {
-      const l = build(input, input.dir + off, steps)
-      if (!firstHit(inflate(l.bounds, PETAL_GAP), obstacles)) return l
+      const c = make(dir + off, steps)
+      if (!firstHit(inflate(c.bounds, PETAL_GAP), obstacles)) return c
     }
   }
-  // Capped trials failed: keep stepping outward along `dir` until clear. Obstacles are finite, so this terminates.
   for (let steps = MAX_OUTWARD_STEPS + 1; ; steps++) {
-    const l = build(input, input.dir, steps)
-    if (!firstHit(inflate(l.bounds, PETAL_GAP), obstacles)) return l
+    const c = make(dir, steps)
+    if (!firstHit(inflate(c.bounds, PETAL_GAP), obstacles)) return c
   }
+}
+
+export function placeFlower(input: FlowerInput, obstacles: Bounds[]): FlowerLayout {
+  return sweep(input.dir, (dir, steps) => build(input, dir, steps), obstacles)
+}
+
+/**
+ * A free `size` box beside `near` (e.g. a kept result next to its petal), by the flowers' own sweep: its centre
+ * starts just clear of `near`'s edge along `dir` and moves outward until nothing is hit.
+ */
+export function placeBeside(near: Bounds, dir: number, size: { width: number; height: number }, obstacles: Bounds[]): Bounds {
+  const c = { x: near.x + near.width / 2, y: near.y + near.height / 2 }
+  const start = Math.max(near.width, near.height) / 2 + PETAL_GAP + Math.max(size.width, size.height) / 2
+  const make = (d: number, steps: number) => {
+    const dist = start + steps * OUTWARD_STEP
+    return { bounds: centered({ x: c.x + Math.cos(d) * dist, y: c.y + Math.sin(d) * dist }, size.width, size.height) }
+  }
+  return sweep(dir, make, obstacles).bounds
 }
 
 /**
