@@ -52,25 +52,24 @@ describe('toolShortcutAllowed', () => {
   })
 })
 
-describe('itemShortcut (v, i, x act on images, never on notes)', () => {
+describe('itemShortcut (i, x act on images, never on notes)', () => {
   const img = makeItem({ id: 'img' })
   const note = makeItem({ id: 'n1', kind: 'note', origin: 'note', note_text: 'Strap' })
-  const flags = { explore: true, locked: false }
+  const flags = { locked: false }
 
   it('does nothing with only a note selected', () => {
-    for (const key of ['v', 'i', 'x']) expect(itemShortcut(key, [note], flags)).toBeNull()
+    for (const key of ['i', 'x']) expect(itemShortcut(key, [note], flags)).toBeNull()
   })
 
   it('acts on the image only when a note and an image are selected', () => {
-    expect(itemShortcut('v', [note, img], flags)).toEqual({ kind: 'panel', panel: 'explore', itemId: 'img' })
-    expect(itemShortcut('v', [img, note], { ...flags, explore: false })).toEqual({ kind: 'panel', panel: 'vary', itemId: 'img' })
     expect(itemShortcut('i', [note, img], flags)).toEqual({ kind: 'panel', panel: 'inspect', itemId: 'img' })
     expect(itemShortcut('x', [note, img], flags)).toEqual({ kind: 'notThis', items: [img] })
   })
 
-  it('keeps the old rules: one item for v and i, x not on a locked demo, other keys are not item shortcuts', () => {
+  it('keeps the old rules: one item for i, x not on a locked demo, other keys are not item shortcuts', () => {
     const img2 = makeItem({ id: 'img2' })
-    expect(itemShortcut('v', [img, img2], flags)).toBeNull()
+    expect(itemShortcut('i', [img, img2], flags)).toBeNull()
+    expect(itemShortcut('v', [img], flags)).toBeNull()
     expect(itemShortcut('x', [img], { ...flags, locked: true })).toBeNull()
     expect(itemShortcut('f', [img], flags)).toBeNull()
   })

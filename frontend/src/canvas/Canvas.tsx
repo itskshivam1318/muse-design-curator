@@ -11,16 +11,20 @@ import {
   useRef,
   useState,
 } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Layer, Line, Rect, Stage } from 'react-konva'
-import { isGenerated, type Item, type Point, type UploadOrigin } from '../api'
+import { type Exploration, exploreItem, isGenerated, type Item, keys, type PartView, type Point, type Region, type UploadOrigin } from '../api'
 import { useDemo } from '../demo'
+import { withExploration } from '../explore/logic'
 import { itemVerdict } from '../explore/verdict'
+import { Callouts } from '../map/Callouts'
+import { RegionOverlay } from '../map/RegionOverlay'
 import { useNodeDrop } from '../plugins/nodeDrop'
 import { NodeLayer } from '../plugins/NodeLayer'
-import { useBoardLens, useExplorations, visibleItems } from '../queries'
+import { useAnalysis, useBoardLens, useExplorations, useRegion, visibleItems } from '../queries'
 import { setTool, useTool } from '../shell/tools'
 import type { ItemActions } from './actions'
-import { drawnAxes, keptFollowers, rowBounds } from './axis'
+import { cardOptions, drawnAxes, focusAxis, keptFollowers, rowBounds } from './axis'
 import { AxisLayer } from './AxisLayer'
 import { handleDrop } from './drop'
 import { FramesStrip } from './FramesStrip'
@@ -41,7 +45,6 @@ import type { Move } from './history'
 import { ItemDecorations, type ItemHandlers, ItemNode, NoteVisualizing } from './ItemNode'
 import { CreditCaption } from './CreditCaption'
 import { creditTargets } from './credit'
-import { AxisPicker, ItemChips } from './ItemChips'
 import { ItemToolbar } from './ItemToolbar'
 import { itemBounds, lineagePoints, statusLabel } from './nodeProps'
 import { NoteBar } from './NoteBar'
@@ -65,7 +68,7 @@ interface Props {
   items: Item[]
   actions: ItemActions
   onFiles: (files: File[], at: Point, origin: UploadOrigin) => void
-  onOpenPanel: (kind: 'explore' | 'vary' | 'inspect' | 'compare', itemId: string, params?: Record<string, unknown>) => void
+  onOpenPanel: (kind: 'inspect' | 'compare', itemId: string, params?: Record<string, unknown>) => void
   spaceDown: boolean
   ref?: Ref<CanvasHandle>
   /** Public demo, not unlocked: no file drops, role changes, removal, frame choice or note edits. */
@@ -111,6 +114,8 @@ export function Canvas({
   onSendToNode,
 }: Props) {
   const { exploreEnabled } = useDemo()
+  const qc = useQueryClient()
+  const [hoveredPart, setHoveredPart] = useState<{ itemId: string; part: string } | null>(null)
   // staged takes wait in their option's stage; notes are drawn at the size their text needs
   const visible = useMemo(() => visibleItems(allItems).map(sizedNote), [allItems])
   const tool = useTool()
@@ -472,6 +477,41 @@ export function Canvas({
     (n): n is Item => !!n && n.kind === 'note' && n.id !== editing?.id,
   )
   const onlyNotes = selectedItems.length > 0 && selectedItems.every((i) => i.kind === 'note')
+  // ---- the selected item's part callouts and the hovered part's region ----
+  // not on a link, nor on a kept take drawn as its axis card (it has no loose bounds to sit around)
+  const calloutItem =
+    soleSelected &&
+    soleSelected.kind !== 'link' &&
+    !axisInfo.hidden.has(soleSelected.id) &&
+    !dragging &&
+    !marquee &&
+    soleSelected.id !== editing?.id
+      ? soleSelected
+      : undefined
+  const analysis = useAnalysis(calloutItem?.id ?? null).data
+  // a note still being read (or that could not be) shows nothing until it has parts or dimensions
+  const showCallouts =
+    !!analysis && (analysis.parse_status === 'completed' || analysis.parts.length > 0 || analysis.dimensions.length > 0)
+  const hoveredPartView =
+    calloutItem && hoveredPart?.itemId === calloutItem.id ? analysis?.parts.find((p) => p.key === hoveredPart.part) : undefined
+  const regionQuery = useRegion(calloutItem?.id ?? '', hoveredPartView?.key ?? '', !!hoveredPartView)
+  const hoveredRegion = regionOf(hoveredPartView, regionQuery.data, regionQuery.isPending)
+  const noteHighlight =
+    calloutItem?.kind === 'note' && hoveredRegion?.region.kind === 'text_range' && hoveredRegion.region.range?.length === 2
+      ? (hoveredRegion.region.range as [number, number])
+      : null
+  const calloutObstacles = calloutItem ? items.filter((i) => i.id !== calloutItem.id).map((i) => itemBounds(positioned(i))) : []
+  // a dimension clicked on a callout: focus its axis when it has one, else ask for options first
+  const openDimension = async (item: Item, key: string) => {
+    const live = explorations?.find((e) => e.item_id === item.id && e.key === key && cardOptions(e).length > 0)
+    if (live) {
+      focusAxis(live.id)
+      return
+    }
+    const e = await exploreItem(item.id, { key, mode: 'initial' })
+    qc.setQueryData<Exploration[]>(keys.explorations(boardId), (old) => withExploration(old, e))
+    focusAxis(e.id)
+  }
   const addNoteAtCenter = () => {
     const c = toCanvasPoint({ x: size.width / 2, y: size.height / 2 }, viewRef.current)
     setTool('select')
@@ -497,7 +537,9 @@ export function Canvas({
     >
       <p id="canvas-help" className="sr-only">
         Space and drag or two-finger scroll to pan; control and scroll or pinch to zoom. F fits the board to the screen. With
-        items selected: V {exploreEnabled ? 'explore' : 'vary'}, I inspect (or double-click), X mark not this, Delete remove, Command Z undo a move or a dismissed option. Explore axes run to the right of their source: each option is a card; open one to visualize, keep or regenerate it. With an image selected, its attribute chips below it explore that attribute.
+        items selected: I inspect (or double-click), X mark not this, Delete remove, Command Z undo a move or a dismissed option. A
+        selected item shows its parts as callouts around it: hover one to see its region, click a dimension on a part to explore
+        it. Explore axes run to the right of their source: each option is a card; open one to visualize, keep or regenerate it.
       </p>
       {size.width > 0 && (
         <Stage
@@ -549,6 +591,7 @@ export function Canvas({
                 palette={palette}
                 handlers={handlers}
                 hidden={i.id === editing?.id}
+                highlight={i.id === calloutItem?.id ? noteHighlight : null}
               />
             ))}
             {ordered
@@ -607,7 +650,7 @@ export function Canvas({
         />
       )}
       <NodeLayer boardId={boardId} items={axisItems} view={view} size={size} readOnly={readOnly} onWheel={onOverlayWheel} />
-      {hoveredItem && hoveredItem.kind !== 'link' && hoveredItem.parse_status !== 'completed' && (
+      {hoveredItem && hoveredItem.kind !== 'link' && hoveredItem.kind !== 'note' && hoveredItem.parse_status !== 'completed' && (
         <StatusTip item={positioned(hoveredItem)} view={view} />
       )}
       {!dragging &&
@@ -624,7 +667,6 @@ export function Canvas({
         <ItemToolbar
           items={selectedItems}
           screen={toScreenBounds(selBounds, view)}
-          onExplore={() => selectedItems[0] && onOpenPanel(exploreEnabled ? 'explore' : 'vary', selectedItems[0].id)}
           onInspect={() => selectedItems[0] && onOpenPanel('inspect', selectedItems[0].id)}
           onCompare={() =>
             selectedItems[0] && onOpenPanel('compare', selectedItems[0].id, { itemIds: selectedItems.map((i) => i.id) })
@@ -632,23 +674,22 @@ export function Canvas({
           onNotThis={() => actions.toggleNotThis(selectedItems)}
           onRemove={() => actions.remove(selected)}
           readOnly={readOnly}
-          explore={exploreEnabled}
         />
       )}
-      {exploreEnabled && soleSelected && !dragging && !marquee && tool !== 'axis' && (
-        <ItemChips
-          key={soleSelected.id}
-          item={soleSelected}
-          screen={toScreenBounds(boundsOf(soleSelected), view)}
+      {calloutItem && hoveredRegion && (
+        <RegionOverlay item={calloutItem} region={hoveredRegion.region} loading={hoveredRegion.loading} view={view} />
+      )}
+      {calloutItem && analysis && showCallouts && (
+        <Callouts
+          key={calloutItem.id}
+          item={calloutItem}
+          analysis={analysis}
+          view={view}
+          obstacles={calloutObstacles}
           locked={readOnly}
-        />
-      )}
-      {exploreEnabled && tool === 'axis' && soleSelected?.kind === 'image' && !dragging && !readOnly && (
-        <AxisPicker
-          key={soleSelected.id}
-          item={soleSelected}
-          screen={toScreenBounds(boundsOf(soleSelected), view)}
-          onDone={() => setTool('select')}
+          onOpenDimension={exploreEnabled ? (key) => openDimension(calloutItem, key) : undefined}
+          onHoverPart={(part) => setHoveredPart(part ? { itemId: calloutItem.id, part } : null)}
+          onWheel={onOverlayWheel}
         />
       )}
       {stripItem && !dragging && (
@@ -737,4 +778,17 @@ function ItemList({ items, selected }: { items: Item[]; selected: readonly strin
       ))}
     </ul>
   )
+}
+
+/**
+ * What to draw for a hovered part: its region once known; until then the stored region (a box or a
+ * passage is already exact) or, for a mask being found, a loading outline of its bbox.
+ */
+function regionOf(part: PartView | undefined, fetched: Region | undefined, pending: boolean): { region: Region; loading: boolean } | null {
+  if (!part) return null
+  if (fetched) return { region: fetched, loading: false }
+  const r = part.region ?? undefined
+  if (part.region_kind === 'box') return r ? { region: { kind: 'box', box: r }, loading: false } : null
+  if (part.region_kind === 'text_range') return r ? { region: { kind: 'text_range', range: r }, loading: false } : null
+  return pending ? { region: { kind: 'mask', box: r }, loading: true } : null
 }

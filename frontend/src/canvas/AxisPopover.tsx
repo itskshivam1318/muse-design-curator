@@ -12,11 +12,10 @@ import {
   unkeepTake,
   visualizeOption,
 } from '../api'
-import { canFindReal, findRealRequest, optionTree, visualizeInProgress, withExploration, withOption } from '../explore/logic'
+import { optionTree, visualizeInProgress, withExploration, withOption } from '../explore/logic'
 import { dismissOption } from '../explore/optionActions'
 import { verdictText } from '../explore/verdict'
 import { useBoardLens, useExplorations, useItems } from '../queries'
-import { startRun } from '../vary/startRun'
 import { axisRows, cardOptionId, keptSlot } from './axis'
 import { itemBounds } from './nodeProps'
 
@@ -37,7 +36,7 @@ const errorText = (e: unknown, fallback: string) => (e instanceof ApiError || e 
 /**
  * The popover under an axis card. Not visualized yet: what the option is and what it keeps, and
  * Visualize. Visualizing: progress. With takes: the current take with a pager, Keep or Un-keep,
- * Regenerate (another take) and the check's verdict. Branch, Find real examples and Dismiss always.
+ * Regenerate (another take) and the check's verdict. Branch and Dismiss always.
  */
 export function AxisPopover({ option, exploration, source, onClose, onOpenOption, locked = false }: Props) {
   const boardId = exploration.board_id
@@ -46,7 +45,6 @@ export function AxisPopover({ option, exploration, source, onClose, onOpenOption
   const explorations = useExplorations(boardId).data
   const lensAttrs = useBoardLens(boardId).data?.spec.attributes
   const labels = useMemo(() => new Map((lensAttrs ?? []).map((a) => [a.key, a.label])), [lensAttrs])
-  const spec = lensAttrs?.find((a) => a.key === exploration.key)
   const label = labels.get(exploration.key) ?? exploration.key
   // the cache is newer than the props while a request settles
   const exp = explorations?.find((e) => e.id === exploration.id) ?? exploration
@@ -147,11 +145,6 @@ export function AxisPopover({ option, exploration, source, onClose, onOpenOption
       qc.setQueryData<Exploration[]>(keys.explorations(boardId), (old) => withExploration(old, e))
     }, 'Could not branch')
 
-  const findReal = () =>
-    act(async () => {
-      await startRun(boardId, findRealRequest(source.id, exp.key, live))
-    }, 'Could not start the run')
-
   const dismiss = () =>
     act(async () => {
       await dismissOption(qc, boardId, live)
@@ -165,7 +158,6 @@ export function AxisPopover({ option, exploration, source, onClose, onOpenOption
   }
 
   const working = live.status === 'visualizing'
-  const realOk = !!spec && canFindReal(spec, live.value)
   const keeps = live.keeps.map((k) => labels.get(k) ?? k)
   const keepsLine = `${keeps.length ? `Keeps ${keeps.join(', ')}. ` : ''}Only ${label} changes.`
   const isKept = !!current && current.id === live.kept_item_id
@@ -270,21 +262,6 @@ export function AxisPopover({ option, exploration, source, onClose, onOpenOption
       <div className="axis-pop-more">
         <button type="button" className="btn-quiet small" disabled={locked || busy} onClick={() => void branch()}>
           Branch
-        </button>
-        <button
-          type="button"
-          className="btn-quiet small"
-          title={
-            realOk
-              ? undefined
-              : live.value === null
-                ? 'This option has no single value to search for.'
-                : `Not a known ${label} value yet. Visualize it first to add it.`
-          }
-          disabled={locked || busy || !realOk}
-          onClick={() => void findReal()}
-        >
-          Find real examples
         </button>
         <button type="button" className="btn-quiet small" disabled={locked || busy} onClick={() => void dismiss()}>
           Dismiss

@@ -1,5 +1,5 @@
 import type { AttrValue } from '../api'
-import { colorHex, formatValue } from '../vary/logic'
+import { colorHex, formatValue } from '../attrValues'
 
 export function Swatch({ hex, label }: { hex: string | null; label?: string }) {
   if (!hex) return null

@@ -24,7 +24,7 @@ const items: Item[] = [
   makeItem({ id: 'i3', original_filename: 'staged-take.png', staged: true }),
 ]
 
-function setup(over: { plugins?: boolean; explore?: boolean } = {}) {
+function setup(over: { plugins?: boolean } = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const onFocusItem = vi.fn()
   const onFindExamples = vi.fn()
@@ -47,7 +47,6 @@ function setup(over: { plugins?: boolean; explore?: boolean } = {}) {
         onFocusItem={onFocusItem}
         onFindExamples={onFindExamples}
         plugins={over.plugins ?? true}
-        explore={over.explore ?? true}
       />
     </QueryClientProvider>,
   )
@@ -74,8 +73,8 @@ describe('BoardShell', () => {
     expect(screen.queryByRole('button', { name: 'Nodes' })).toBeNull()
   })
 
-  it('hides the Axis tool when explore is off', () => {
-    setup({ explore: false })
+  it('has no Axis tool', () => {
+    setup()
     expect(screen.queryByRole('button', { name: 'Axis' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Note' })).toBeTruthy()
   })
@@ -130,7 +129,7 @@ describe('BoardShell', () => {
     fireEvent.keyDown(document.body, { key: 'Escape' })
     expect(toolStore.get()).toBe('select')
     fireEvent.keyDown(document.body, { key: 'a' })
-    expect(toolStore.get()).toBe('axis')
+    expect(toolStore.get()).toBe('select')
   })
 
   it('n while typing in a textarea does not change the tool', () => {
@@ -197,13 +196,11 @@ describe('BoardShell', () => {
     expect(document.activeElement).toBe(ta)
   })
 
-  it('a lens proposal while another panel is open puts a dot on Library', () => {
+  it('a lens proposal while another panel is open leaves the rail without a dot', () => {
     setup()
     fireEvent.click(rail().getByRole('button', { name: 'Search' }))
     act(() => noteLensProposal(true))
-    const lib = rail().getByRole('button', { name: 'Library, new lens to review' })
-    expect(lib.querySelector('.rail-dot')).toBeTruthy()
-    fireEvent.click(lib)
     expect(rail().getByRole('button', { name: 'Library' }).querySelector('.rail-dot')).toBeNull()
+    expect(screen.getByRole('dialog', { name: 'Search' })).toBeTruthy()
   })
 })

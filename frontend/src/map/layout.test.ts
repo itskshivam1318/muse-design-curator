@@ -67,6 +67,22 @@ describe('calloutSlots', () => {
       all.slice(i + 1).forEach((o) => expect(rectsIntersect(s, o)).toBe(false))
     })
   })
+
+  it('takes a card height per part, so tall cards on one side never overlap', () => {
+    const slots = calloutSlots(
+      it0,
+      [
+        { key: 'a', anchor: { x: 510, y: 320 }, height: 160 },
+        { key: 'b', anchor: { x: 510, y: 330 } },
+      ],
+      [],
+    )
+    const a = slots.get('a')!
+    const b = slots.get('b')!
+    expect(a.height).toBe(160)
+    expect(b.height).toBe(CALLOUT_H)
+    expect(rectsIntersect(a, b)).toBe(false)
+  })
 })
 
 describe('placeFlower', () => {

@@ -2,7 +2,7 @@
 import { useMemo } from 'react'
 import { Group, Rect, Text } from 'react-konva'
 import type { Item } from '../api'
-import { NOTE_FILL, NOTE_INK, NOTE_W, noteHeight, noteTextProps } from './noteSize'
+import { HIGHLIGHT_FILL, highlightBands, NOTE_FILL, NOTE_INK, NOTE_W, noteHeight, noteTextProps } from './noteSize'
 
 interface Props {
   item: Item
@@ -11,11 +11,15 @@ interface Props {
   draggable?: boolean
   /** Hidden while the HTML editor sits over it. */
   hidden?: boolean
+  /** A passage [start, end) of the text to mark (a hovered part of the note). */
+  highlight?: readonly [number, number] | null
 }
 
-export function NoteNode({ item, events, draggable = false, hidden = false }: Props) {
+export function NoteNode({ item, events, draggable = false, hidden = false, highlight = null }: Props) {
   const text = item.note_text ?? ''
   const height = useMemo(() => noteHeight(text), [text])
+  const [hStart, hEnd] = highlight ?? [0, 0]
+  const bands = useMemo(() => highlightBands(text, hStart, hEnd), [text, hStart, hEnd])
   return (
     <Group id={item.id} x={item.x} y={item.y} draggable={draggable} visible={!hidden} {...events}>
       <Rect
@@ -30,6 +34,9 @@ export function NoteNode({ item, events, draggable = false, hidden = false }: Pr
         shadowBlur={6}
         shadowOffsetY={2}
       />
+      {bands.map((b, i) => (
+        <Rect key={i} name="note-highlight" {...b} fill={HIGHLIGHT_FILL} cornerRadius={2} listening={false} />
+      ))}
       <Text name="note-text" {...noteTextProps} text={text} fill={NOTE_INK} listening={false} />
     </Group>
   )

@@ -1,9 +1,9 @@
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useEffect } from 'react'
 import Konva from 'konva'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { type Exploration, type ExploreOption, type Item, keys } from '../api'
+import { type AnalysisView, type Exploration, type ExploreOption, type Item, keys } from '../api'
 import '../panels/registerPanels'
 import { stubCanvasContext } from '../test/canvasStub'
 import { makeItem } from '../test/fixtures'
@@ -14,8 +14,9 @@ vi.mock('../api', async (orig) => ({
   ...(await orig<typeof import('../api')>()),
   patchItem: vi.fn(() => Promise.resolve()),
   deleteItem: vi.fn(() => Promise.resolve()),
+  getRegion: vi.fn(() => Promise.resolve({ kind: 'mask', box: [0.4, 0.2, 0.6, 0.5], mask_url: '/api/media/masks/hands.png' })),
 }))
-const { patchItem, deleteItem } = await import('../api')
+const { patchItem, deleteItem, getRegion } = await import('../api')
 const { useItemActions } = await import('./actions')
 const { Canvas } = await import('./Canvas')
 const { undoHistory } = await import('./history')
@@ -155,5 +156,42 @@ describe('Canvas axes', () => {
     })
     expect(pos()).toEqual({ src: [0, 0], k1: [240, 28], far: [900, 900] })
     expect(undoHistory.size).toBe(0)
+  })
+})
+
+describe('Canvas part callouts', () => {
+  const analysis: AnalysisView = {
+    content_type: 'image',
+    parse_status: 'completed',
+    parts: [{ key: 'hands', label: 'Hands', region_kind: 'mask', region: null, mask_url: null, source: 'ai' }],
+    dimensions: [
+      { key: 'hand_style', label: 'Hand style', type: 'physical', part: 'hands', prompt: null, kind: 'enum', value: 'syringe', confidence: 0.9, source: 'ai', status: 'extracted' },
+    ],
+  }
+
+  it('hovering a callout requests its region and shows the overlay', async () => {
+    const qc = client([], [makeItem({ id: 'src', board_id: 'b1' })])
+    qc.setQueryData(keys.analysis('src'), analysis)
+    renderBoard(qc)
+    expect(screen.queryByRole('group', { name: 'Hands' })).toBeNull()
+    act(() => selection.select(['src']))
+    const hands = screen.getByRole('group', { name: 'Hands' })
+    expect(screen.queryByTestId('region-overlay')).toBeNull()
+    fireEvent.mouseEnter(hands)
+    expect(getRegion).toHaveBeenCalledWith('src', 'hands')
+    // while SAM looks for the part: a dashed outline
+    expect(screen.getByTestId('region-overlay').dataset.state).toBe('loading')
+    await waitFor(() => expect(screen.getByTestId('region-overlay').dataset.state).toBe('mask'))
+    fireEvent.mouseLeave(hands)
+    expect(screen.queryByTestId('region-overlay')).toBeNull()
+  })
+
+  it('a note waiting for analysis shows no callouts', () => {
+    const note = makeItem({ id: 'n1', board_id: 'b1', kind: 'note', origin: 'note', note_text: 'Olive', parse_status: 'pending' })
+    const qc = client([], [note])
+    qc.setQueryData(keys.analysis('n1'), { ...analysis, parse_status: 'pending', parts: [], dimensions: [] })
+    renderBoard(qc)
+    act(() => selection.select(['n1']))
+    expect(screen.queryByRole('group', { name: 'Whole item' })).toBeNull()
   })
 })

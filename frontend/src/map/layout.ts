@@ -41,15 +41,16 @@ const inflate = (b: Bounds, d: number): Bounds => ({ x: b.x - d, y: b.y - d, wid
 /** First obstacle that `r` overlaps (stable order), or undefined. */
 const firstHit = (r: Bounds, obstacles: Bounds[]) => obstacles.find((o) => rectsIntersect(r, o))
 
+/** One slot per part beside the item, on its anchor's side; `height` defaults to CALLOUT_H. */
 export function calloutSlots(
   item: Bounds,
-  parts: { key: string; anchor: Point }[],
+  parts: { key: string; anchor: Point; height?: number }[],
   obstacles: Bounds[],
 ): Map<string, Bounds> {
   type Side = 'left' | 'right' | 'below'
   const side = (a: Point): Side =>
     a.x < item.x + item.width / 3 ? 'left' : a.x > item.x + (item.width * 2) / 3 ? 'right' : 'below'
-  const groups: Record<Side, { key: string; anchor: Point }[]> = { left: [], right: [], below: [] }
+  const groups: Record<Side, { key: string; anchor: Point; height?: number }[]> = { left: [], right: [], below: [] }
   for (const p of parts) groups[side(p.anchor)].push(p)
 
   const placed: Bounds[] = []
@@ -61,14 +62,15 @@ export function calloutSlots(
     const vertical = s !== 'below'
     const group = groups[s].sort((a, b) => (vertical ? a.anchor.y - b.anchor.y : a.anchor.x - b.anchor.x) || cmp(a.key, b.key))
     for (const p of group) {
+      const h = p.height ?? CALLOUT_H
       let r: Bounds = vertical
         ? {
             x: s === 'left' ? item.x - PETAL_GAP - CALLOUT_W : item.x + item.width + PETAL_GAP,
-            y: p.anchor.y - CALLOUT_H / 2,
+            y: p.anchor.y - h / 2,
             width: CALLOUT_W,
-            height: CALLOUT_H,
+            height: h,
           }
-        : { x: p.anchor.x - CALLOUT_W / 2, y: item.y + item.height + PETAL_GAP, width: CALLOUT_W, height: CALLOUT_H }
+        : { x: p.anchor.x - CALLOUT_W / 2, y: item.y + item.height + PETAL_GAP, width: CALLOUT_W, height: h }
       for (let hit = firstHit(inflate(r, PETAL_GAP / 2), taken()); hit; hit = firstHit(inflate(r, PETAL_GAP / 2), taken())) {
         r = vertical ? { ...r, y: hit.y + hit.height + PETAL_GAP } : { ...r, x: hit.x + hit.width + PETAL_GAP }
       }

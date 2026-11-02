@@ -49,6 +49,8 @@ interface NodeProps {
   handlers: ItemHandlers
   /** A note being edited in place: the HTML editor covers it, so it is not drawn. */
   hidden?: boolean
+  /** A note's hovered passage [start, end), marked in its text. */
+  highlight?: readonly [number, number] | null
 }
 
 function common(item: Item, draggable: boolean, h: ItemHandlers) {
@@ -113,8 +115,9 @@ function LinkCard({ item, draggable, palette, handlers }: NodeProps) {
 }
 
 export function ItemNode(props: NodeProps) {
-  const { item, draggable, handlers, hidden } = props
-  if (item.kind === 'note') return <NoteNode item={item} hidden={hidden} draggable={draggable} events={common(item, draggable, handlers)} />
+  const { item, draggable, handlers, hidden, highlight } = props
+  if (item.kind === 'note')
+    return <NoteNode item={item} hidden={hidden} draggable={draggable} highlight={highlight} events={common(item, draggable, handlers)} />
   return item.kind === 'link' ? <LinkCard {...props} /> : <PictureNode {...props} />
 }
 

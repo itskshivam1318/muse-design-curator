@@ -1,7 +1,7 @@
-/** Board tools (select / note / axis) and which rail panel is open: small shared stores. */
+/** Board tools (select / note) and which rail panel is open: small shared stores. */
 import { useSyncExternalStore } from 'react'
 
-export type Tool = 'select' | 'note' | 'axis'
+export type Tool = 'select' | 'note'
 export type RailId = 'library' | 'search' | 'plugins' | 'vocabulary'
 
 export const RAIL_LABELS: Record<RailId, string> = {
@@ -41,16 +41,13 @@ export interface RailState {
   open: RailId | null
   /** Who opened it: the person (the panel takes focus) or the board (it leaves focus be). */
   reason: 'user' | 'auto'
-  /** A lens proposal waits in Library while another panel is open (a dot on the Library icon). */
-  lensWaiting: boolean
 }
 
-export const railStore = createStore<RailState>({ open: null, reason: 'user', lensWaiting: false })
+export const railStore = createStore<RailState>({ open: null, reason: 'user' })
 export const useRail = (): RailState => useSyncExternalStore(railStore.subscribe, railStore.get)
 
 export function openRail(id: RailId, reason: RailState['reason'] = 'user'): void {
-  const cur = railStore.get()
-  railStore.set({ open: id, reason, lensWaiting: id === 'library' ? false : cur.lensWaiting })
+  railStore.set({ open: id, reason })
 }
 
 export function closeRail(): void {
@@ -58,23 +55,17 @@ export function closeRail(): void {
   if (cur.open !== null) railStore.set({ ...cur, open: null })
 }
 
-/** A lens proposal appeared (or went): open Library for it, or flag Library if another panel is open. */
+/** A lens proposal appeared: open Library for it when no other panel is open. */
 export function noteLensProposal(present: boolean): void {
-  const cur = railStore.get()
-  if (!present) {
-    if (cur.lensWaiting) railStore.set({ ...cur, lensWaiting: false })
-  } else if (cur.open === null) openRail('library', 'auto')
-  else if (cur.open !== 'library') railStore.set({ ...cur, lensWaiting: true })
+  if (present && railStore.get().open === null) openRail('library', 'auto')
 }
 
-/** `n` note, `a` axis (only with explore on), `Escape` select; every other key is not a tool key. */
-export function toolForKey(key: string, flags: { explore: boolean }): Tool | null {
+/** `n` note, `Escape` select; every other key is not a tool key. */
+export function toolForKey(key: string): Tool | null {
   if (key === 'Escape') return 'select'
   switch (key.toLowerCase()) {
     case 'n':
       return 'note'
-    case 'a':
-      return flags.explore ? 'axis' : null
     default:
       return null
   }

@@ -77,7 +77,7 @@ describe('NodesMenu', () => {
     render(
       <>
         <NodesMenu boardId="b1" onClose={vi.fn()} />
-        <BottomToolbar onNodes={vi.fn()} plugins explore={false} />
+        <BottomToolbar onNodes={vi.fn()} plugins />
       </>,
       { wrapper: wrap(qc) },
     )

@@ -95,7 +95,6 @@ function setup(opts: { items?: Item[]; locked?: boolean; shell?: boolean; plugin
           onFocusItem={vi.fn()}
           onFindExamples={vi.fn()}
           plugins={false}
-          explore
         />
       ) : (
         <Harness />

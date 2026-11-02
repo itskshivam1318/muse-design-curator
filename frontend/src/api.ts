@@ -58,7 +58,7 @@ export interface Item {
 export type ContentType = 'image' | 'ui' | 'text'
 export type RegionKind = 'mask' | 'box' | 'text_range'
 
-/** Where a part lives: a box (x, y, w, h as fractions), a text range, or a mask image. */
+/** Where a part lives: a box [x0, y0, x1, y1] as fractions, a text range [start, end], or a mask image (with its bbox). */
 export interface Region {
   kind: RegionKind
   box?: number[]

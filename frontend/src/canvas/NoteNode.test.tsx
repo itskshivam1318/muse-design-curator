@@ -61,6 +61,21 @@ describe('NoteNode', () => {
   })
 })
 
+describe('NoteNode highlight', () => {
+  it('marks the highlighted passage with a #ffd166 band behind the text; none without one', () => {
+    const stage = draw(<NoteNode item={note('Dark olive')} highlight={[5, 10]} />)
+    const band = stage.current!.findOne<Konva.Rect>('.note-highlight')!
+    expect(band.fill()).toBe('#ffd166')
+    expect(band.width()).toBeGreaterThan(0)
+    expect(band.x()).toBeGreaterThan(16) // after "Dark ", inside the padding
+    expect(band.y()).toBe(16) // the first line
+    expect(band.zIndex()).toBeLessThan(stage.current!.findOne('.note-text')!.zIndex())
+    cleanup()
+    const plain = draw(<NoteNode item={note('Dark olive')} />)
+    expect(plain.current!.findOne('.note-highlight')).toBeUndefined()
+  })
+})
+
 describe('NoteVisualizing', () => {
   it('draws a 190×150 placeholder beside the note with a dashed line only while visualizing', () => {
     const n = note('Strap')

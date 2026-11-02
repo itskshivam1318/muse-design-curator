@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { AttributeSpec, ExploreOption } from '../api'
-import { canFindReal, findRealRequest, optionTree } from './logic'
+import type { ExploreOption } from '../api'
+import { optionTree } from './logic'
 
 function opt(over: Partial<ExploreOption> & { id: string }): ExploreOption {
   return {
@@ -10,7 +10,6 @@ function opt(over: Partial<ExploreOption> & { id: string }): ExploreOption {
   }
 }
 
-const FINISH: AttributeSpec = { key: 'case_finish', label: 'Case finish', category: 'case', kind: 'enum', vocabulary: ['brushed', 'polished'] }
 
 describe('optionTree', () => {
   it('optionTree nests branches', () => {
@@ -32,31 +31,3 @@ describe('optionTree', () => {
   })
 })
 
-describe('canFindReal', () => {
-  it('canFindReal closed enum outside vocab false', () => {
-    expect(canFindReal(FINISH, 'sandblasted')).toBe(false)
-    expect(canFindReal(FINISH, null)).toBe(false)
-    expect(canFindReal(FINISH, 'brushed')).toBe(true)
-  })
-
-  it('canFindReal after vocab update true', () => {
-    const grown = { ...FINISH, vocabulary: ['brushed', 'polished', 'sandblasted'] }
-    expect(canFindReal(grown, 'sandblasted')).toBe(true)
-    expect(canFindReal({ ...FINISH, open_vocabulary: true }, 'anything')).toBe(true)
-    expect(canFindReal({ key: 'd', label: 'D', category: 'x', kind: 'boolean' }, false)).toBe(true)
-  })
-})
-
-describe('findRealRequest', () => {
-  it('findRealRequest maps keeps', () => {
-    const o = opt({ id: 'o1', value: 'sandblasted', keeps: ['dial_color', 'legibility'] })
-    expect(findRealRequest('i1', 'case_finish', o)).toEqual({
-      source_item_id: 'i1',
-      target_key: 'case_finish',
-      mode: 'prefer',
-      target_values: ['sandblasted'],
-      protected_keys: ['dial_color', 'legibility'],
-      nudge: null,
-    })
-  })
-})

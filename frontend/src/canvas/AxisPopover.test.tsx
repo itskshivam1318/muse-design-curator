@@ -66,7 +66,7 @@ describe('AxisPopover', () => {
     expect(screen.getByText('Honey').tagName).toBe('B')
     expect(screen.getByText(/golden, like old paper/)).toBeTruthy()
     expect(screen.getByText('Keeps Case finish, Legibility. Only Dial colour changes.')).toBeTruthy()
-    for (const name of ['Branch', 'Find real examples', 'Dismiss']) expect(screen.getByRole('button', { name })).toBeTruthy()
+    for (const name of ['Branch', 'Dismiss']) expect(screen.getByRole('button', { name })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Visualize' }))
     await waitFor(() => expect(visualizeOption).toHaveBeenCalledWith('o1'))
     expect(current().status).toBe('visualizing') // shown at once

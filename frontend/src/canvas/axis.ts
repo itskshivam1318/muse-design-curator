@@ -5,7 +5,7 @@
  * attribute, oldest first. Nothing here is stored: it is all computed from the source's bounds,
  * so axes move with their source.
  */
-import type { Exploration, ExploreOption, Item, ItemAttribute, Point } from '../api'
+import type { Exploration, ExploreOption, Item, Point } from '../api'
 import { optionTree } from '../explore/logic'
 import type { Bounds } from './geometry'
 import { itemBounds } from './nodeProps'
@@ -235,15 +235,3 @@ export const focusStore = {
   },
 }
 export const focusAxis = (explorationId: string | null): void => focusStore.set(explorationId)
-
-/** Where a value came from, as the chip's mark shows it (the `sources` of the Chips artboard). */
-export type ChipSource = 'measured' | 'read' | 'estimated' | 'web' | 'you' | 'unknown'
-
-export function chipSource(a: ItemAttribute): ChipSource {
-  if (a.value === null || a.status === 'missing') return 'unknown'
-  if (a.source === 'user' || a.status === 'edited' || a.status === 'confirmed') return 'you'
-  if (a.measured) return 'measured'
-  if (a.source === 'web' || a.source === 'live') return 'web'
-  if (a.status === 'uncertain') return 'estimated'
-  return 'read'
-}

@@ -2037,100 +2037,151 @@ button.onboarding-step:hover {
   flex-wrap: wrap;
   gap: 2px;
 }
-.axis-picker {
+
+/* ---- part callouts around the selected item (canvas units, like the axes) ---- */
+.callout-layer {
   position: absolute;
-  z-index: 8;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 4;
 }
-.axis-picker-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.callout-world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+}
+.callout-lines {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+}
+.callout-leader {
+  stroke: var(--accent);
+  stroke-width: 1.25px;
+}
+.callout-anchor {
+  fill: var(--accent);
+  stroke: #ffffff;
+}
+.callout {
+  position: absolute;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-}
-.axis-picker-list button {
-  width: 100%;
-  min-height: 36px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid #c9d2ea;
+  border-radius: 10px;
+  background: var(--raised);
   color: var(--ink);
-  font-size: 12.5px;
-  text-align: left;
-  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+  font-family: var(--f-body);
+  pointer-events: auto;
 }
-.axis-picker-list button:hover:not(:disabled) {
-  background: var(--paper);
+.callout.is-whole {
+  border-style: dashed;
+  border-color: var(--note-edge);
+  box-shadow: none;
 }
-
-/* ---- attribute chips under the selected image, each marked with its value's source ---- */
-.item-chips {
-  position: absolute;
-  z-index: 5;
+.callout-head {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  height: 20px;
+  padding: 0 2px;
 }
-.item-chip {
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 9px;
-  border: 0;
+.callout-title {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.callout-tag {
+  flex: none;
+  font: 11px var(--f-mono);
+  color: var(--muted);
+}
+.callout-dim {
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid var(--rule);
   border-radius: 6px;
   background: var(--raised);
   color: var(--ink);
-  box-shadow: 0 1px 2px rgba(20, 24, 30, 0.1);
-  font: 12.5px var(--f-body);
+  font: 12px var(--f-body);
+  text-align: left;
   cursor: pointer;
-  white-space: nowrap;
 }
-.item-chip:hover:not(:disabled) {
-  box-shadow: 0 0 0 1.5px var(--ink);
+.callout-dim:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
-.item-chip:disabled {
+.callout-dim:disabled {
   cursor: default;
 }
-.chip-label {
+.callout-dim.is-stale {
   color: var(--muted);
+  border-style: dashed;
+  opacity: 0.7;
 }
-.chip-value {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+.callout-value {
+  opacity: 0.75;
 }
-.chip-mark {
-  flex: none;
+.callout-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  min-height: 30px;
+}
+.callout-act {
+  min-height: 30px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  font: 12px var(--f-body);
+  cursor: pointer;
+}
+.callout-act:hover:not(:disabled) {
+  background: var(--hover, var(--paper));
+}
+.callout-act:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.callout-form input {
   box-sizing: border-box;
-  width: 9px;
-  height: 9px;
-  border-radius: 2px;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--raised);
+  color: var(--ink);
+  font: 12px var(--f-body);
 }
-.chip-mark[data-source='measured'] {
-  background: #2c7a4b;
+
+/* ---- the hovered part's region over its item ---- */
+.region-overlay {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 3;
 }
-.chip-mark[data-source='read'] {
-  border: 1.5px solid #2a4aae;
+.region-overlay.is-box {
+  border: 2px solid #ffd166;
+  border-radius: 4px;
+  background: rgba(255, 209, 102, 0.35);
 }
-.chip-mark[data-source='estimated'] {
-  border: 1.5px dashed #9a6110;
-}
-.chip-mark[data-source='web'] {
-  background: #dfe5f6;
-  border: 1.5px solid #2a4aae;
-  border-radius: 50%;
-}
-.chip-mark[data-source='you'] {
-  background: var(--ink);
-  border-radius: 50%;
-}
-.chip-mark[data-source='unknown'] {
-  border: 1.5px solid #9aa3b0;
-  border-radius: 50%;
+.region-overlay.is-loading {
+  border: 2px dashed #ffd166;
+  border-radius: 4px;
 }
