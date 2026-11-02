@@ -182,7 +182,8 @@ export function FlowerLayer({ boardId, items, view, map, locked = false, onWheel
   return (
     <div
       ref={rootRef}
-      className="flower-layer"
+      // an open card sits above the selected item's callouts, which would otherwise cover it
+      className={card ? 'flower-layer has-card' : 'flower-layer'}
       onWheel={(e) => {
         if (!(e.target as HTMLElement).closest('.petal-card')) onWheel?.(e)
       }}

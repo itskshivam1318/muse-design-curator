@@ -1742,6 +1742,9 @@ button.onboarding-step:hover {
   pointer-events: none;
   z-index: 3;
 }
+.flower-layer.has-card {
+  z-index: 5; /* over the callouts (4) while a petal card is open */
+}
 .flower-world {
   position: absolute;
   left: 0;

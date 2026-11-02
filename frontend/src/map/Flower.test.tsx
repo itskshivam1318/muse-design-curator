@@ -136,6 +136,16 @@ describe('FlowerLayer', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
+  it('an open card lifts the flower layer above the callouts (their cards would cover it)', () => {
+    setup([{ id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style', options: [opt({ id: 'o1', name: 'Copper' })] }])
+    const layer = document.querySelector('.flower-layer')!
+    expect(layer.classList.contains('has-card')).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: /Copper/ }))
+    expect(layer.classList.contains('has-card')).toBe(true)
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Copper' }), { key: 'Escape' })
+    expect(layer.classList.contains('has-card')).toBe(false)
+  })
+
   it('collapses to a badge on its callout and opens again; the flag is kept per board', () => {
     setup([{ id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style', options: [opt({ id: 'o1' }), opt({ id: 'o2', status: 'kept', kept_item_id: 'k' })] }])
     fireEvent.click(within(hub('Hand style')).getByRole('button', { name: 'Collapse Hand style' }))
