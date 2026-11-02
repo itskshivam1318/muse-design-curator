@@ -27,10 +27,12 @@ class OptionPatch(BaseModel):
 
 
 class VisualizeBody(BaseModel):
-    """Where the browser drew the option's note; saved on the option before placing the image."""
+    """Where the browser drew the option's note (saved on the option), and the renderer to use
+    (the first offered for the item when left out)."""
 
-    x: float
-    y: float
+    x: float | None = None
+    y: float | None = None
+    renderer_id: str | None = None
 
 
 class KeepBody(BaseModel):
@@ -76,8 +78,9 @@ def patch_option(option_id: str, body: OptionPatch, session: SessionDep) -> dict
 def visualize_option(
     option_id: str, session: SessionDep, body: VisualizeBody | None = None
 ) -> dict[str, Any]:
-    at = (body.x, body.y) if body else None
-    visualize.request_visualize(session, option_id, at=at)
+    at = (body.x, body.y) if body and body.x is not None and body.y is not None else None
+    renderer_id = body.renderer_id if body else None
+    visualize.request_visualize(session, option_id, at=at, renderer_id=renderer_id)
     return {"option_id": option_id, "status": "visualizing"}
 
 

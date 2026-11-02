@@ -367,6 +367,13 @@ def _mock_item_analysis(images: list[bytes], prompt: str) -> dict[str, Any]:
     }  # fmt: skip
 
 
+def _mock_rewrite(prompt: str) -> dict[str, Any]:
+    """A deterministic rewrite (the `passage_rewrite` schema): the passage in upper case."""
+    start, end = prompt.find("<<<PASSAGE\n"), prompt.rfind("\nPASSAGE>>>")
+    passage = prompt[start + 11 : end] if 0 <= start < end else ""
+    return {"text": passage.upper()}
+
+
 class MockReasoningProvider:
     """Deterministic output derived from SHA-256 of inputs and schema.
 
@@ -430,6 +437,8 @@ class MockReasoningProvider:
         _limit(images, MAX_STRUCTURED_IMAGES)
         if schema.get("title") == "item_analysis":
             return _mock_item_analysis(images, prompt)
+        if schema.get("title") == "passage_rewrite":
+            return _mock_rewrite(prompt)
         return self._make(images, schema, prompt)
 
     def _make(self, images: list[bytes], schema: dict[str, Any], prompt: str) -> dict[str, Any]:

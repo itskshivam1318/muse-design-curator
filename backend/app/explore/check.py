@@ -85,8 +85,14 @@ def check_generated(
         label=_label(target, e.key, lens),
         option_name=option.name, description=option.description or "",
     )  # fmt: skip
-    image, _sha = _image_for(session, gen)
-    answer = clean_target(get_reasoning(get_settings()).check_target([image], prompt))
+    images: list[bytes]
+    if gen.kind == "note":  # a rewritten passage: the question is put to its text
+        images = []
+        text = gen.note_text or ""
+        prompt += f"\n\nThere is no image: the item is this text.\n<<<TEXT\n{text}\nTEXT>>>"
+    else:
+        images = [_image_for(session, gen)[0]]
+    answer = clean_target(get_reasoning(get_settings()).check_target(images, prompt))
 
     before = {r.key: record_of(r) for r in rows if is_held(r)}
     after = {r.key: record_of(r) for r in dimensions(session, generated_id) if is_held(r)}
