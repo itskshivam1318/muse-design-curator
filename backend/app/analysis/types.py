@@ -56,6 +56,13 @@ class DimensionOut(BaseModel):
             raise ValueError("a dimension is physical if and only if it has a part")
         if self.type == "abstract" and not self.prompt:
             raise ValueError("an abstract dimension requires a prompt")
+        # Imported here: spec.py imports this module.
+        from app.analysis.spec import spec_from_dimension
+
+        try:
+            spec_from_dimension(self)
+        except ValueError as e:  # includes pydantic ValidationError
+            raise ValueError(f"dimension {self.key} cannot form a {self.kind} spec: {e}") from e
         return self
 
 
