@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Living board prototype</title>
+<style>
+  :root { --bg:#14161c; --dot:#2a2e38; --ink:#e8eaf0; --mute:#8a90a0; --blue:#8b9cf7; --blue-ink:#fff; --card:#fff; --card-ink:#15171c; --green:#4fbf7a; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:#0f1115; color:var(--ink); font: 13px/1.3 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif; overflow:hidden; }
+  header { position:fixed; top:0; left:0; right:0; height:56px; display:flex; align-items:center; gap:18px; padding:0 22px; z-index:20; }
+  header b { font-size:18px; } header span { color:var(--mute); font-size:15px; }
+  .rail { position:fixed; left:0; top:70px; width:52px; display:flex; flex-direction:column; align-items:center; gap:26px; z-index:20; color:var(--mute); font-size:18px; }
+  #stage { position:fixed; left:56px; top:62px; right:10px; bottom:10px; border-radius:14px; overflow:hidden; cursor:grab;
+    background: var(--bg) radial-gradient(circle, var(--dot) 1.2px, transparent 1.3px) 0 0 / 28px 28px; touch-action:none; }
+  #stage.panning { cursor:grabbing; }
+  #world { position:absolute; left:0; top:0; transform-origin:0 0; }
+  svg#lines { position:absolute; left:0; top:0; overflow:visible; pointer-events:none; }
+  .node { position:absolute; left:0; top:0; will-change:transform; user-select:none; cursor:grab; }
+  .node.dragging { cursor:grabbing; z-index:5; }
+  .item img { width:100%; height:100%; object-fit:cover; display:block; border-radius:3px; pointer-events:none; }
+  .item { border-radius:3px; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+  .item .tag { position:absolute; top:8px; right:8px; background:#5fcf8a; color:#0b2a17; font-size:11px; padding:2px 9px; border-radius:20px; }
+  .sel { outline: 2px solid var(--blue); outline-offset: 3px; }
+  .link { background:#1b1e26; border:1px dashed #3a3f4c; color:var(--mute); padding:12px; font-size:11px; border-radius:6px; overflow:hidden; }
+  .link b { color:var(--ink); display:block; margin-bottom:6px; }
+  .hub { background:var(--blue); color:var(--blue-ink); border-radius:24px; display:flex; flex-direction:column; align-items:center; justify-content:center; box-shadow:0 0 0 6px rgba(139,156,247,.12); }
+  .hub b { font-size:11.5px; font-weight:600; } .hub small { font: 10px ui-monospace, Menlo, monospace; opacity:.8; }
+  .petal { background:var(--card); color:var(--card-ink); border-radius:4px; padding:7px; font-size:10.5px; font-weight:600; box-shadow:0 4px 14px rgba(0,0,0,.35); overflow:hidden; }
+  .petal i { display:inline-block; margin-top:5px; font: 9px ui-monospace, Menlo, monospace; font-style:normal; padding:0 4px; border-radius:3px; }
+  .petal i.near { color:#4b5bd1; background:#e9ecff; } .petal i.bold { color:#b56a00; background:#fff2dc; } .petal i.wild { color:#d0313d; background:#ffe6e8; }
+  .petal .keep { position:absolute; left:6px; right:6px; bottom:6px; border:0; border-radius:4px; background:var(--green); color:#062313; font-weight:700; font-size:10.5px; padding:4px 0; cursor:pointer; opacity:0; transform:translateY(4px); transition:.15s; }
+  .petal:hover .keep { opacity:1; transform:none; }
+  .petal.kept { padding:0; border:2px solid var(--green); background:#0d1a12; }
+  .petal.kept img { width:100%; height:100%; object-fit:cover; display:block; pointer-events:none; }
+  .petal.kept .cap { position:absolute; left:0; right:0; bottom:0; padding:3px 6px; font-size:10px; color:#fff; background:linear-gradient(transparent, rgba(0,0,0,.75)); }
+  .callout { background:#1d2029; border:1px solid #363b49; border-radius:6px; color:var(--ink); padding:7px 9px; font-size:11px; box-shadow:0 6px 18px rgba(0,0,0,.4); }
+  .callout .h { display:flex; justify-content:space-between; font-weight:600; } .callout .h span { color:var(--mute); font:9px ui-monospace, Menlo, monospace; }
+  .callout button { margin-top:5px; background:none; border:0; padding:0; color:var(--blue); font-size:10.5px; cursor:pointer; }
+  .dock { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); display:flex; gap:10px; align-items:center; z-index:30; }
+  .tools { display:flex; background:#22252e; border-radius:12px; padding:5px; box-shadow:0 10px 30px rgba(0,0,0,.4); }
+  .tools button { background:none; border:0; color:var(--ink); font-size:15px; padding:9px 16px; border-radius:8px; }
+  .tools button.on { background:#30343f; font-weight:600; }
+  .fab { width:50px; height:50px; border-radius:50%; border:0; background:var(--blue); color:#10131c; font-size:26px; line-height:1; cursor:pointer; box-shadow:0 10px 30px rgba(139,156,247,.35); transition:transform .2s; }
+  .fab.open { transform:rotate(45deg); }
+  .pop { position:absolute; bottom:62px; right:-40px; width:230px; background:#22252e; border:1px solid #343846; border-radius:12px; padding:6px; display:none; box-shadow:0 18px 40px rgba(0,0,0,.5); }
+  .pop.show { display:block; animation: rise .18s ease-out; }
+  @keyframes rise { from { opacity:0; transform:translateY(6px); } }
+  .pop button { display:block; width:100%; text-align:left; background:none; border:0; color:var(--ink); padding:10px 12px; border-radius:8px; font-size:13.5px; cursor:pointer; }
+  .pop button:hover { background:#2e323d; } .pop small { color:var(--mute); display:block; font-size:11px; }
+  .pop input { width:100%; margin:4px 0; padding:8px 10px; background:#14161c; border:1px solid #3a3f4c; color:var(--ink); border-radius:8px; }
+  .pop .note { padding:8px 12px; color:var(--mute); font-size:12px; }
+  .help { position:fixed; right:22px; top:74px; width:270px; background:rgba(28,31,39,.92); border:1px solid #30343f; border-radius:12px; padding:12px 14px; z-index:25; font-size:12px; color:#c9cdd8; backdrop-filter: blur(6px); }
+  .help b { color:var(--ink); } .help ol { margin:6px 0 8px; padding-left:18px; } .help li { margin:3px 0; }
+  .help label { display:flex; gap:6px; align-items:center; color:var(--mute); margin-top:4px; }
+  .help button { background:#30343f; color:var(--ink); border:0; border-radius:6px; padding:5px 9px; margin-top:6px; cursor:pointer; }
+  .help .x { float:right; background:none; padding:0; margin:0; color:var(--mute); }
+  .badge { position:fixed; left:72px; bottom:24px; color:var(--mute); font:11px ui-monospace, Menlo, monospace; z-index:20; }
+</style>
+</head>
+<body>
+<header><span style="font-size:20px">‹</span><b>cars</b><span>car design exploration · Watch</span></header>
+<div class="rail"><span>▦</span><span>⌕</span><span>⧉</span><span>Aa</span></div>
+<div id="stage"><div id="world"><svg id="lines" width="1" height="1"></svg></div></div>
+
+<div class="dock">
+  <div class="tools"><button class="on">Select</button><button>Note</button><button>Nodes</button></div>
+  <div style="position:relative">
+    <button class="fab" id="fab" aria-label="Add to board" title="Add to board">+</button>
+    <div class="pop" id="pop">
+      <div id="popMenu">
+        <button data-a="upload">Upload image<small>From your computer</small></button>
+        <button data-a="link">Paste a link<small>A page or image URL</small></button>
+        <button data-a="ext">Chrome extension<small>Capture while you browse</small></button>
+      </div>
+      <div id="popLink" hidden><input id="linkIn" placeholder="https://…  then Enter"></div>
+      <div id="popExt" hidden><div class="note">Pairing code <b style="color:#fff">7QK-4MD</b><br>(prototype — not a real code)</div></div>
+    </div>
+    <input type="file" id="file" accept="image/*" hidden>
+  </div>
+</div>
+
+<div class="help" id="help">
+  <button class="x" onclick="this.parentNode.remove()">✕</button>
+  <b>Living board — prototype</b>
+  <ol>
+    <li>Drag an <b>image</b> into a flower: things ease aside, then float back.</li>
+    <li>Drag a flower's <b>blue centre</b> somewhere new; its petals follow.</li>
+    <li>Click an <b>image</b>: its parts ring around it. Click a dimension to grow a flower.</li>
+    <li>Hover an option → <b>Keep</b>: it becomes the image, in its ring.</li>
+    <li>Click a <b>kept image</b> in a ring → explore it further.</li>
+    <li><b>+</b> (bottom) adds an image. Drag the background to pan, scroll to zoom.</li>
+  </ol>
+  <label><input type="checkbox" id="rm"> Reduce motion</label>
+  <button id="replay">Replay the intro</button>
+</div>
+<div class="badge">prototype · throwaway · not the app</div>
+
+<script>
+const IMG = 'c0.jpg'
+const stage = document.getElementById('stage'), world = document.getElementById('world'), svg = document.getElementById('lines')
+const reduceQ = matchMedia('(prefers-reduced-motion: reduce)')
+const rmBox = document.getElementById('rm'); rmBox.checked = reduceQ.matches
+const reduced = () => rmBox.checked
+
+// ---------- content ----------
+const PARTS = [
+  { key: 'fw', part: 'Front wheel', dim: 'Front wheel color', fx: .22, fy: .76 },
+  { key: 'rw', part: 'Rear wheel', dim: 'Rear wheel color', fx: .67, fy: .76 },
+  { key: 'gl', part: 'Cockpit glazing', dim: 'Glazing appearance', fx: .52, fy: .52 },
+  { key: 'n4', part: 'Number 4 roundel', dim: 'Door marking', fx: .5, fy: .66 },
+  { key: 'bd', part: 'Silver race car', dim: 'Body color', fx: .36, fy: .6 },
+  { key: 'wh', part: 'Whole item', dim: 'Mood & light', fx: .5, fy: .5, whole: true },
+]
+const OPTS = {
+  bd: [['Rosso Corsa Racer','bold'],['Le Mans Midnight','bold'],['British Racing Green','bold'],['Graphite Silver Shift','near'],['Golden Hour Flame','wild'],['Night Trial Black','wild'],['Pearl White','near'],['Sunset Bronze','bold']],
+  gl: [['Sunset Chameleon','wild'],['Washed Clean Glass','near'],['Pale Vintage Tint','near'],['Light Smoke','near'],['Amber Endurance Tint','bold'],['Blacked-Out Racer','bold'],['Silver Mirror','bold'],['Panelled Streamliner','wild']],
+  fw: [['Body-matched silver','near'],['Shadow graphite','near'],['Stealth single-black','near'],['Vintage gold','bold'],['Sunset bronze','bold'],['Racing red pop','bold'],['Cream whitewall','wild']],
+  rw: [['Whitewall Throwback','wild'],['Period Gold Knock-Off','near'],['Stealth Black Rim','near'],['Shadowed Gunmetal','near'],['Sunset Bronze','bold'],['Chrome Wire','bold']],
+  n4: [['Deleted Roundel','near'],['Direct Paint 4','near'],['Number Swap 7','near'],['Red Ring Roundel','bold'],['Black Square 4','bold'],['Sunset Disc','bold'],['Ghost Oversize 4','wild'],['Patina Checker 4','wild']],
+  wh: [['Dawn Fog','near'],['Night Rain','bold'],['Studio White','near'],['Desert Noon','wild'],['Neon Pit Lane','wild']],
+}
+function tint(name) {
+  const n = name.toLowerCase()
+  if (/green/.test(n)) return 'sepia(1) saturate(3.2) hue-rotate(70deg) brightness(.78)'
+  if (/rosso|red/.test(n)) return 'sepia(1) saturate(6) hue-rotate(-35deg) brightness(.85)'
+  if (/gold|flame|amber|yellow/.test(n)) return 'sepia(1) saturate(5) hue-rotate(8deg)'
+  if (/black|midnight|night|stealth|graphite|shadow/.test(n)) return 'brightness(.5) saturate(.5) contrast(1.2)'
+  if (/white|pearl|cream|fog/.test(n)) return 'brightness(1.25) saturate(.4)'
+  let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) % 360
+  return `sepia(.8) saturate(3) hue-rotate(${h}deg)`
+}
+
+// ---------- bodies ----------
+let bodies = [], flowers = [], now = 0, seq = 0, selected = null, callouts = []
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v))
+const easeBack = (t) => { const c = 1.7; t = clamp(t, 0, 1); return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2) }
+
+function body(kind, o) {
+  const b = Object.assign({ id: ++seq, kind, x: 0, y: 0, vx: 0, vy: 0, w: 100, h: 60, tw: null, th: null, born: now, delay: 0,
+    ph1: Math.random() * 6.28, ph2: Math.random() * 6.28, pulse: -9, im: 1, k: .03 }, o)
+  b.tw ??= b.w; b.th ??= b.h
+  b.el = document.createElement('div'); b.el.className = 'node ' + kind
+  world.appendChild(b.el); bodies.push(b); b.el.__b = b
+  return b
+}
+function addItem(x, y, opts = {}) {
+  const b = body('item', { x, y, w: opts.w ?? 300, h: opts.h ?? 188, home: { x, y }, im: .22, k: .012, ...opts })
+  if (opts.link) { b.el.classList.add('link'); b.el.innerHTML = `<b>${opts.link.host}</b>${opts.link.url}<br><br><span style="color:#8b9cf7">Use the extension to capture this</span>`; b.parts = [] }
+  else { b.el.innerHTML = `<img src="${opts.src ?? IMG}" style="filter:${opts.filter ?? 'none'}">` + (opts.tag ? `<span class="tag">${opts.tag}</span>` : ''); b.parts = PARTS }
+  return b
+}
+const removeBody = (b) => { b.el.remove(); bodies = bodies.filter((x) => x !== b) }
+
+// Angles for a set of parts spread evenly around their owner, nearest to where each part really is.
+function ringAngles(owner, parts) {
+  const raw = parts.map((p) => p.whole ? Math.PI / 2 : Math.atan2((p.fy - .5) * owner.th, (p.fx - .5) * owner.tw))
+  const order = raw.map((a, i) => [a, i]).sort((p, q) => p[0] - q[0])
+  const n = parts.length, step = 2 * Math.PI / n
+  let best = null
+  for (let s = 0; s < 72; s++) {
+    const t0 = s * Math.PI / 36; let cost = 0
+    order.forEach(([a], k) => { const d = Math.atan2(Math.sin(t0 + k * step - a), Math.cos(t0 + k * step - a)); cost += d * d })
+    if (!best || cost < best.cost) best = { t0, cost }
+  }
+  const out = []; order.forEach(([, i], k) => { out[i] = best.t0 + k * step }); return out
+}
+const ellipse = (owner, a, gx, gy) => ({ x: Math.cos(a) * (owner.tw / 2 + gx), y: Math.sin(a) * (owner.th / 2 + gy) })
+const anchorOf = (src, part) => part.whole ? null : { x: src.x + (part.fx - .5) * src.w, y: src.y + (part.fy - .5) * src.h }
+function edgeToward(src, p) { // where a ray from src centre toward p leaves src
+  const dx = p.x - src.x, dy = p.y - src.y, s = Math.min(Math.abs((src.w / 2) / (dx || 1e-6)), Math.abs((src.h / 2) / (dy || 1e-6)))
+  return { x: src.x + dx * s, y: src.y + dy * s }
+}
+
+function addFlower(src, part, opts = {}) {
+  const angs = ringAngles(src, src.parts), a = angs[src.parts.indexOf(part)] ?? 0
+  const off = opts.offset ?? ellipse(src, a, 210, 190)
+  const start = anchorOf(src, part) ?? { x: src.x, y: src.y }
+  const f = { id: ++seq, src, part, label: part.dim, offset: off, petals: [] }
+  const t0 = now + (opts.delay ?? 0)
+  f.hub = body('hub', { x: start.x, y: start.y, w: 150, h: 44, born: t0, im: .6, k: .035, flower: f })
+  const list = OPTS[part.key], n = list.length, R = Math.max(135, n * 19), dir = Math.atan2(off.y, off.x), half = 2.35
+  list.forEach(([name, dist], i) => {
+    const ang = dir - half + (i * 2 * half) / (n - 1)
+    const p = body('petal', { x: start.x, y: start.y, w: 88, h: 88, born: t0 + 260 + i * 70, im: 1, k: .05, flower: f, slot: ang, R, name, dist })
+    p.el.innerHTML = `${name}<br><i class="${dist}">${dist}</i><button class="keep">Keep ✓</button>`
+    f.petals.push(p)
+  })
+  flowers.push(f); refreshHub(f)
+  if (opts.kept != null) keep(f.petals[opts.kept], true)
+  return f
+}
+function refreshHub(f) {
+  const k = f.petals.filter((p) => p.kept).length
+  f.hub.el.innerHTML = `<b>${f.label}</b><small>${f.petals.length} options · ${k} kept</small>`
+}
+function keep(p, quiet) {
+  if (p.kept) return
+  p.kept = true; p.tw = 168; p.th = 105; p.im = .45; p.pulse = quiet ? -9 : now
+  p.el.classList.add('kept')
+  p.el.innerHTML = `<img src="${IMG}" style="filter:${tint(p.name)}"><div class="cap">${p.name}</div>`
+  p.parts = PARTS.filter((q) => ['fw', 'bd', 'n4', 'gl'].includes(q.key))
+  refreshHub(p.flower)
+}
+
+// ---------- homes ----------
+function home(b) {
+  if (b.kind === 'item') return b.home
+  if (b.kind === 'hub') return { x: b.flower.src.x + b.flower.offset.x, y: b.flower.src.y + b.flower.offset.y }
+  if (b.kind === 'petal') {
+    if (b.free) return b.free
+    const h = b.flower.hub, R = b.R + (b.kept ? 30 : 0)
+    return { x: h.x + Math.cos(b.slot) * R, y: h.y + Math.sin(b.slot) * R }
+  }
+  if (b.kind === 'callout') return { x: b.owner.x + b.off.x, y: b.owner.y + b.off.y }
+}
+const scaleOf = (b) => { const s = reduced() ? clamp((now - b.born) / 250, 0, 1) : easeBack((now - b.born) / 450); return s * (1 + (now - b.pulse < 700 ? .12 * Math.sin((now - b.pulse) / 700 * Math.PI) : 0)) }
+const alive = (b) => now >= b.born
+
+// ---------- selection & callouts ----------
+function select(b) {
+  if (selected === b) return
+  if (selected) selected.el.classList.remove('sel')
+  callouts.forEach(removeBody); callouts = []
+  selected = b
+  if (!b || !b.parts || !b.parts.length) { selected = null; return }
+  b.el.classList.add('sel')
+  const angs = ringAngles(b, b.parts)
+  b.parts.forEach((part, i) => {
+    const off = ellipse(b, angs[i], 105, 46)
+    const c = body('callout', { x: b.x + off.x * .4, y: b.y + off.y * .4, w: 172, h: 56, off, owner: b, part, born: now + i * 45, im: .35, k: .09 })
+    const has = flowers.some((f) => f.src === b && f.part === part)
+    c.el.innerHTML = `<div class="h">${part.part}<span>${part.whole ? 'no mask' : 'SAM mask'}</span></div><button>${has ? '◉ ' : '+ '}${part.dim}</button>`
+    c.el.querySelector('button').onclick = (e) => { e.stopPropagation(); explore(b, part) }
+    callouts.push(c)
+  })
+}
+function explore(src, part) {
+  const f = flowers.find((x) => x.src === src && x.part === part)
+  if (f) { f.hub.pulse = now; return }
+  addFlower(src, part)
+  const c = callouts.find((x) => x.part === part); if (c) c.el.querySelector('button').textContent = '◉ ' + part.dim
+}
+
+// ---------- physics ----------
+const GAP = 14
+function step(dt) {
+  const drift = reduced() ? 0 : 3.2, t = now / 1000
+  for (const b of bodies) {
+    b.w += (b.tw - b.w) * .14; b.h += (b.th - b.h) * .14
+    if (b === drag?.b || !alive(b)) continue
+    const h = home(b)
+    const tx = h.x + Math.sin(t * .55 + b.ph1) * drift, ty = h.y + Math.cos(t * .42 + b.ph2) * drift
+    const damp = reduced() ? .72 : .86
+    b.vx = (b.vx + (tx - b.x) * b.k) * damp; b.vy = (b.vy + (ty - b.y) * b.k) * damp
+    b.x += b.vx * dt; b.y += b.vy * dt
+  }
+  const live = bodies.filter((b) => alive(b) && scaleOf(b) > .25)
+  for (let it = 0; it < 3; it++) {
+    for (let i = 0; i < live.length; i++) for (let j = i + 1; j < live.length; j++) {
+      const a = live[i], c = live[j]
+      if (a.kind === 'callout' && c === a.owner || c.kind === 'callout' && a === c.owner) continue
+      const dx = c.x - a.x, dy = c.y - a.y
+      const ox = (a.w + c.w) / 2 + GAP - Math.abs(dx), oy = (a.h + c.h) / 2 + GAP - Math.abs(dy)
+      if (ox <= 0 || oy <= 0) continue
+      const ia = a === drag?.b ? 0 : a.im, ic = c === drag?.b ? 0 : c.im, sum = ia + ic
+      if (!sum) continue
+      let nx = 0, ny = 0, o
+      if (ox < oy) { nx = Math.sign(dx) || 1; o = ox } else { ny = Math.sign(dy) || 1; o = oy }
+      const m = o * .3 / sum
+      a.x -= nx * m * ia; a.y -= ny * m * ia; c.x += nx * m * ic; c.y += ny * m * ic
+      const kick = reduced() ? 0 : .06 * o / sum
+      a.vx -= nx * kick * ia; a.vy -= ny * kick * ia; c.vx += nx * kick * ic; c.vy += ny * kick * ic
+    }
+  }
+}
+
+// ---------- render ----------
+let view = { x: 0, y: 0, z: .62 }
+function curve(a, b, bend) {
+  const mx = (a.x + b.x) / 2 + bend.x, my = (a.y + b.y) / 2 + bend.y
+  return `M${a.x},${a.y} Q${mx},${my} ${b.x},${b.y}`
+}
+function render() {
+  world.style.transform = `translate(${view.x}px,${view.y}px) scale(${view.z})`
+  stage.style.backgroundPosition = `${view.x}px ${view.y}px`; stage.style.backgroundSize = `${28 * view.z}px ${28 * view.z}px`
+  for (const b of bodies) {
+    const s = alive(b) ? scaleOf(b) : 0
+    b.el.style.width = b.w + 'px'; b.el.style.height = b.h + 'px'
+    b.el.style.opacity = clamp(s * 1.6, 0, 1)
+    b.el.style.transform = `translate(${b.x - b.w / 2}px,${b.y - b.h / 2}px) scale(${Math.max(s, .001)})`
+  }
+  const sw = 1.4 / view.z
+  let out = ''
+  for (const f of flowers) {
+    const h = f.hub; if (!alive(h)) continue
+    const s = scaleOf(h), src = f.src
+    const anchor = anchorOf(src, f.part)
+    const A = anchor ?? edgeToward(src, h)
+    const c = selected === src ? callouts.find((x) => x.part === f.part && alive(x)) : null
+    const bend = { x: clamp(-h.vx * 10, -40, 40), y: clamp(-h.vy * 10, -40, 40) }
+    if (c) {
+      out += `<path d="${curve(A, c, { x: 0, y: 0 })}" stroke="#8b9cf7" stroke-width="${sw}" fill="none" opacity=".8"/>`
+      out += `<path d="${curve(c, h, bend)}" stroke="#8b9cf7" stroke-width="${sw * 1.3}" stroke-dasharray="${6 / view.z} ${5 / view.z}" fill="none"/>`
+    } else {
+      const out1 = { x: A.x + (A.x - src.x) * .35, y: A.y + (A.y - src.y) * .35 }
+      out += `<path d="M${A.x},${A.y} C${out1.x},${out1.y} ${h.x + bend.x - (h.x - A.x) * .25},${h.y + bend.y - (h.y - A.y) * .25} ${h.x},${h.y}" stroke="#8b9cf7" stroke-width="${sw * 1.3}" stroke-dasharray="${6 / view.z} ${5 / view.z}" fill="none" opacity="${clamp(s, 0, 1)}"/>`
+    }
+    out += `<circle cx="${A.x}" cy="${A.y}" r="${4.5 / view.z}" fill="#8b9cf7" opacity="${clamp(s, 0, 1)}"/>`
+    for (const p of f.petals) {
+      if (!alive(p)) continue
+      const pb = { x: clamp((p.vx - h.vx) * -9, -22, 22), y: clamp((p.vy - h.vy) * -9, -22, 22) }
+      out += `<path d="${curve(h, p, pb)}" stroke="${p.kept ? '#4fbf7a' : '#5c6273'}" stroke-width="${p.kept ? sw * 1.6 : sw}" fill="none" opacity="${p.kept ? .9 : .55 * clamp(scaleOf(p), 0, 1)}"/>`
+    }
+  }
+  svg.innerHTML = out
+}
+
+// ---------- input ----------
+let drag = null, pan = null
+const toWorld = (e) => { const r = stage.getBoundingClientRect(); return { x: (e.clientX - r.left - view.x) / view.z, y: (e.clientY - r.top - view.y) / view.z } }
+stage.addEventListener('pointerdown', (e) => {
+  if (e.target.closest('button')) return
+  const el = e.target.closest('.node'), p = toWorld(e)
+  if (el) {
+    const b = el.__b
+    drag = { b, dx: b.x - p.x, dy: b.y - p.y, sx: e.clientX, sy: e.clientY, moved: false, last: p }
+    el.classList.add('dragging')
+  } else pan = { sx: e.clientX, sy: e.clientY, vx: view.x, vy: view.y, moved: false }
+  stage.setPointerCapture(e.pointerId)
+})
+stage.addEventListener('pointermove', (e) => {
+  if (drag) {
+    const p = toWorld(e), b = drag.b
+    if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 4) drag.moved = true
+    if (!drag.moved) return
+    const nx = p.x + drag.dx, ny = p.y + drag.dy
+    b.vx = nx - b.x; b.vy = ny - b.y; b.x = nx; b.y = ny
+  } else if (pan) {
+    if (Math.hypot(e.clientX - pan.sx, e.clientY - pan.sy) > 4) { pan.moved = true; stage.classList.add('panning') }
+    view.x = pan.vx + e.clientX - pan.sx; view.y = pan.vy + e.clientY - pan.sy
+  }
+})
+stage.addEventListener('pointerup', (e) => {
+  if (drag) {
+    const b = drag.b; b.el.classList.remove('dragging')
+    if (!drag.moved) { if (b.kind === 'item' || b.kept) select(selected === b ? null : b) }
+    else if (b.kind === 'item') b.home = { x: b.x, y: b.y }
+    else if (b.kind === 'hub') b.flower.offset = { x: b.x - b.flower.src.x, y: b.y - b.flower.src.y }
+    else if (b.kind === 'petal' && b.kept) {
+      const h = b.flower.hub, slot = { x: h.x + Math.cos(b.slot) * (b.R + 30), y: h.y + Math.sin(b.slot) * (b.R + 30) }
+      b.free = Math.hypot(b.x - slot.x, b.y - slot.y) > b.R ? { x: b.x, y: b.y } : null
+    }
+    drag = null
+  } else if (pan) { if (!pan.moved) select(null); pan = null; stage.classList.remove('panning') }
+})
+stage.addEventListener('click', (e) => {
+  const k = e.target.closest('.keep'); if (!k) return
+  e.stopPropagation(); keep(k.closest('.node').__b)
+})
+stage.addEventListener('wheel', (e) => {
+  e.preventDefault()
+  const r = stage.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top
+  const z = clamp(view.z * Math.exp(-e.deltaY * .0015), .2, 2.5)
+  view.x = mx - (mx - view.x) * z / view.z; view.y = my - (my - view.y) * z / view.z; view.z = z
+}, { passive: false })
+addEventListener('keydown', (e) => { if (e.key === 'Escape') { select(null); closePop() } })
+
+// ---------- add button ----------
+const fab = document.getElementById('fab'), pop = document.getElementById('pop')
+const panes = { menu: document.getElementById('popMenu'), link: document.getElementById('popLink'), ext: document.getElementById('popExt') }
+const show = (k) => { for (const [n, el] of Object.entries(panes)) el.hidden = n !== k }
+function closePop() { pop.classList.remove('show'); fab.classList.remove('open') }
+fab.onclick = () => { const o = !pop.classList.contains('show'); pop.classList.toggle('show', o); fab.classList.toggle('open', o); show('menu') }
+const centre = () => { const r = stage.getBoundingClientRect(); return { x: (r.width / 2 - view.x) / view.z, y: (r.height / 2 - view.y) / view.z } }
+pop.onclick = (e) => {
+  const a = e.target.closest('button')?.dataset.a
+  if (a === 'upload') document.getElementById('file').click()
+  if (a === 'link') { show('link'); document.getElementById('linkIn').focus() }
+  if (a === 'ext') show('ext')
+}
+document.getElementById('file').onchange = (e) => {
+  const f = e.target.files[0]; if (!f) return
+  const url = URL.createObjectURL(f), img = new Image()
+  img.onload = () => { const c = centre(), w = 300, h = Math.round(300 * img.height / img.width); addItem(c.x, c.y, { src: url, w, h }); closePop() }
+  img.src = url; e.target.value = ''
+}
+document.getElementById('linkIn').onkeydown = (e) => {
+  if (e.key !== 'Enter' || !e.target.value) return
+  let host = e.target.value; try { host = new URL(e.target.value).host } catch {}
+  const c = centre(); addItem(c.x, c.y, { w: 200, h: 110, link: { host, url: e.target.value } }); e.target.value = ''; closePop()
+}
+
+// ---------- scene ----------
+function scene() {
+  bodies.forEach((b) => b.el.remove()); bodies = []; flowers = []; callouts = []; selected = null
+  const A = addItem(0, 0, { born: now })
+  addItem(-250, -20, { w: 190, h: 120, link: { host: 'hips.hearstapps.com', url: 'https://hips.hearstapps.com/hmg-prod/images/23cc1afc…jpg' }, born: now + 150 })
+  const B = addItem(1050, 380, { tag: 'generated', filter: tint('golden flame'), born: now + 300 })
+  const C = addItem(-1050, 420, { born: now + 450 })
+  const bodyColor = addFlower(A, PARTS[4], { delay: 900, kept: 2 })
+  addFlower(A, PARTS[2], { delay: 1500 })
+  addFlower(bodyColor.petals[2], PARTS[0], { delay: 2300, offset: { x: -140, y: -400 } })
+  addFlower(B, PARTS[3], { delay: 3000, offset: { x: 360, y: -260 } })
+  addFlower(C, PARTS[1], { delay: 3600 })
+  const r = stage.getBoundingClientRect(); view = { x: r.width / 2 - 40, y: r.height / 2 + 30, z: .42 }
+}
+document.getElementById('replay').onclick = scene
+
+let last = performance.now()
+function frame(t) {
+  const dt = clamp((t - last) / 16.67, 0, 3); last = t; now = t
+  step(dt); render(); requestAnimationFrame(frame)
+}
+now = performance.now(); scene(); requestAnimationFrame(frame)
+</script>
+</body>
+</html>

@@ -2,7 +2,7 @@
 
 Date: 2026-11-03. Status: approved by the owner via a throwaway prototype ("the drift feels right, build it into the app").
 
-Prototype (throwaway, behaviour reference only): `/private/tmp/claude-501/-Users-shivam-Desktop-muse-design-curator/d07d441c-d917-40e4-912e-de5dce1d107e/scratchpad/proto/living-board.html` — vanilla JS, ~400 lines. Its constants (drift ±3.2px at 0.55/0.42 rad/s, damping 0.86, home spring k 0.012 items / 0.035 hubs / 0.05 petals / 0.09 callouts, inverse masses 0.22 items / 0.45 kept / 0.6 hubs / 1 petals / 0.35 callouts, collide gap 14, 3 positional iterations at 0.3 with a small velocity kick, grow-in easeOutBack 450 ms, petals staggered 70 ms after a 260 ms hub lead) are the owner-approved feel; start from them.
+Prototype (throwaway, behaviour reference only): `docs/superpowers/specs/2026-11-03-living-board-prototype/living-board.html` (open via any static server) — vanilla JS, ~400 lines. Its constants (drift ±3.2px at 0.55/0.42 rad/s, damping 0.86, home spring k 0.012 items / 0.035 hubs / 0.05 petals / 0.09 callouts, inverse masses 0.22 items / 0.45 kept / 0.6 hubs / 1 petals / 0.35 callouts, collide gap 14, 3 positional iterations at 0.3 with a small velocity kick, grow-in easeOutBack 450 ms, petals staggered 70 ms after a 260 ms hub lead) are the owner-approved feel; start from them.
 
 ## Intent
 
