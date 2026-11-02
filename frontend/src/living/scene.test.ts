@@ -109,6 +109,11 @@ describe('buildScene', () => {
     expect(spec(s, 'petal:o2')).toBeUndefined()
     expect(edge(s, 'spoke:o2')).toBeUndefined()
     expect(s.docked.size).toBe(0)
+    // it keeps its ring slot (where it would dock), for a drop back near it to dock it again
+    const dockedOpts = [options[0], { ...options[1], undocked: false }]
+    const d = scene({ items: [item, take('t1')], explorations: [exp('e1', 'hand_style', dockedOpts)] })
+    expect(s.slots.get('t1')).toEqual({ optionId: 'o2', hubId: 'hub:e1', reach: petalRadius(2), home: spec(d, 't1')!.home })
+    expect(d.slots.get('t1')).toEqual(s.slots.get('t1'))
   })
 
   it('a staged take is not on the board', () => {

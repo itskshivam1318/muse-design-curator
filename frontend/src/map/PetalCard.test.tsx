@@ -26,7 +26,7 @@ function opt(over: Partial<ExploreOption> = {}): ExploreOption {
     id: 'o1', exploration_id: 'e1', parent_option_id: null, batch: 1, steer: null, name: 'Copper dauphine',
     description: 'Polished copper dauphine hands', distance: 'bold', value: 'copper_dauphine',
     keeps: ['case_finish', 'legibility', 'date_window'], status: 'open', last_error: null, kept_item_id: null,
-    takes: [], x: null, y: null, ...over,
+    takes: [], x: null, y: null, undocked: false, ...over,
   }
 }
 
@@ -36,7 +36,7 @@ const take = (id: string, over: Partial<Item> = {}) =>
 
 function setup(option: ExploreOption, extra: { items?: Item[]; renderers?: RendererInfo[]; keepAt?: (t: Item) => { x: number; y: number } } = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
-  const exploration: Exploration = { id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [option] }
+  const exploration: Exploration = { id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'src', key: 'hand_style', options: [option] }
   qc.setQueryData(keys.explorations('b1'), [exploration])
   qc.setQueryData(keys.items('b1'), [source, ...(extra.items ?? [])])
   qc.setQueryData(keys.lens('b1'), { spec: LENS })
@@ -96,7 +96,7 @@ describe('PetalCard', () => {
     act(() => {
       qc.setQueryData(keys.items('b1'), [source, t])
       qc.setQueryData(keys.explorations('b1'), [
-        { id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [opt({ status: 'visualized', takes: ['t1'] })] },
+        { id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'src', key: 'hand_style', options: [opt({ status: 'visualized', takes: ['t1'] })] },
       ])
     })
     await screen.findByRole('button', { name: 'Keep' })
@@ -169,7 +169,7 @@ describe('PetalCard', () => {
 
   it('More like this explores more from this option; Branch selects the kept item; Dismiss dismisses', async () => {
     const keptOpt = opt({ status: 'kept', kept_item_id: 'k1', takes: ['k1'] })
-    const e: Exploration = { id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [keptOpt, opt({ id: 'o2', parent_option_id: 'o1' })] }
+    const e: Exploration = { id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'src', key: 'hand_style', options: [keptOpt, opt({ id: 'o2', parent_option_id: 'o1' })] }
     vi.mocked(exploreItem).mockResolvedValue(e)
     vi.mocked(patchOption).mockResolvedValue(opt({ status: 'dismissed' }))
     const k = take('k1', { staged: false })

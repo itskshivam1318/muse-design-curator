@@ -22,6 +22,7 @@ import { Edges } from '../living/Edges'
 import { useKonvaBodies } from '../living/useKonvaBodies'
 import { useLiveBoxes } from '../living/useLiveBounds'
 import { LivingProvider } from '../living/useLiving'
+import { homesAfter, planRelease } from '../living/release'
 import { useLivingScene } from '../living/useLivingScene'
 import { createLivingWorld, type LivingWorld } from '../living/world'
 import { Callouts } from '../map/Callouts'
@@ -48,7 +49,6 @@ import {
   wheelZoomFactor,
   zoomAt,
 } from './geometry'
-import type { Move } from './history'
 import { ItemDecorations, type ItemHandlers, ItemNode, NoteVisualizing } from './ItemNode'
 import { CreditCaption } from './CreditCaption'
 import { creditTargets } from './credit'
@@ -373,14 +373,7 @@ export function Canvas({
         }
         return
       }
-      const moves: Move[] = s.ids.flatMap((id) => {
-        const it = byId.get(id)
-        const c = centres.get(id)
-        if (!it || !c) return []
-        const b = itemBounds(it)
-        return [{ id, from: { x: it.x, y: it.y }, to: { x: Math.round(c.x - b.width / 2), y: Math.round(c.y - b.height / 2) } }]
-      })
-      actions.move(moves)
+      commitDrag(centres)
     },
     onOpen: (item) => {
       if (item.kind === 'note') {
@@ -530,6 +523,19 @@ export function Canvas({
     toolbar,
   })
   useLayoutEffect(() => world.sync(scene), [world, scene])
+  // a pointer release (items, docked takes, hubs): every change it makes, written as one undo step
+  const commitDrag = (centres: Map<string, Point>) => {
+    const plan = planRelease(scene, visible, explorations ?? [], centres, homesAfter(scene, centres))
+    actions.commitRelease(plan, { locked: readOnly })
+    // a dragged take is selected, so pinned: one that docked (or snapped back) goes to its slot at once
+    const sizes = new Map(plan.dock.map((d) => [d.itemId, d.size]))
+    for (const m of plan.moves) {
+      const it = byId.get(m.id)
+      if (!it || !centres.has(m.id) || !scene.slots.has(m.id)) continue
+      const s = sizes.get(m.id) ?? it
+      world.place(m.id, { x: m.to.x + s.w / 2, y: m.to.y + s.h / 2 })
+    }
+  }
   useLayoutEffect(() => world.setPinned(selected), [world, selected])
   // a selected item is pinned: when its stored spot changes (an undo, a move elsewhere) it goes there at once
   const storedAt = useRef(new Map<string, Point>())
@@ -702,7 +708,7 @@ export function Canvas({
 
         <Edges scene={scene} view={view} />
         {exploreEnabled && (
-          <FlowerLayer boardId={boardId} items={visible} view={view} flowers={scene.flowers} locked={readOnly} onWheel={onOverlayWheel} />
+          <FlowerLayer boardId={boardId} items={visible} view={view} flowers={scene.flowers} locked={readOnly} onWheel={onOverlayWheel} onRelease={commitDrag} />
         )}
         <NodeLayer boardId={boardId} items={visible} view={view} size={size} readOnly={readOnly} onWheel={onOverlayWheel} world={world} />
         {hoveredItem && hoveredItem.kind !== 'link' && hoveredItem.kind !== 'note' && hoveredItem.parse_status !== 'completed' && (

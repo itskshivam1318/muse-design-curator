@@ -4,7 +4,7 @@ import { makeItem } from './fixtures'
 
 export const opt = (id: string, over: Partial<ExploreOption> = {}): ExploreOption => ({
   id, exploration_id: 'e1', parent_option_id: null, batch: 1, steer: null, name: id, description: '', distance: 'near',
-  value: 'v', keeps: [], status: 'open', last_error: null, kept_item_id: null, takes: [], x: null, y: null, ...over,
+  value: 'v', keeps: [], status: 'open', last_error: null, kept_item_id: null, takes: [], x: null, y: null, undocked: false, ...over,
 })
 
 export const analysis: AnalysisView = {
@@ -21,5 +21,5 @@ export const analysis: AnalysisView = {
 export const item = makeItem({ id: 'a', board_id: 'b1', x: 0, y: 0, w: 200, h: 150 })
 
 export const exp = (id: string, key: string, options: ExploreOption[], itemId = 'a', over: Partial<Exploration> = {}): Exploration => ({
-  id, board_id: 'b1', item_id: itemId, key, options, ...over,
+  id, board_id: 'b1', item_id: itemId, key, options, dx: null, dy: null, ...over,
 })

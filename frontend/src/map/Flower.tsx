@@ -1,10 +1,10 @@
 /**
  * Exploration flowers over the canvas (HTML in canvas units, like the callouts): a hub, the options
  * around it as petals, each placed by its body in the living world (the lines are `Edges`). A petal
- * opens its card; the hub collapses the flower to a badge. A kept option has no petal: its take is
- * docked in the ring in its place.
+ * opens its card; the hub collapses the flower to a badge, and dragging it (or the badge) moves the
+ * flower. A kept option has no petal: its take is docked in the ring in its place.
  */
-import { type WheelEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type PointerEvent, type WheelEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ExploreOption, Item, Point } from '../api'
 import type { View } from '../canvas/geometry'
 import { itemBounds } from '../canvas/nodeProps'
@@ -34,6 +34,64 @@ interface FlowerProps {
   openOption?: string | null
   onOpenOption?: (optionId: string) => void
   onToggle?: () => void
+  /** The view's scale (screen px per canvas unit): a hub drag moves by the screen delta / scale. */
+  scale?: number
+  /** A hub drag ended: the released bodies' centres (see LivingWorld.release). Without it the hub does not drag. */
+  onRelease?: (centres: Map<string, Point>) => void
+}
+
+/** A pointer must move this far (screen px) before a press on the hub becomes a drag. */
+const DRAG_THRESHOLD = 4
+
+/**
+ * Pointer handlers that drag body `id` through the living world: past the threshold it is grabbed and
+ * follows the pointer; on release `onRelease` gets the centres. A press that never moved stays a
+ * click (the collapse button, the badge); the click that ends a drag is swallowed.
+ */
+function useHubDrag(id: string, scale: number, onRelease?: (centres: Map<string, Point>) => void) {
+  const world = useLivingWorld()
+  const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null)
+  const dragged = useRef(false)
+  if (!onRelease) return {}
+  return {
+    onPointerDown: (e: PointerEvent<HTMLElement>) => {
+      if (e.button !== 0) return
+      drag.current = { x: e.clientX, y: e.clientY, moved: false }
+      dragged.current = false
+    },
+    onPointerMove: (e: PointerEvent<HTMLElement>) => {
+      const d = drag.current
+      if (!d) return
+      const dx = e.clientX - d.x
+      const dy = e.clientY - d.y
+      if (!d.moved) {
+        if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return
+        d.moved = true
+        world.grab([id])
+        // captured only once it is a drag: a plain click still lands on the collapse button
+        e.currentTarget.setPointerCapture?.(e.pointerId)
+      }
+      world.dragBy(dx / scale, dy / scale)
+    },
+    onPointerUp: () => {
+      const d = drag.current
+      drag.current = null
+      if (!d?.moved) return
+      dragged.current = true
+      onRelease(world.release())
+    },
+    // a cancelled drag lets go without writing: the hub springs back to its home
+    onPointerCancel: () => {
+      if (drag.current?.moved) world.release()
+      drag.current = null
+    },
+    onClickCapture: (e: { stopPropagation: () => void; preventDefault: () => void }) => {
+      if (!dragged.current) return
+      dragged.current = false
+      e.stopPropagation()
+      e.preventDefault()
+    },
+  }
 }
 
 /** A ref whose element the living world places (its body `id`'s top-left, size and grow scale). */
@@ -43,8 +101,9 @@ function usePlaced<T extends HTMLElement>(id: string) {
   return ref
 }
 
-export function Flower({ model, source, byId = new Map(), openOption = null, onOpenOption, onToggle }: FlowerProps) {
+export function Flower({ model, source, byId = new Map(), openOption = null, onOpenOption, onToggle, scale = 1, onRelease }: FlowerProps) {
   const hubRef = usePlaced<HTMLDivElement & HTMLButtonElement>(model.hubId)
+  const drag = useHubDrag(model.hubId, scale, onRelease)
   const n = model.options.length
   const k = model.options.filter(isKept).length
   const summary = `${n} options · ${k} kept`
@@ -52,7 +111,7 @@ export function Flower({ model, source, byId = new Map(), openOption = null, onO
     const text = `${model.label} · ${summary}`
     return (
       <div role="group" aria-label={`${model.label} flower`} data-exploration-id={model.id}>
-        <button ref={hubRef} type="button" className="flower-badge" aria-label={text} onClick={onToggle}>
+        <button ref={hubRef} type="button" className="flower-badge" aria-label={text} onClick={onToggle} {...drag}>
           {text}
         </button>
       </div>
@@ -60,7 +119,7 @@ export function Flower({ model, source, byId = new Map(), openOption = null, onO
   }
   return (
     <div role="group" aria-label={`${model.label} flower`} data-exploration-id={model.id}>
-      <div ref={hubRef} className="flower-hub">
+      <div ref={hubRef} className="flower-hub" {...drag}>
         <span className="flower-hub-label">{model.label}</span>
         <span className="flower-hub-sub">{summary}</span>
         <button type="button" className="flower-collapse" aria-label={`Collapse ${model.label}`} title="Collapse" onClick={onToggle}>
@@ -140,10 +199,12 @@ interface LayerProps {
   locked?: boolean
   /** Wheel over a flower pans or zooms the canvas like anywhere else. */
   onWheel?: (e: WheelEvent) => void
+  /** A hub drag ended (see Flower). */
+  onRelease?: (centres: Map<string, Point>) => void
 }
 
 /** Every flower on the board, and the one open petal card. */
-export function FlowerLayer({ boardId, items, view, flowers, locked = false, onWheel }: LayerProps) {
+export function FlowerLayer({ boardId, items, view, flowers, locked = false, onWheel, onRelease }: LayerProps) {
   const world = useLivingWorld()
   const allItems = useItems(boardId).data
   const byId = useMemo(() => new Map((allItems ?? items).map((i) => [i.id, i])), [allItems, items])
@@ -244,6 +305,8 @@ export function FlowerLayer({ boardId, items, view, flowers, locked = false, onW
             model={f}
             source={byId.get(f.sourceId)}
             byId={byId}
+            scale={view.scale}
+            onRelease={onRelease}
             openOption={open?.flowerId === f.id ? open.optionId : null}
             onOpenOption={(optionId) =>
               setOpen((cur) => (cur?.flowerId === f.id && cur.optionId === optionId ? null : { flowerId: f.id, optionId }))

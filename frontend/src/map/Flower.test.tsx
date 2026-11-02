@@ -2,12 +2,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useLayoutEffect, useMemo } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { type AnalysisView, ApiError, type Exploration, type ExploreOption, type Item, keys } from '../api'
+import { type AnalysisView, ApiError, type Exploration, type ExploreOption, type Item, keys, type Point } from '../api'
 import { rectsIntersect } from '../canvas/geometry'
 import { itemBounds } from '../canvas/nodeProps'
 import { LENS } from '../test/attrs'
 import { makeItem } from '../test/fixtures'
-import { isCollapsed } from './collapse'
+import { isCollapsed, setCollapsed } from './collapse'
 
 vi.mock('../api', async (orig) => ({
   ...(await orig<typeof import('../api')>()),
@@ -24,17 +24,23 @@ const { LivingProvider } = await import('../living/useLiving')
 const { Edges } = await import('../living/Edges')
 const { useItems } = await import('../queries')
 
+/** What the harness exposes to a test: its world, and the hub releases it was handed. */
+const harness = { world: null as ReturnType<typeof createLivingWorld> | null, released: [] as Map<string, Point>[] }
+
 /** The canvas in small: the scene over the items, synced into a world, the layer drawing it. */
 function Harness() {
   const all = useItems('b1').data
   const items = useMemo(() => (all ?? []).filter((i) => !i.staged), [all])
   const world = useMemo(() => createLivingWorld({ reduced: true }), [])
+  useLayoutEffect(() => {
+    harness.world = world
+  }, [world])
   const scene = useLivingScene('b1', items, null)
   useLayoutEffect(() => world.sync(scene), [world, scene])
   return (
     <LivingProvider world={world}>
       <Edges scene={scene} view={view} />
-      <FlowerLayer boardId="b1" items={items} view={view} flowers={scene.flowers} />
+      <FlowerLayer boardId="b1" items={items} view={view} flowers={scene.flowers} onRelease={(c) => harness.released.push(c)} />
     </LivingProvider>
   )
 }
@@ -42,7 +48,7 @@ function Harness() {
 function opt(over: Partial<ExploreOption> & { id: string }): ExploreOption {
   return {
     exploration_id: 'e1', parent_option_id: null, batch: 1, steer: null, name: `Option ${over.id}`, description: '',
-    distance: 'near', value: 'v', keeps: [], status: 'open', last_error: null, kept_item_id: null, takes: [], x: null, y: null,
+    distance: 'near', value: 'v', keeps: [], status: 'open', last_error: null, kept_item_id: null, takes: [], x: null, y: null, undocked: false,
     ...over,
   }
 }
@@ -82,14 +88,17 @@ function setup(
 
 const hub = (label: string) => screen.getByRole('group', { name: `${label} flower` })
 
-beforeEach(() => localStorage.clear())
+beforeEach(() => {
+  localStorage.clear()
+  harness.released = []
+})
 afterEach(cleanup)
 
 describe('FlowerLayer', () => {
   it('two flowers open at once both render', () => {
     setup([
-      { id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style', options: [opt({ id: 'o1' }), opt({ id: 'o2' }), opt({ id: 'o3', status: 'dismissed' })] },
-      { id: 'e2', board_id: 'b1', item_id: 'b', key: 'hand_style', options: [opt({ id: 'o4', exploration_id: 'e2' })] },
+      { id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'a', key: 'hand_style', options: [opt({ id: 'o1' }), opt({ id: 'o2' }), opt({ id: 'o3', status: 'dismissed' })] },
+      { id: 'e2', board_id: 'b1', dx: null, dy: null, item_id: 'b', key: 'hand_style', options: [opt({ id: 'o4', exploration_id: 'e2' })] },
     ])
     expect(within(hub('Hand style')).getByText('Hand style')).toBeTruthy()
     expect(within(hub('Hand style')).getByText('2 options · 0 kept')).toBeTruthy()
@@ -105,7 +114,7 @@ describe('FlowerLayer', () => {
     setup(
       [
         {
-          id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style',
+          id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style', dx: null, dy: null,
           options: [
             opt({ id: 'o1', distance: 'bold' }),
             opt({ id: 'o2', status: 'visualizing' }),
@@ -131,7 +140,7 @@ describe('FlowerLayer', () => {
   })
 
   it('a petal opens its card, focused, so Escape closes it at once', async () => {
-    setup([{ id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style', options: [opt({ id: 'o1', name: 'Copper' })] }])
+    setup([{ id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'a', key: 'hand_style', options: [opt({ id: 'o1', name: 'Copper' })] }])
     fireEvent.click(screen.getByRole('button', { name: /Copper/ }))
     const card = screen.getByRole('dialog', { name: 'Copper' })
     expect(within(card).getByTestId('petal-scope').textContent).toBe('Changes Hands · keeps 0 ✓')
@@ -154,7 +163,7 @@ describe('FlowerLayer', () => {
       return rect(0, 0, 0, 0)
     })
     try {
-      setup([{ id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style', options: [opt({ id: 'o1', name: 'Copper' })] }])
+      setup([{ id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'a', key: 'hand_style', options: [opt({ id: 'o1', name: 'Copper' })] }])
       fireEvent.click(screen.getByRole('button', { name: /Copper/ }))
       const anchor = document.querySelector<HTMLElement>('.petal-card-anchor')!
       const [left, top] = [parseFloat(anchor.style.left), parseFloat(anchor.style.top)]
@@ -180,7 +189,7 @@ describe('FlowerLayer', () => {
       return rect(0, 0, 0, 0)
     })
     try {
-      setup([{ id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style', options: [opt({ id: 'o1', name: 'Copper' })] }])
+      setup([{ id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'a', key: 'hand_style', options: [opt({ id: 'o1', name: 'Copper' })] }])
       fireEvent.click(screen.getByRole('button', { name: /Copper/ }))
       const anchor = document.querySelector<HTMLElement>('.petal-card-anchor')!
       expect(parseFloat(anchor.style.top)).toBeGreaterThanOrEqual(188)
@@ -190,7 +199,7 @@ describe('FlowerLayer', () => {
   })
 
   it('an open card lifts the flower layer above the callouts (their cards would cover it)', () => {
-    setup([{ id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style', options: [opt({ id: 'o1', name: 'Copper' })] }])
+    setup([{ id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'a', key: 'hand_style', options: [opt({ id: 'o1', name: 'Copper' })] }])
     const layer = document.querySelector('.flower-layer')!
     expect(layer.classList.contains('has-card')).toBe(false)
     fireEvent.click(screen.getByRole('button', { name: /Copper/ }))
@@ -199,8 +208,30 @@ describe('FlowerLayer', () => {
     expect(layer.classList.contains('has-card')).toBe(false)
   })
 
+  it('dragging the hub moves its body and hands its centre to onRelease; a press without movement is a click', () => {
+    setup([{ id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style', dx: 300, dy: 0, options: [opt({ id: 'o1' })] }])
+    const el = document.querySelector<HTMLElement>('.flower-hub')!
+    const collapse = within(hub('Hand style')).getByRole('button', { name: 'Collapse Hand style' })
+    const at = { ...harness.world!.body('hub:e1')! }
+    fireEvent.pointerDown(collapse, { button: 0, clientX: 10, clientY: 10 })
+    fireEvent.pointerMove(collapse, { clientX: 12, clientY: 11 }) // under the threshold: not yet a drag
+    expect(harness.world!.body('hub:e1')!.x).toBe(at.x)
+    fireEvent.pointerMove(el, { clientX: 60, clientY: 30 })
+    expect([harness.world!.body('hub:e1')!.x, harness.world!.body('hub:e1')!.y]).toEqual([at.x + 50, at.y + 20])
+    fireEvent.pointerUp(el, { clientX: 60, clientY: 30 })
+    expect(harness.released).toEqual([new Map([['hub:e1', { x: at.x + 50, y: at.y + 20 }]])])
+    fireEvent.click(collapse) // the click that ends the drag does not collapse
+    expect(isCollapsed('b1', 'e1')).toBe(false)
+    fireEvent.pointerDown(collapse, { button: 0, clientX: 10, clientY: 10 })
+    fireEvent.pointerUp(collapse, { clientX: 10, clientY: 10 })
+    fireEvent.click(collapse)
+    expect(isCollapsed('b1', 'e1')).toBe(true)
+    expect(harness.released).toHaveLength(1)
+    setCollapsed('b1', 'e1', false)
+  })
+
   it('collapses to a badge on its callout and opens again; the flag is kept per board', () => {
-    setup([{ id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style', options: [opt({ id: 'o1' }), opt({ id: 'o2', status: 'kept', kept_item_id: 'k' })] }])
+    setup([{ id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'a', key: 'hand_style', options: [opt({ id: 'o1' }), opt({ id: 'o2', status: 'kept', kept_item_id: 'k' })] }])
     fireEvent.click(within(hub('Hand style')).getByRole('button', { name: 'Collapse Hand style' }))
     expect(screen.queryByTestId('petal')).toBeNull()
     expect(isCollapsed('b1', 'e1')).toBe(true)
@@ -211,8 +242,8 @@ describe('FlowerLayer', () => {
   })
 
   describe('flowers wait for the analyses they start from', () => {
-    const onA = (id: string, over: Partial<Exploration> = {}) => ({ id, board_id: 'b1', item_id: 'a', key: 'hand_style', options: [opt({ id: `${id}-o`, exploration_id: id })], ...over })
-    const onB = (id: string) => ({ id, board_id: 'b1', item_id: 'b', key: 'hand_style', options: [opt({ id: `${id}-o`, exploration_id: id })] })
+    const onA = (id: string, over: Partial<Exploration> = {}): Exploration => ({ id, board_id: 'b1', item_id: 'a', key: 'hand_style', dx: null, dy: null, options: [opt({ id: `${id}-o`, exploration_id: id })], ...over })
+    const onB = (id: string) => ({ id, board_id: 'b1', item_id: 'b', key: 'hand_style', dx: null, dy: null, options: [opt({ id: `${id}-o`, exploration_id: id })] })
     const drawn = () => screen.queryAllByTestId('petal').map((p) => p.dataset.optionId).sort()
 
     it('a flower on an item still loading waits; the others draw', () => {
@@ -243,8 +274,8 @@ describe('FlowerLayer', () => {
     vi.mocked(keepTake).mockResolvedValue({ ...o1, status: 'kept', kept_item_id: 't1' })
     setup(
       [
-        { id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style', options: [o1, opt({ id: 'o2' }), opt({ id: 'o3' })] },
-        { id: 'e2', board_id: 'b1', item_id: 'b', key: 'hand_style', options: [opt({ id: 'o4', exploration_id: 'e2' })] },
+        { id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'a', key: 'hand_style', options: [o1, opt({ id: 'o2' }), opt({ id: 'o3' })] },
+        { id: 'e2', board_id: 'b1', dx: null, dy: null, item_id: 'b', key: 'hand_style', options: [opt({ id: 'o4', exploration_id: 'e2' })] },
       ],
       { items: [t1] },
     )

@@ -146,7 +146,7 @@ describe('NodeLayer', () => {
     qc.setQueryData<NodesResponse>(keys.nodes('b1'), { nodes: [makeNode({ x: 1000, input_item_ids: ['i1'] })], runs: {} })
     const world = createLivingWorld({ reduced: true })
     // photo i1 is stored at (300, 40), 200x150; its body rests 100 lower
-    world.sync({ specs: [{ id: 'i1', kind: 'item', w: 200, h: 150, home: { kind: 'abs', x: 400, y: 215 } }], edges: [], flowers: [], docked: new Map() }, -1000)
+    world.sync({ specs: [{ id: 'i1', kind: 'item', w: 200, h: 150, home: { kind: 'abs', x: 400, y: 215 } }], edges: [], flowers: [], docked: new Map(), slots: new Map() }, -1000)
     render(<NodeLayer boardId="b1" items={[note, photo]} view={{ x: 0, y: 0, scale: 1 }} size={{ width: 800, height: 600 }} world={world} />, {
       wrapper: wrap(qc),
     })

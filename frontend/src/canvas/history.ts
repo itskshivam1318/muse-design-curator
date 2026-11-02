@@ -1,4 +1,4 @@
-/** Undo stack (⌘Z) for position changes and explore-option edits (dismisses). */
+/** Undo stack (⌘Z) for releases (moves, hub drags, docking), note edits and explore-option edits (dismisses). */
 import type { Point } from '../api'
 
 export interface Move {
@@ -7,8 +7,8 @@ export interface Move {
   to: Point
 }
 
-/** Item moves are reverted by the item actions; anything else carries its own revert. */
-export type UndoEntry = { kind: 'moves'; moves: Move[] } | { kind: 'revert'; revert: () => void }
+/** Each entry carries its own revert. */
+export type UndoEntry = { kind: 'revert'; revert: () => void }
 
 const LIMIT = 50
 
@@ -19,10 +19,6 @@ export function createUndoHistory() {
     if (stack.length > LIMIT) stack.shift()
   }
   return {
-    push(moves: Move[]) {
-      const real = moves.filter((m) => m.from.x !== m.to.x || m.from.y !== m.to.y)
-      if (real.length > 0) add({ kind: 'moves', moves: real })
-    },
     pushRevert(revert: () => void) {
       add({ kind: 'revert', revert })
     },

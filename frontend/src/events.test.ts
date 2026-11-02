@@ -17,6 +17,8 @@ const exploration = (over: Partial<Exploration> = {}): Exploration => ({
   item_id: 'i1',
   key: 'colour',
   options: [],
+  dx: null,
+  dy: null,
   ...over,
 })
 

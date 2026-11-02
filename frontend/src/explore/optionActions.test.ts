@@ -12,13 +12,13 @@ function opt(over: Partial<ExploreOption> = {}): ExploreOption {
   return {
     id: 'o1', exploration_id: 'e1', parent_option_id: null, batch: 1, steer: null, name: 'Brushed',
     description: '', distance: 'near', value: 'brushed', keeps: [], status: 'open', last_error: null, kept_item_id: null, takes: [],
-    x: null, y: null, ...over,
+    x: null, y: null, undocked: false, ...over,
   }
 }
 
 function setup(option = opt()) {
   const qc = new QueryClient()
-  const list: Exploration[] = [{ id: 'e1', board_id: 'b1', item_id: 'i1', key: 'case_finish', options: [option] }]
+  const list: Exploration[] = [{ id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'i1', key: 'case_finish', options: [option] }]
   qc.setQueryData(keys.explorations('b1'), list)
   const current = () => qc.getQueryData<Exploration[]>(keys.explorations('b1'))![0].options[0]
   return { qc, current }

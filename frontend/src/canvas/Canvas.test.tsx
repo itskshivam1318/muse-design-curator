@@ -31,7 +31,7 @@ const translateOf = (el: HTMLElement) => {
 function opt(over: Partial<ExploreOption> & { id: string }): ExploreOption {
   return {
     exploration_id: 'e1', parent_option_id: null, batch: 1, steer: null, name: `Option ${over.id}`,
-    description: '', distance: 'near', value: 'v', keeps: [], status: 'open', last_error: null, kept_item_id: null, takes: [], x: null, y: null,
+    description: '', distance: 'near', value: 'v', keeps: [], status: 'open', last_error: null, kept_item_id: null, takes: [], x: null, y: null, undocked: false,
     ...over,
   }
 }
@@ -92,7 +92,7 @@ describe('Canvas flowers', () => {
 
   it('clicking a dimension opens a hub with note petals and generates nothing', async () => {
     sized()
-    const e: Exploration = { id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1', name: 'Copper' }), opt({ id: 'o2', name: 'Ember' })] }
+    const e: Exploration = { id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1', name: 'Copper' }), opt({ id: 'o2', name: 'Ember' })] }
     vi.mocked(exploreItem).mockResolvedValue(e)
     const qc = client([], [makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })])
     qc.setQueryData(keys.analysis('src'), analysis)
@@ -111,7 +111,7 @@ describe('Canvas flowers', () => {
     sized()
     setCollapsed('b1', 'e1', true)
     const qc = client(
-      [{ id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1' })] }],
+      [{ id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1' })] }],
       [makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })],
     )
     qc.setQueryData(keys.analysis('src'), analysis)
@@ -127,7 +127,7 @@ describe('Canvas flowers', () => {
     sized()
     // view starts at (80, 80): an item at x 1300 has its flower past the right edge
     const qc = client(
-      [{ id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1' })] }],
+      [{ id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1' })] }],
       [makeItem({ id: 'src', board_id: 'b1', x: 1300, y: 0 })],
     )
     qc.setQueryData(keys.analysis('src'), analysis)
@@ -152,8 +152,8 @@ describe('Canvas flowers', () => {
     sized()
     const qc = client(
       [
-        { id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1' }), opt({ id: 'o2' })] },
-        { id: 'e2', board_id: 'b1', item_id: 'src', key: 'other', options: [opt({ id: 'o3', exploration_id: 'e2' })] },
+        { id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1' }), opt({ id: 'o2' })] },
+        { id: 'e2', board_id: 'b1', dx: null, dy: null, item_id: 'src', key: 'other', options: [opt({ id: 'o3', exploration_id: 'e2' })] },
       ],
       [makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })],
     )
@@ -168,7 +168,7 @@ describe('Canvas flowers', () => {
   it('a selected item keeps one stem per flower, from its callout', () => {
     sized()
     const qc = client(
-      [{ id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1' })] }],
+      [{ id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1' })] }],
       [makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })],
     )
     qc.setQueryData(keys.analysis('src'), analysis)
@@ -181,7 +181,7 @@ describe('Canvas flowers', () => {
   it('a hub, its petals and the callouts are placed by the world (a transform), not left/top', () => {
     sized()
     const qc = client(
-      [{ id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1' })] }],
+      [{ id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1' })] }],
       [makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })],
     )
     qc.setQueryData(keys.analysis('src'), analysis)
@@ -196,7 +196,7 @@ describe('Canvas flowers', () => {
   it('draws no flowers when explore is off', () => {
     sized()
     const qc = client(
-      [{ id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1' })] }],
+      [{ id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1' })] }],
       [makeItem({ id: 'src', board_id: 'b1' })],
       false,
     )
@@ -210,7 +210,7 @@ describe('Canvas flowers', () => {
     const src = makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })
     const kept = makeItem({ id: 'k1', board_id: 'b1', x: 700, y: 0, original_filename: 'Honey.png', explore_option_id: 'o1', origin: 'generated', parent_item_id: 'src' })
     const qc = client(
-      [{ id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1', name: 'Honey', status: 'kept', kept_item_id: 'k1', takes: ['k1'] })] }],
+      [{ id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1', name: 'Honey', status: 'kept', kept_item_id: 'k1', takes: ['k1'] })] }],
       [src, kept],
     )
     qc.setQueryData(keys.analysis('src'), analysis)
@@ -229,7 +229,7 @@ describe('Canvas flowers', () => {
     const src = makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })
     const kept = makeItem({ id: 'k1', board_id: 'b1', x: 700, y: 0, explore_option_id: 'o1', origin: 'generated', parent_item_id: 'src' })
     const qc = client(
-      [{ id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1', status: 'kept', kept_item_id: 'k1', takes: ['k1'] })] }],
+      [{ id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1', status: 'kept', kept_item_id: 'k1', takes: ['k1'] })] }],
       [src, kept],
     )
     qc.setQueryData(keys.analysis('k1'), analysis)

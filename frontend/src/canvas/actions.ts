@@ -5,13 +5,17 @@ import {
   ApiError,
   createNote,
   deleteItem,
+  type Exploration,
   type Item,
   keys,
+  patchExploration,
   patchItem,
+  patchOption,
   visualizeNote,
 } from '../api'
 import { setVisualizing, upsertItems } from '../events'
-import { type Move, undoHistory as history } from './history'
+import type { ReleasePlan } from '../living/release'
+import { undoHistory as history } from './history'
 import { selection } from './selection'
 import { track } from '../telemetry'
 
@@ -38,15 +42,46 @@ export function useItemActions(boardId: string) {
     [report, resync],
   )
 
-  const applyPositions = useCallback(
-    (moves: Move[], which: 'from' | 'to') => {
-      const byId = new Map(moves.map((m) => [m.id, m[which]]))
-      qc.setQueryData<Item[]>(keys.items(boardId), (old) =>
-        old?.map((i) => (byId.has(i.id) ? { ...i, ...byId.get(i.id)! } : i)),
-      )
-      for (const [id, p] of byId) patchItem(id, { x: p.x, y: p.y }).catch(fail('Could not save position'))
+  /** A release touches items and explorations: a failed write puts both back as the server has them. */
+  const failRelease = useCallback(
+    (e: unknown) => {
+      fail('Could not save position')(e)
+      void qc.invalidateQueries({ queryKey: keys.explorations(boardId) })
     },
-    [qc, boardId, fail],
+    [fail, qc, boardId],
+  )
+
+  /**
+   * A release plan applied one way ('to') or back ('from'): the caches at once, then the writes.
+   * Locked (the public demo): only item positions are written (they are open there); sizes, hub
+   * offsets and dock flags stay local.
+   */
+  const applyRelease = useCallback(
+    (plan: ReleasePlan, which: 'from' | 'to', locked: boolean) => {
+      const pos = new Map(plan.moves.map((m) => [m.id, m[which]]))
+      const size = new Map(plan.dock.map((d) => [d.itemId, which === 'to' ? d.size : d.from]))
+      const hub = new Map(plan.hubs.map((h) => [h.explorationId, which === 'to' ? h.to : h.from]))
+      const undocked = new Map(plan.dock.map((d) => [d.optionId, which === 'to' ? d.undocked : !d.undocked]))
+      qc.setQueryData<Item[]>(keys.items(boardId), (old) =>
+        old?.map((i) => (pos.has(i.id) || size.has(i.id) ? { ...i, ...pos.get(i.id), ...size.get(i.id) } : i)),
+      )
+      qc.setQueryData<Exploration[]>(keys.explorations(boardId), (old) =>
+        old?.map((e) => {
+          if (!hub.has(e.id) && !e.options.some((o) => undocked.has(o.id))) return e
+          const off = hub.get(e.id)
+          const options = e.options.map((o) => (undocked.has(o.id) ? { ...o, undocked: undocked.get(o.id)! } : o))
+          return hub.has(e.id) ? { ...e, dx: off?.dx ?? null, dy: off?.dy ?? null, options } : { ...e, options }
+        }),
+      )
+      for (const id of new Set([...pos.keys(), ...size.keys()])) {
+        const body = { ...pos.get(id), ...(locked ? undefined : size.get(id)) }
+        if (Object.keys(body).length > 0) patchItem(id, body).catch(failRelease)
+      }
+      if (locked) return
+      for (const [id, off] of hub) patchExploration(id, { dx: off?.dx ?? null, dy: off?.dy ?? null }).catch(failRelease)
+      for (const [id, u] of undocked) patchOption(id, { undocked: u }).catch(failRelease)
+    },
+    [qc, boardId, failRelease],
   )
 
   const dropNote = useCallback(
@@ -85,15 +120,19 @@ export function useItemActions(boardId: string) {
       error,
       clearError: () => setError(null),
       history,
-      move(moves: Move[]) {
-        history.push(moves)
-        applyPositions(moves, 'to')
+      /**
+       * Everything one pointer release changed (items, docked takes carried along, hub offsets, dock
+       * changes): applied at once and written, as one undo step.
+       */
+      commitRelease(plan: ReleasePlan, opts: { locked: boolean }) {
+        if (plan.moves.length + plan.hubs.length + plan.dock.length === 0) return
+        applyRelease(plan, 'to', opts.locked)
+        history.pushRevert(() => applyRelease(plan, 'from', opts.locked))
       },
       undo(): boolean {
         const last = history.pop()
         if (!last) return false
-        if (last.kind === 'moves') applyPositions(last.moves, 'from')
-        else last.revert()
+        last.revert()
         return true
       },
       remove(ids: readonly string[]) {
@@ -159,7 +198,7 @@ export function useItemActions(boardId: string) {
         }
       },
     }),
-    [error, applyPositions, qc, boardId, fail, report, addNote, dropNote, setNoteText],
+    [error, applyRelease, qc, boardId, fail, report, addNote, dropNote, setNoteText],
   )
 }
 

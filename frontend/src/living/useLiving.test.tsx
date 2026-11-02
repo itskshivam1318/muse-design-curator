@@ -9,7 +9,7 @@ import type { Scene } from './scene'
 
 const scene = (id: string): Scene => ({
   specs: [{ id, kind: 'item', w: 100, h: 80, home: { kind: 'abs', x: 200, y: 100 } }],
-  edges: [], flowers: [], docked: new Map(),
+  edges: [], flowers: [], docked: new Map(), slots: new Map(),
 })
 
 function Box({ id }: { id: string }) {

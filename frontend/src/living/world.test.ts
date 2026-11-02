@@ -4,7 +4,7 @@ import type { BodySpec } from './physics'
 import type { Scene } from './scene'
 
 const item = (id: string, x: number, y: number): BodySpec => ({ id, kind: 'item', w: 100, h: 80, home: { kind: 'abs', x, y } })
-const scene = (...specs: BodySpec[]): Scene => ({ specs, edges: [], flowers: [], docked: new Map() })
+const scene = (...specs: BodySpec[]): Scene => ({ specs, edges: [], flowers: [], docked: new Map(), slots: new Map() })
 
 function rig() {
   let t = 1000

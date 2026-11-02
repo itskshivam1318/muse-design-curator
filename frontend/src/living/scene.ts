@@ -50,6 +50,11 @@ export interface Scene {
   flowers: FlowerModel[]
   /** Each docked take's item id → the option it was kept from and the hub it rings. */
   docked: Map<string, { optionId: string; hubId: string }>
+  /**
+   * Each kept take on the board (docked or not) → its slot in its flower's ring (`home`, rel to the
+   * hub) and how near (`reach`, the ring's radius) a drop must land to dock there.
+   */
+  slots: Map<string, { optionId: string; hubId: string; home: Home; reach: number }>
 }
 
 export interface SceneInput {
@@ -151,12 +156,17 @@ export function buildScene(input: SceneInput): Scene {
   // a kept take is docked in its ring unless it was dragged out (or is not on the board)
   const docked = new Map<string, { optionId: string; hubId: string }>()
   const dockHome = new Map<string, Home>()
+  const slots: Scene['slots'] = new Map()
   for (const f of flowers) {
-    const r = f.model.collapsed ? BADGE_KEPT_R : petalRadius(f.model.options.length) + KEPT_EXTRA
+    const reach = petalRadius(f.model.options.length)
+    const r = f.model.collapsed ? BADGE_KEPT_R : reach + KEPT_EXTRA
     f.model.options.forEach((o, i) => {
-      if (!isKept(o) || o.undocked || !byId.has(o.kept_item_id!)) return
+      if (!isKept(o) || !byId.has(o.kept_item_id!)) return
+      const home = rel(f.model.hubId, polar(f.angles[i], r))
+      slots.set(o.kept_item_id!, { optionId: o.id, hubId: f.model.hubId, home, reach })
+      if (o.undocked) return
       docked.set(o.kept_item_id!, { optionId: o.id, hubId: f.model.hubId })
-      dockHome.set(o.kept_item_id!, rel(f.model.hubId, polar(f.angles[i], r)))
+      dockHome.set(o.kept_item_id!, home)
     })
   }
 
@@ -223,5 +233,5 @@ export function buildScene(input: SceneInput): Scene {
     specs.push({ id: `toolbar:${selected.id}`, kind: 'obstacle', w: toolbar.w, h: toolbar.h, home, ignore: selected.id })
   }
 
-  return { specs, edges, flowers: flowers.map((f) => f.model), docked }
+  return { specs, edges, flowers: flowers.map((f) => f.model), docked, slots }
 }

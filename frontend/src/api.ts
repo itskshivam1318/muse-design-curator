@@ -162,8 +162,8 @@ export interface ExploreOption {
   kept_item_id: string | null
   /** Item ids of the staged takes generated for this option. */
   takes: string[]
-  /** The kept take was dragged out of its ring: it is an ordinary board item (absent: docked). */
-  undocked?: boolean
+  /** The kept take was dragged out of its ring: it is an ordinary board item. */
+  undocked: boolean
 }
 
 export interface Exploration {
@@ -173,9 +173,9 @@ export interface Exploration {
   key: string
   created_at?: string
   options: ExploreOption[]
-  /** The hub's stored offset from its source item's centre; null (or absent) until the hub is placed. */
-  dx?: number | null
-  dy?: number | null
+  /** The hub's stored offset from its source item's centre; null until the hub is placed. */
+  dx: number | null
+  dy: number | null
 }
 
 export interface ItemLicence {
@@ -549,8 +549,11 @@ export const listExplorations = (boardId: string) =>
   request<{ explorations: Exploration[] }>(`/boards/${enc(boardId)}/explorations`).then((r) => r.explorations)
 export const patchOption = (
   optionId: string,
-  body: { status?: 'dismissed' | 'open'; x?: number; y?: number },
+  body: { status?: 'dismissed' | 'open'; x?: number; y?: number; undocked?: boolean },
 ) => request<ExploreOption>(`/options/${enc(optionId)}`, { method: 'PATCH', json: body })
+/** A flower hub's offset from its source item's centre; nulls put it back in its automatic slot. */
+export const patchExploration = (explorationId: string, body: { dx: number | null; dy: number | null }) =>
+  request<Exploration>(`/explorations/${enc(explorationId)}`, { method: 'PATCH', json: body })
 /** `at` is where the canvas draws the option's note; the server saves it and places the image beside it. */
 export const visualizeOption = (optionId: string, opts: { at?: Point; renderer_id?: string } = {}) => {
   const json = { ...(opts.at ?? {}), ...(opts.renderer_id ? { renderer_id: opts.renderer_id } : {}) }
