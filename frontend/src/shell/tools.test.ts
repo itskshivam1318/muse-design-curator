@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { closeRail, noteLensProposal, openRail, railStore, setTool, toolForKey, toolStore } from './tools'
+import { closeRail, openRail, railStore, setTool, toolForKey, toolStore } from './tools'
 
 afterEach(() => setTool('select'))
 
@@ -38,16 +38,5 @@ describe('rail state', () => {
     expect(railStore.get().reason).toBe('auto')
     closeRail()
     expect(railStore.get().open).toBeNull()
-  })
-
-  it('a new lens proposal opens Library when nothing is open', () => {
-    noteLensProposal(true)
-    expect(railStore.get()).toEqual({ open: 'library', reason: 'auto' })
-  })
-
-  it('a new lens proposal leaves another open panel alone', () => {
-    openRail('search')
-    noteLensProposal(true)
-    expect(railStore.get()).toEqual({ open: 'search', reason: 'user' })
   })
 })

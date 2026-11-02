@@ -5,7 +5,7 @@ import type { Item } from '../api'
 import { selection } from '../canvas/selection'
 import { makeItem } from '../test/fixtures'
 import { BoardShell } from './BoardShell'
-import { closeRail, noteLensProposal, openRail, setTool, toolStore } from './tools'
+import { closeRail, openRail, setTool, toolStore } from './tools'
 
 beforeEach(() => {
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ demo_mode: false }), { status: 200 }))
@@ -192,13 +192,5 @@ describe('BoardShell', () => {
     act(() => openRail('library', 'auto'))
     expect(screen.getByRole('dialog', { name: 'Library' })).toBeTruthy()
     expect(document.activeElement).toBe(ta)
-  })
-
-  it('a lens proposal while another panel is open leaves the rail without a dot', () => {
-    setup()
-    fireEvent.click(rail().getByRole('button', { name: 'Search' }))
-    act(() => noteLensProposal(true))
-    expect(rail().getByRole('button', { name: 'Library' }).querySelector('.rail-dot')).toBeNull()
-    expect(screen.getByRole('dialog', { name: 'Search' })).toBeTruthy()
   })
 })

@@ -55,11 +55,6 @@ export function closeRail(): void {
   if (cur.open !== null) railStore.set({ ...cur, open: null })
 }
 
-/** A lens proposal appeared: open Library for it when no other panel is open. */
-export function noteLensProposal(present: boolean): void {
-  if (present && railStore.get().open === null) openRail('library', 'auto')
-}
-
 /** `n` note, `Escape` select; every other key is not a tool key. */
 export function toolForKey(key: string): Tool | null {
   if (key === 'Escape') return 'select'

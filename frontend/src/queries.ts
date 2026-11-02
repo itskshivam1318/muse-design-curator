@@ -8,7 +8,6 @@ import {
   getBoard,
   getBoardLens,
   getProfile,
-  getRun,
   type Item,
   keys,
   listBoardPlugins,
@@ -88,24 +87,3 @@ export function useNodes(boardId: string) {
   const { pluginsEnabled } = useDemo()
   return useQuery({ queryKey: keys.nodes(boardId), queryFn: () => listNodes(boardId), enabled: pluginsEnabled })
 }
-
-export const POLL_MS = 1500
-/** Safety net while the stream is open, in case a progress event is lost. */
-export const SAFETY_POLL_MS = 6000
-
-/**
- * A variation run. While the board's event stream is open, run.progress events invalidate this
- * query (with a slow safety poll); when it is not, poll every 1.5 s. Stop once it completes or fails.
- */
-export const useRun = (runId: string | null, streamOpen: boolean) =>
-  useQuery({
-    queryKey: keys.run(runId ?? ''),
-    queryFn: () => getRun(runId ?? ''),
-    enabled: runId !== null,
-    staleTime: 0,
-    refetchInterval: (q) => {
-      const status = q.state.data?.run.status
-      if (status === 'completed' || status === 'failed') return false
-      return streamOpen ? SAFETY_POLL_MS : POLL_MS
-    },
-  })

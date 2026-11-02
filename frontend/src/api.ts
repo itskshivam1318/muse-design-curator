@@ -401,136 +401,6 @@ export interface AttributeEvent {
   created_at: string
 }
 
-export type VaryMode = 'explore' | 'prefer' | 'avoid' | 'nudge'
-
-export interface VariationRequest {
-  source_item_id: string
-  target_key: string
-  mode: VaryMode
-  target_values: string[]
-  protected_keys: string[]
-  nudge: { direction: 'more' | 'less'; steps: 1 | 2 } | null
-}
-
-export type CandidateState = 'retrieved' | 'excluded' | 'validating' | 'validated' | 'uncertain' | 'rejected'
-export type Verdict = 'pass' | 'fail' | 'uncertain'
-
-export interface CandidateCheck {
-  check: string
-  attribute_key: string | null
-  verdict: Verdict
-  reason: string
-  evidence: { source?: string; values?: Record<string, unknown> } | null
-}
-
-export interface DecisionRow {
-  id: string
-  decision: 'keep' | 'reject'
-  reason_code: string | null
-  note: string | null
-  item_id: string | null
-  created_at: string
-}
-
-export interface CandidateView {
-  id: string
-  corpus_item_id: string
-  image_url: string
-  width: number | null
-  height: number | null
-  provenance: { credit: string | null; landing_url: string | null; license_code: string | null; creator_name: string | null }
-  /** Where this run found it: the pre-indexed library, or a live licensed-source search. */
-  origin: 'corpus' | 'live'
-  /** The source adapter id (e.g. 'commons'). */
-  source?: string
-  state: CandidateState
-  rank: number | null
-  scores: Record<string, number> | null
-  checks: CandidateCheck[]
-  observed_target_value: AttrValue
-  decision: DecisionRow | null
-  decisions: DecisionRow[]
-}
-
-export interface ShortfallLine {
-  code: string
-  count: number
-  message: string
-}
-
-/** `skipped`: the source is cooling down after refusing us or timing out, so it was not asked. */
-export type LiveSourceStatus = 'ok' | 'failed' | 'timeout' | 'skipped'
-
-/** Live search progress: which sources answered, and how many candidates they found so far. */
-export interface LiveProgress {
-  sources: Record<string, LiveSourceStatus>
-  /** The source ids being searched (before they report). */
-  searching?: string[]
-  downloaded?: number
-  found: number
-  queries?: string[]
-}
-
-export interface LiveSummary {
-  queries: string[]
-  found: number
-  kept: number
-  sources: Record<string, LiveSourceStatus>
-  failed?: { source: string; error_code: string | null }[]
-}
-
-export interface RunSummary {
-  pool_size: number
-  excluded: Record<string, number>
-  validated: number
-  uncertain: number
-  rejected: number
-  returned: number
-  shortfall?: ShortfallLine[]
-  live?: LiveSummary
-}
-
-export type RunStatus = 'queued' | 'retrieving' | 'validating' | 'completed' | 'failed'
-
-export interface RunInfo {
-  id: string
-  board_id: string
-  source_item_id: string
-  lens_id: string
-  target_key: string
-  mode: VaryMode
-  target_values: string[]
-  nudge: { direction: 'more' | 'less'; steps: 1 | 2 } | null
-  protected_keys: string[]
-  status: RunStatus
-  error_code: string | null
-  created_at: string
-  completed_at: string | null
-}
-
-export interface RunResponse {
-  run: RunInfo
-  progress: { stage: string; validated_n?: number; shortlist_n?: number; live?: LiveProgress } | null
-  summary: RunSummary | null
-  results: CandidateView[]
-  needs_review: CandidateView[]
-  rejected: CandidateView[]
-  excluded_counts: Record<string, number>
-}
-
-export interface DecisionBody {
-  decision: 'keep' | 'reject'
-  reason_code?: string
-  note?: string
-  mark_not_this?: boolean
-}
-
-export interface DecisionResponse {
-  decision: DecisionRow
-  history: DecisionRow[]
-  item: Item | null
-}
-
 export interface Frame {
   id: string
   t_ms: number
@@ -661,13 +531,6 @@ export const listFrames = (itemId: string) =>
 /** The board's current lens, or its newest proposal; null when it has none yet. */
 export const getBoardLens = (boardId: string) =>
   request<{ lens: LensRow | null }>(`/boards/${enc(boardId)}/lens`).then((r) => r.lens)
-export const getLens = (lensId: string) => request<LensRow>(`/lenses/${enc(lensId)}`)
-/** Confirm the proposal as-is (no body) or save an edited spec. */
-export const confirmLens = (boardId: string, spec?: LensSpec) =>
-  request<LensRow>(`/boards/${enc(boardId)}/lens`, {
-    method: 'PUT',
-    ...(spec ? { json: spec } : {}),
-  })
 export const getDemoStatus = () => request<DemoStatus>('/demo/status')
 /** Sets the HttpOnly unlock cookie on success; 401 for a wrong passcode, 429 after too many. */
 export const unlockDemo = (passcode: string) =>
@@ -740,22 +603,6 @@ export const patchAttribute = (
 ) => request<ItemAttribute>(`/items/${enc(itemId)}/attributes/${enc(key)}`, { method: 'PATCH', json: body })
 export const getAttributeHistory = (itemId: string, key: string) =>
   request<{ events: AttributeEvent[] }>(`/items/${enc(itemId)}/attributes/${enc(key)}/history`).then((r) => r.events)
-
-/** Start a variation run. One Idempotency-Key per Run click, so a retried request never runs twice. */
-export const createRun = (boardId: string, body: VariationRequest, idempotencyKey: string) =>
-  request<{ run_id: string }>(`/boards/${enc(boardId)}/runs`, {
-    method: 'POST',
-    json: body,
-    headers: { 'Idempotency-Key': idempotencyKey },
-  })
-export const getRun = (runId: string) => request<RunResponse>(`/runs/${enc(runId)}`)
-export const postDecision = (runId: string, candidateId: string, body: DecisionBody, idempotencyKey: string) =>
-  request<DecisionResponse>(`/runs/${enc(runId)}/candidates/${enc(candidateId)}/decisions`, {
-    method: 'POST',
-    json: body,
-    headers: { 'Idempotency-Key': idempotencyKey },
-  })
-export const corpusImageUrl = (corpusId: string) => `${BASE}/corpus/${enc(corpusId)}/image`
 
 /** Short cache-busting token: the thumbnail path changes when a video's chosen frame changes. */
 function version(item: Item): string {
