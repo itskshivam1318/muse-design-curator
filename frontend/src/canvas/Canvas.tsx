@@ -20,6 +20,7 @@ import { itemVerdict } from '../explore/verdict'
 import { Callouts } from '../map/Callouts'
 import { setCollapsed } from '../map/collapse'
 import { FlowerLayer } from '../map/Flower'
+import { useMap } from '../map/useMap'
 import { RegionOverlay } from '../map/RegionOverlay'
 import { useNodeDrop } from '../plugins/nodeDrop'
 import { NodeLayer } from '../plugins/NodeLayer'
@@ -149,6 +150,12 @@ export function Canvas({
   const palette = useCanvasPalette()
   const reduced = usePrefersReducedMotion()
   const fitted = useRef(false)
+  // the exploration map: every flower laid out, those in the viewport drawn
+  const viewport = useMemo(
+    () => ({ x: -view.x / view.scale, y: -view.y / view.scale, width: size.width / view.scale, height: size.height / view.scale }),
+    [view, size],
+  )
+  const map = useMap(boardId, visible, viewport)
   const nodeDrop = useNodeDrop(boardId, readOnly)
 
   const byId = useMemo(() => new Map(visible.map((i) => [i.id, i])), [visible])
@@ -487,12 +494,21 @@ export function Canvas({
     calloutItem?.kind === 'note' && hoveredRegion?.region.kind === 'text_range' && hoveredRegion.region.range?.length === 2
       ? (hoveredRegion.region.range as [number, number])
       : null
-  const calloutObstacles = calloutItem ? items.filter((i) => i.id !== calloutItem.id).map((i) => itemBounds(positioned(i))) : []
+  // the callouts keep clear of the other items and of every flower
+  const calloutObstacles = calloutItem
+    ? [...items.filter((i) => i.id !== calloutItem.id).map((i) => itemBounds(positioned(i))), ...[...map.layouts.values()].map((l) => l.bounds)]
+    : []
   // a dimension clicked on a callout: open its flower when it has one, else ask for options first (notes, no media)
   const openDimension = async (item: Item, key: string) => {
     const live = explorations?.find((e) => e.item_id === item.id && e.key === key)
     if (live) {
       setCollapsed(boardId, live.id, false)
+      // out of sight: bring it into view
+      const l = map.layouts.get(live.id)
+      const v = viewport
+      if (l && !(l.bounds.x >= v.x && l.bounds.y >= v.y && l.bounds.x + l.bounds.width <= v.x + v.width && l.bounds.y + l.bounds.height <= v.y + v.height)) {
+        setView((cur) => centeredView(cur, l.bounds, size))
+      }
       return
     }
     const e = await exploreItem(item.id, { key, mode: 'initial' })
@@ -627,7 +643,7 @@ export function Canvas({
       )}
 
       {exploreEnabled && (
-        <FlowerLayer boardId={boardId} items={visible} view={view} size={size} locked={readOnly} onWheel={onOverlayWheel} />
+        <FlowerLayer boardId={boardId} items={visible} view={view} map={map} locked={readOnly} onWheel={onOverlayWheel} />
       )}
       <NodeLayer boardId={boardId} items={drawnItems} view={view} size={size} readOnly={readOnly} onWheel={onOverlayWheel} />
       {hoveredItem && hoveredItem.kind !== 'link' && hoveredItem.kind !== 'note' && hoveredItem.parse_status !== 'completed' && (

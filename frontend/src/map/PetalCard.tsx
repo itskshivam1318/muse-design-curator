@@ -4,7 +4,7 @@
  * this, or Retry / Drop when it drifted; always More like this, Branch and Dismiss.
  */
 import { useQueryClient } from '@tanstack/react-query'
-import { type KeyboardEvent, useMemo, useRef, useState } from 'react'
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiError,
   type Exploration,
@@ -23,7 +23,7 @@ import { dismissOption } from '../explore/optionActions'
 import { resultCheck } from '../explore/verdict'
 import { useBoardLens, useExplorations, useItems, useRenderers } from '../queries'
 import { openRail } from '../shell/tools'
-import { changeExcerpt, resultOf } from './results'
+import { changeExcerpt, isKept, resultOf } from './results'
 
 export interface PetalDimension {
   key: string
@@ -75,12 +75,15 @@ export function PetalCard({ option, dimension, item, keepAt, onClose, locked = f
   // results are staged items: not on the canvas, so read them from the full item list
   const byId = useMemo(() => new Map((allItems ?? []).map((i) => [i.id, i])), [allItems])
   const result = resultOf(live, byId)
-  const kept = !!live.kept_item_id
+  const kept = isKept(live)
   const rendering = live.status === 'visualizing'
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // one request at a time, even when a second press lands before the re-render disables the button
   const inFlight = useRef(false)
+  // focused when it opens, so Escape closes it straight away
+  const cardRef = useRef<HTMLDivElement>(null)
+  useEffect(() => cardRef.current?.focus(), [])
 
   const act = async (work: () => Promise<void>, fallback: string) => {
     if (inFlight.current) return
@@ -159,7 +162,13 @@ export function PetalCard({ option, dimension, item, keepAt, onClose, locked = f
   const drifted = check?.tone === 'drift'
 
   return (
-    <div className="petal-card" role="dialog" aria-label={live.name} onKeyDown={onKeyDown} onMouseDown={(e) => e.stopPropagation()}>
+    <div
+      ref={cardRef}
+      className="petal-card"
+      role="dialog"
+      aria-label={live.name}
+      tabIndex={-1}
+      onKeyDown={onKeyDown} onMouseDown={(e) => e.stopPropagation()}>
       <div className="petal-card-head">
         <span className="petal-card-name">{live.name}</span>
         <span className="petal-tag" data-distance={live.distance}>
@@ -181,7 +190,16 @@ export function PetalCard({ option, dimension, item, keepAt, onClose, locked = f
         </p>
       ) : (
         !result &&
-        (renderers.isPending ? null : renderer ? (
+        (renderers.isPending ? null : renderers.isError ? (
+          <div className="petal-row">
+            <p className="error small" role="alert">
+              {errorText(renderers.error, 'Could not load the renderers')}
+            </p>
+            <button type="button" className="petal-secondary" onClick={() => void renderers.refetch()}>
+              Retry
+            </button>
+          </div>
+        ) : renderer ? (
           <button type="button" className="petal-render" disabled={locked || busy} onClick={() => void render()}>
             <span className="petal-render-title">{renderer.title}</span>
             <span className="petal-render-detail">{renderer.detail}</span>
@@ -199,7 +217,7 @@ export function PetalCard({ option, dimension, item, keepAt, onClose, locked = f
           {drifted ? (
             <>
               <button type="button" className="petal-primary" disabled={locked || busy || !renderer} onClick={() => void render()}>
-                Retry, tighter mask
+                Retry
               </button>
               <button type="button" className="petal-secondary" disabled={locked || busy} onClick={() => void dismiss()}>
                 Drop

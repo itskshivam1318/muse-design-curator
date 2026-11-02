@@ -11,15 +11,15 @@ import { useItems } from '../queries'
 import { setCollapsed } from './collapse'
 import { type FlowerLayout, PETAL, PETAL_KEPT, placeBeside } from './layout'
 import { PetalCard, ResultPreview } from './PetalCard'
-import { resultOf } from './results'
-import { type FlowerModel, useMap } from './useMap'
+import { isKept, resultOf } from './results'
+import type { FlowerModel, MapView } from './useMap'
 
 const centre = (b: Bounds): Point => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 })
 
 type PetalState = 'note' | 'rendered' | 'kept' | 'drifted'
 
 function petalState(option: ExploreOption, result: Item | undefined, label: string): PetalState {
-  if (option.kept_item_id) return 'kept'
+  if (isKept(option)) return 'kept'
   if (!result) return 'note'
   return resultCheck(result.check, label, option.name).tone === 'drift' ? 'drifted' : 'rendered'
 }
@@ -39,7 +39,7 @@ interface FlowerProps {
 
 export function Flower({ model, layout, view, source, byId = new Map(), openOption = null, onOpenOption, onToggle }: FlowerProps) {
   const n = model.options.length
-  const k = model.options.filter((o) => o.kept_item_id).length
+  const k = model.options.filter(isKept).length
   const summary = `${n} options · ${k} kept`
   if (model.collapsed) {
     const text = `${model.label} · ${summary}`
@@ -110,22 +110,19 @@ export function Flower({ model, layout, view, source, byId = new Map(), openOpti
 
 interface LayerProps {
   boardId: string
-  /** The board's items as drawn (not staged): sources, and what flowers keep clear of. */
+  /** The board's items as drawn (not staged): the flowers' sources. */
   items: readonly Item[]
   view: View
-  size: { width: number; height: number }
+  /** The board's map (`useMap`): the visible flowers, every layout, what they kept clear of. */
+  map: MapView
   locked?: boolean
   /** Wheel over a flower pans or zooms the canvas like anywhere else. */
   onWheel?: (e: WheelEvent) => void
 }
 
 /** Every flower on the board that reaches the viewport, and the one open petal card. */
-export function FlowerLayer({ boardId, items, view, size, locked = false, onWheel }: LayerProps) {
-  const viewport = useMemo(
-    () => ({ x: -view.x / view.scale, y: -view.y / view.scale, width: size.width / view.scale, height: size.height / view.scale }),
-    [view, size],
-  )
-  const { flowers, layouts, obstacles } = useMap(boardId, items, viewport)
+export function FlowerLayer({ boardId, items, view, map, locked = false, onWheel }: LayerProps) {
+  const { flowers, layouts, obstacles } = map
   const allItems = useItems(boardId).data
   const byId = useMemo(() => new Map((allItems ?? items).map((i) => [i.id, i])), [allItems, items])
   const [open, setOpen] = useState<{ flowerId: string; optionId: string } | null>(null)

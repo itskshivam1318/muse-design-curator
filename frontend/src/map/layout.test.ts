@@ -20,8 +20,9 @@ import {
 
 const item = (x: number, y: number, w = 240, h = 180): Bounds => ({ x, y, width: w, height: h })
 const parts = (l: FlowerLayout): Bounds[] => [l.hub, ...l.petals]
-const flower = (id: string, x: number, y: number, dir = 0, kept: number[] = []): FlowerInput => ({
+const flower = (id: string, x: number, y: number, dir = 0, kept: number[] = [], itemId = 'i'): FlowerInput => ({
   id,
+  itemId,
   from: { x, y },
   dir,
   petals: 6,
@@ -88,7 +89,7 @@ describe('calloutSlots', () => {
 
 describe('placeFlower', () => {
   it('lays six petals 46 degrees apart at RING and sizes kept petals larger', () => {
-    const l = placeFlower({ id: 'a', from: { x: 0, y: 0 }, dir: 0, petals: 6, kept: [2] }, [])
+    const l = placeFlower({ id: 'a', itemId: 'i', from: { x: 0, y: 0 }, dir: 0, petals: 6, kept: [2] }, [])
     expect(l.petals).toHaveLength(6)
     expect(l.petals[2].width).toBe(PETAL_KEPT)
     expect(l.petals[0].width).toBe(PETAL)
@@ -104,7 +105,7 @@ describe('placeFlower', () => {
 
 describe('layoutFlowers', () => {
   const items = [item(0, 0), item(600, 0), item(300, 500)]
-  const callouts = [{ x: 250, y: 20, width: CALLOUT_W, height: CALLOUT_H }]
+  const callouts = new Map([['i', [{ x: 250, y: 20, width: CALLOUT_W, height: CALLOUT_H }]]])
   const flowers = [
     flower('1', 120, 90),
     flower('2', 720, 90, Math.PI),
@@ -115,7 +116,7 @@ describe('layoutFlowers', () => {
   it('petals never overlap items, callouts or other flowers', () => {
     const out = layoutFlowers(flowers, items, callouts)
     expect(out.size).toBe(4)
-    const boxes = [...items, ...callouts]
+    const boxes = [...items, ...callouts.get('i')!]
     const ls = [...out.values()]
     ls.forEach((l, i) => {
       for (const p of parts(l)) {
@@ -131,6 +132,16 @@ describe('layoutFlowers', () => {
     expect(both).toEqual(a)
   })
 
+  it("a flower on another item, whose callouts overlap an existing flower, never moves it", () => {
+    const a = layoutFlowers([flower('1', 120, 90)], items, callouts).get('1')!
+    // item j's callouts land right on top of flower 1
+    const onA = new Map([...callouts, ['j', [a.hub, a.petals[0]]]])
+    const both = layoutFlowers([flower('1', 120, 90), flower('2', 720, 90, Math.PI, [], 'j')], items, onA)
+    expect(both.get('1')).toEqual(a)
+    // the later flower does keep clear of them
+    parts(both.get('2')!).forEach((p) => onA.get('j')!.forEach((c) => expect(rectsIntersect(p, c)).toBe(false)))
+  })
+
   it('boxed-in item pushes the flower outward', () => {
     const src = item(0, 0, 200, 150)
     const ring: Bounds[] = []
@@ -140,7 +151,7 @@ describe('layoutFlowers', () => {
     }
     const all = [src, ...ring]
     const snapshot = JSON.stringify(all)
-    const l = layoutFlowers([flower('x', 100, 75)], all, []).get('x')!
+    const l = layoutFlowers([flower('x', 100, 75)], all, new Map()).get('x')!
     expect(JSON.stringify(all)).toBe(snapshot)
     all.forEach((b) => expect(rectsIntersect(l.bounds, b)).toBe(false))
   })
@@ -156,7 +167,7 @@ describe('layoutFlowers', () => {
 
   it('keeps stepping outward past the capped trials until clear', () => {
     const wall = item(-5000, -5000, 10000, 10000)
-    const l = layoutFlowers([flower('w', 0, 0)], [wall], []).get('w')!
+    const l = layoutFlowers([flower('w', 0, 0)], [wall], new Map()).get('w')!
     expect(rectsIntersect(l.bounds, wall)).toBe(false)
   })
 
@@ -169,7 +180,7 @@ describe('layoutFlowers', () => {
   })
 
   it('culls flowers outside the viewport', () => {
-    const out = layoutFlowers([flower('near', 0, 0), flower('far', 5000, 5000)], [], [])
+    const out = layoutFlowers([flower('near', 0, 0), flower('far', 5000, 5000)], [], new Map())
     expect(visibleFlowers(out, { x: -500, y: -500, width: 1000, height: 1000 })).toEqual(['near'])
   })
 

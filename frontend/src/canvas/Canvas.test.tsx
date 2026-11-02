@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import Konva from 'konva'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type AnalysisView, type Exploration, type ExploreOption, type Item, keys } from '../api'
+import type { Bounds } from './geometry'
 import '../panels/registerPanels'
 import { stubCanvasContext } from '../test/canvasStub'
 import { makeItem } from '../test/fixtures'
@@ -17,6 +18,11 @@ vi.mock('../api', async (orig) => ({
 }))
 const { getRegion, exploreItem, visualizeOption } = await import('../api')
 const { setCollapsed } = await import('../map/collapse')
+const { mapModel } = await import('../map/useMap')
+const { layoutFlowers } = await import('../map/layout')
+const { calloutBounds } = await import('../map/cards')
+const { itemBounds } = await import('./nodeProps')
+const { rectsIntersect } = await import('./geometry')
 const { useItemActions } = await import('./actions')
 const { Canvas } = await import('./Canvas')
 const { undoHistory } = await import('./history')
@@ -110,6 +116,61 @@ describe('Canvas flowers', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Hand style · syringe' }))
     await waitFor(() => expect(screen.getAllByTestId('petal')).toHaveLength(1))
     expect(exploreItem).not.toHaveBeenCalled()
+  })
+
+  it('re-opening a flower out of sight pans it into view', async () => {
+    sized()
+    // view starts at (80, 80): an item at x 1300 has its flower past the right edge
+    const qc = client(
+      [{ id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1' })] }],
+      [makeItem({ id: 'src', board_id: 'b1', x: 1300, y: 0 })],
+    )
+    qc.setQueryData(keys.analysis('src'), analysis)
+    renderBoard(qc)
+    const stage = Konva.stages.at(-1)!
+    expect(stage.x()).toBe(80)
+    act(() => selection.select(['src']))
+    fireEvent.click(screen.getByRole('button', { name: 'Hand style · syringe' }))
+    // at once (the board's first fit, 300 ms after load, must not be what moves it)
+    expect(stage.x()).not.toBe(80)
+    // the flower now sits inside the viewport
+    const hub = document.querySelector<HTMLElement>('.flower-hub')!
+    const left = parseFloat(hub.style.left) + stage.x()
+    expect(left).toBeGreaterThan(0)
+    expect(left + parseFloat(hub.style.width)).toBeLessThan(1600)
+    expect(exploreItem).not.toHaveBeenCalled()
+  })
+
+  it("a selected item's callouts keep clear of other items' flowers", () => {
+    sized()
+    const a = makeItem({ id: 'a', board_id: 'b1', x: 0, y: 0 })
+    const e: Exploration = { id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style', options: [1, 2, 3, 4, 5, 6].map((n) => opt({ id: `o${n}` })) }
+    // find a spot for item b whose callout, left alone, would sit on a's flower
+    let b: Item | undefined
+    let flower: Bounds | undefined
+    for (let y = -400; y <= 600 && !b; y += 20) {
+      for (let x = 0; x <= 600 && !b; x += 20) {
+        const cand = makeItem({ id: 'b', board_id: 'b1', x, y })
+        const boxes = [a, cand].map(itemBounds)
+        if (rectsIntersect(boxes[0], boxes[1])) continue
+        const { flowers, callouts } = mapModel([e], [a, cand], new Map([['a', analysis]]), () => false, new Map())
+        const l = layoutFlowers(flowers.map((f) => ({ id: f.id, itemId: f.itemId, from: f.from, dir: f.dir, petals: 6, kept: [] })), boxes, callouts).get('e1')!
+        const free = calloutBounds(cand, analysis, [boxes[0]]).get('hands')!
+        if (rectsIntersect(free, l.bounds) && !rectsIntersect(l.bounds, boxes[1])) {
+          b = cand
+          flower = l.bounds
+        }
+      }
+    }
+    expect(b).toBeTruthy()
+    const qc = client([e], [a, b!])
+    qc.setQueryData(keys.analysis('a'), analysis)
+    qc.setQueryData(keys.analysis('b'), analysis)
+    renderBoard(qc)
+    act(() => selection.select(['b']))
+    const card = screen.getByRole('group', { name: 'Hands' })
+    const box = { x: parseFloat(card.style.left), y: parseFloat(card.style.top), width: parseFloat(card.style.width), height: parseFloat(card.style.minHeight) }
+    expect(rectsIntersect(box, flower!)).toBe(false)
   })
 
   it('draws no flowers when explore is off', () => {

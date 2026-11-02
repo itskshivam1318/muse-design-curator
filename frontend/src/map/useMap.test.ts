@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import type { AnalysisView, Exploration, ExploreOption } from '../api'
-import { itemBounds } from '../canvas/nodeProps'
 import { makeItem } from '../test/fixtures'
 import { calloutBounds, WHOLE } from './cards'
 import { mapModel } from './useMap'
@@ -34,7 +33,7 @@ describe('mapModel', () => {
       new Map(),
     )
     const slots = calloutBounds(item, analysis, [])
-    expect(callouts).toEqual([...slots.values()])
+    expect(callouts).toEqual(new Map([['a', [...slots.values()]]]))
     const [hands, mood] = flowers
     const slot = slots.get('hands')!
     expect(hands).toMatchObject({ id: 'e1', itemId: 'a', key: 'hand_style', label: 'Hand style', part: 'Hands', collapsed: false })
@@ -49,17 +48,23 @@ describe('mapModel', () => {
     expect(mood.from.y).toBeCloseTo(whole.y + whole.height)
   })
 
-  it('skips explorations on items not on the board; without an analysis a flower starts at the item edge', () => {
+  it('draws no flower for an item off the board or whose analysis has not loaded', () => {
+    const other = makeItem({ id: 'b', board_id: 'b1', x: 0, y: 600, w: 200, h: 150 })
     const { flowers, callouts } = mapModel(
-      [exp('e1', 'hand_style', [opt('o1')]), exp('e2', 'hand_style', [opt('o2')], 'gone')],
-      [item],
-      new Map(),
+      [exp('e1', 'hand_style', [opt('o1')]), exp('e2', 'hand_style', [opt('o2')], 'gone'), exp('e3', 'hand_style', [opt('o3')], 'b')],
+      [item, other],
+      new Map([['a', analysis]]),
       () => false,
-      new Map([['hand_style', 'Hand style (lens)']]),
+      new Map(),
     )
-    expect(callouts).toEqual([])
-    expect(flowers).toHaveLength(1)
-    const b = itemBounds(item)
-    expect(flowers[0]).toMatchObject({ label: 'Hand style (lens)', dir: 0, from: { x: b.x + b.width, y: b.y + b.height / 2 } })
+    expect(flowers.map((f) => f.id)).toEqual(['e1'])
+    expect([...callouts.keys()]).toEqual(['a'])
+  })
+
+  it('a dimension gone from the analysis starts at the Whole item card, labelled from the lens', () => {
+    const { flowers } = mapModel([exp('e1', 'old_key', [opt('o1')])], [item], new Map([['a', analysis]]), () => false, new Map([['old_key', 'Old key']]))
+    const whole = calloutBounds(item, analysis, []).get(WHOLE)!
+    expect(flowers[0]).toMatchObject({ label: 'Old key', part: null })
+    expect(flowers[0].from.y).toBeCloseTo(whole.y + whole.height)
   })
 })

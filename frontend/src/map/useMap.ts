@@ -14,6 +14,7 @@ import { useBoardLens, useExplorations } from '../queries'
 import { calloutBounds, cardOf, WHOLE } from './cards'
 import { collapsedVersion, isCollapsed, subscribeCollapsed } from './collapse'
 import { type FlowerLayout, layoutFlowers, visibleFlowers } from './layout'
+import { isKept } from './results'
 
 export interface FlowerModel {
   /** The exploration's id. */
@@ -23,7 +24,7 @@ export interface FlowerModel {
   label: string
   /** The label of the part a physical dimension lives on; null for a whole-item one. */
   part: string | null
-  /** Where the dashed line leaves the dimension's callout (its far edge). */
+  /** Where the dashed line leaves the dimension's callout (its far edge; Whole item for a dimension gone from the analysis). */
   from: Point
   /** Angle from the item's centre to its callout: the flower opens this way. */
   dir: number
@@ -32,8 +33,14 @@ export interface FlowerModel {
   collapsed: boolean
 }
 
-/** A stable `combine` for useQueries: the result array keeps its identity while no query changes. */
-const dataOf = (results: { data?: AnalysisView }[]) => results.map((r) => r.data)
+/**
+ * A stable `combine` for useQueries (its result keeps its identity while no query changes): each
+ * item's analysis, and whether any is still loading for the first time.
+ */
+const dataOf = (results: { data?: AnalysisView; isPending: boolean }[]) => ({
+  data: results.map((r) => r.data),
+  pending: results.some((r) => r.isPending),
+})
 
 const centre = (b: Bounds): Point => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 })
 
@@ -47,8 +54,8 @@ function edgePoint(b: Bounds, dir: number): Point {
 }
 
 /**
- * The flowers (one per exploration on a visible item) and every callout card of their items (they
- * are obstacles). Without an item's analysis yet, its flowers start at its right edge.
+ * The flowers (one per exploration on a visible item whose analysis has loaded: a flower is never
+ * drawn at a guessed spot and then moved) and each of their items' callout cards (obstacles).
  */
 export function mapModel(
   explorations: readonly Exploration[],
@@ -56,62 +63,57 @@ export function mapModel(
   analyses: ReadonlyMap<string, AnalysisView | undefined>,
   collapsed: (id: string) => boolean,
   labels: ReadonlyMap<string, string>,
-): { flowers: FlowerModel[]; callouts: Bounds[] } {
+): { flowers: FlowerModel[]; callouts: Map<string, Bounds[]> } {
   const byId = new Map(items.map((i) => [i.id, i]))
   const slots = new Map<string, Map<string, Bounds>>()
-  const callouts: Bounds[] = []
   for (const itemId of new Set(explorations.map((e) => e.item_id))) {
     const item = byId.get(itemId)
     const analysis = analyses.get(itemId)
     if (!item || !analysis) continue
-    // the same obstacles the callouts use when shown: every other item
-    const s = calloutBounds(item, analysis, items.filter((i) => i.id !== itemId).map(itemBounds))
-    slots.set(itemId, s)
-    callouts.push(...s.values())
+    // the same slots the callouts take when shown, before any flower is around: every other item
+    slots.set(itemId, calloutBounds(item, analysis, items.filter((i) => i.id !== itemId).map(itemBounds)))
   }
   const flowers: FlowerModel[] = []
   for (const e of explorations) {
     const item = byId.get(e.item_id)
-    if (!item) continue
-    const b = itemBounds(item)
     const analysis = analyses.get(e.item_id)
-    const slot = analysis ? slots.get(e.item_id)?.get(cardOf(analysis, e.key) ?? WHOLE) : undefined
-    let from: Point = { x: b.x + b.width, y: b.y + b.height / 2 }
-    let dir = 0
-    if (slot) {
-      const c = centre(slot)
-      const ic = centre(b)
-      dir = Math.atan2(c.y - ic.y, c.x - ic.x)
-      from = edgePoint(slot, dir)
-    }
-    const dim = analysis?.dimensions.find((d) => d.key === e.key)
+    const slot = slots.get(e.item_id)?.get(analysis ? (cardOf(analysis, e.key) ?? WHOLE) : WHOLE)
+    if (!item || !analysis || !slot) continue
+    const c = centre(slot)
+    const ic = centre(itemBounds(item))
+    const dir = Math.atan2(c.y - ic.y, c.x - ic.x)
+    const dim = analysis.dimensions.find((d) => d.key === e.key)
     const label = dim?.label ?? labels.get(e.key) ?? e.key
-    const part = dim?.type === 'physical' ? (analysis?.parts.find((p) => p.key === dim.part)?.label ?? null) : null
+    const part = dim?.type === 'physical' ? (analysis.parts.find((p) => p.key === dim.part)?.label ?? null) : null
     flowers.push({
       id: e.id,
       itemId: e.item_id,
       key: e.key,
       label,
       part,
-      from,
+      from: edgePoint(slot, dir),
       dir,
       options: optionTree(e.options).map((r) => r.option),
       collapsed: collapsed(e.id),
     })
   }
+  const callouts = new Map([...slots].map(([id, m]) => [id, [...m.values()]]))
   return { flowers, callouts }
 }
 
 /**
- * Every flower is laid out (collapsed ones too, so collapsing never moves another flower); only
+ * Every flower is laid out (collapsed ones too, so collapsing never moves another flower), but only
+ * once every analysis they start from has loaded, so the layout never depends on arrival order. Only
  * those reaching `viewport` (canvas units) come back in `flowers`. `obstacles` are the items and
  * callouts the layout avoided (with `layouts`, what a kept result must stay clear of).
  */
-export function useMap(
-  boardId: string,
-  items: readonly Item[],
-  viewport: Bounds,
-): { flowers: FlowerModel[]; layouts: Map<string, FlowerLayout>; obstacles: Bounds[] } {
+export interface MapView {
+  flowers: FlowerModel[]
+  layouts: Map<string, FlowerLayout>
+  obstacles: Bounds[]
+}
+
+export function useMap(boardId: string, items: readonly Item[], viewport: Bounds): MapView {
   const { exploreEnabled } = useDemo()
   const explorations = useExplorations(boardId).data
   const lensAttrs = useBoardLens(boardId).data?.spec.attributes
@@ -126,25 +128,30 @@ export function useMap(
     queries: itemIds.map((id) => ({ queryKey: keys.analysis(id), queryFn: () => getAnalysis(id) })),
     combine: dataOf,
   })
-  const analyses = useMemo(() => new Map(itemIds.map((id, i) => [id, analysisData[i]])), [itemIds, analysisData])
+  const analyses = useMemo(
+    () => (analysisData.pending ? null : new Map(itemIds.map((id, i) => [id, analysisData.data[i]]))),
+    [itemIds, analysisData],
+  )
   const labels = useMemo(() => new Map((lensAttrs ?? []).map((a) => [a.key, a.label])), [lensAttrs])
 
   const map = useMemo(() => {
     void version // re-read the collapsed flags when one changes
-    const { flowers, callouts } = mapModel(shown, items, analyses, (id) => isCollapsed(boardId, id), labels)
     const itemBoxes = items.map(itemBounds)
+    if (!analyses) return { flowers: [], layouts: new Map<string, FlowerLayout>(), obstacles: itemBoxes }
+    const { flowers, callouts } = mapModel(shown, items, analyses, (id) => isCollapsed(boardId, id), labels)
     const layouts = layoutFlowers(
       flowers.map((f) => ({
         id: f.id,
+        itemId: f.itemId,
         from: f.from,
         dir: f.dir,
         petals: f.options.length,
-        kept: f.options.flatMap((o, i) => (o.status === 'kept' ? [i] : [])),
+        kept: f.options.flatMap((o, i) => (isKept(o) ? [i] : [])),
       })),
       itemBoxes,
       callouts,
     )
-    return { flowers, layouts, obstacles: [...itemBoxes, ...callouts] }
+    return { flowers, layouts, obstacles: [...itemBoxes, ...[...callouts.values()].flat()] }
   }, [shown, items, analyses, labels, boardId, version])
 
   const { x, y, width, height } = viewport

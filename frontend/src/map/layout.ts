@@ -21,6 +21,8 @@ export const DIR_OFFSETS = [0, 1, -1, 2, -2].map((k) => (k * Math.PI) / 6)
 
 export interface FlowerInput {
   id: string
+  /** The item the flower grows from (its callouts become obstacles when its first flower is placed). */
+  itemId: string
   from: Point
   dir: number
   petals: number
@@ -135,15 +137,26 @@ export function placeBeside(near: Bounds, dir: number, size: { width: number; he
 }
 
 /**
- * Places flowers in id order; each placed flower becomes an obstacle for the next.
+ * Places flowers in id order; each placed flower becomes an obstacle for the next. An item's callouts
+ * (`calloutsByItem`) join the obstacles just before that item's FIRST flower is placed, so earlier flowers
+ * never see a later item's callouts: opening a flower on another item never moves an existing one.
  * Contract: callers must pass EVERY flower, collapsed ones included (collapsing only hides rendering), and ids must
  * sort by creation order (monotonic ULIDs), so closing or collapsing a flower never shifts the others.
  */
-export function layoutFlowers(flowers: FlowerInput[], items: Bounds[], callouts: Bounds[]): Map<string, FlowerLayout> {
+export function layoutFlowers(
+  flowers: FlowerInput[],
+  items: Bounds[],
+  calloutsByItem: ReadonlyMap<string, Bounds[]>,
+): Map<string, FlowerLayout> {
   const sorted = [...flowers].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-  const obstacles = [...items, ...callouts]
+  const obstacles = [...items]
+  const seen = new Set<string>()
   const out = new Map<string, FlowerLayout>()
   for (const f of sorted) {
+    if (!seen.has(f.itemId)) {
+      seen.add(f.itemId)
+      obstacles.push(...(calloutsByItem.get(f.itemId) ?? []))
+    }
     const l = placeFlower(f, obstacles)
     out.set(f.id, l)
     obstacles.push(l.bounds)

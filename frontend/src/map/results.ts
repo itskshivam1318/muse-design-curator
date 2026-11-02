@@ -26,3 +26,6 @@ export function changeExcerpt(before: string, after: string, context = 40): { pr
     post: after.slice(end, to) + (to < after.length ? '…' : ''),
   }
 }
+
+/** The one definition of a kept petal (its size, border, the hub's count): its option has a kept result. */
+export const isKept = (option: ExploreOption): boolean => !!option.kept_item_id

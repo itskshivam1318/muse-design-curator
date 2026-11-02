@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, type Exploration, type ExploreOption, type Item, keys, type RendererInfo } from '../api'
 import { selectionStore, selection } from '../canvas/selection'
@@ -91,6 +91,18 @@ describe('PetalCard', () => {
     expect(visualizeOption).not.toHaveBeenCalled()
   })
 
+  it('renderers that fail to load show an error with Retry, not "Connect a renderer"', async () => {
+    const { qc } = setup(opt(), { renderers: [] })
+    await screen.findByRole('button', { name: /Connect a renderer/ })
+    vi.mocked(getRenderers).mockRejectedValueOnce(new ApiError(500, 'BOOM', 'Server error'))
+    await act(() => qc.resetQueries({ queryKey: keys.renderers('src', 'hand_style') }))
+    expect((await screen.findByRole('alert')).textContent).toBe('Server error')
+    expect(screen.queryByRole('button', { name: /Connect a renderer/ })).toBeNull()
+    vi.mocked(getRenderers).mockResolvedValueOnce([MUSE_IMAGE])
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByRole('button', { name: /^Generate image/ })).toBeTruthy()
+  })
+
   it('a passed result shows its check line, Keep and Not this; Keep places it beside the petal', async () => {
     const t = take('t1', { check: { target: { answer: 'yes', confidence: 0.9, note: '' }, kept: 3, of: 3, drifted: [] } })
     const kept = opt({ status: 'kept', kept_item_id: 't1', takes: ['t1'] })
@@ -108,7 +120,7 @@ describe('PetalCard', () => {
     expect(qc.getQueryData<Item[]>(keys.items('b1'))!.find((i) => i.id === 't1')).toMatchObject({ staged: false, x: 500, y: 40 })
   })
 
-  it('drifted result shows Retry, tighter mask and no Keep', async () => {
+  it('drifted result shows Retry and no Keep', async () => {
     const t = take('t1', { check: { target: { answer: 'yes', confidence: 0.9, note: '' }, kept: 2, of: 3, drifted: ['case_finish'] } })
     vi.mocked(visualizeOption).mockResolvedValue(undefined)
     vi.mocked(patchOption).mockResolvedValue(opt({ status: 'dismissed', takes: ['t1'] }))
@@ -117,7 +129,7 @@ describe('PetalCard', () => {
     expect(screen.queryByRole('button', { name: 'Keep' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Drop' }))
     await waitFor(() => expect(patchOption).toHaveBeenCalledWith('o1', { status: 'dismissed' }))
-    const retry = screen.getByRole('button', { name: 'Retry, tighter mask' }) as HTMLButtonElement
+    const retry = screen.getByRole('button', { name: 'Retry' }) as HTMLButtonElement
     await waitFor(() => expect(retry.disabled).toBe(false)) // once the renderer is known
     fireEvent.click(retry)
     await waitFor(() => expect(visualizeOption).toHaveBeenCalledWith('o1', { renderer_id: 'muse-image' }))
