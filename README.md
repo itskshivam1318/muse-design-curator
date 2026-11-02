@@ -73,19 +73,28 @@ board. **Plugins** are nodes you add from the rail and place from the toolbar's 
 
 ## Explore → Visualize
 
-Select an item, press `A` (the Axis tool), and pick an attribute of the board's lens.
-Explore asks the reasoning model for a handful of options for that attribute ("in the dimension"),
-shown as text cards on the axis beside the item. More, Further, a steer line and Branch widen
-or deepen the set; Dismiss removes one. **Visualize** edits the source photo into the option with the
-image provider, adds the result as a new item captioned `generated · <model>`, and checks it: did the
-target change, and which other attributes stayed (the verdict, also shown under "Generated from" in
-Inspect). "Find real examples" starts a Vary run for options that map to a known value.
+Select an item and its **callouts** show what Muse read: one card per part with its physical
+dimensions, and a "Whole item" card with the abstract ones. **Click a dimension** to explore it:
+the reasoning model proposes a handful of options and a **flower** grows beside the item, the
+options as **note petals** around a hub; nothing is generated yet. More like this widens the set
+and Dismiss trims it; the hub collapses the flower to a badge on its callout. Open a petal
+and its card has one **render** button named by the renderer that will run: "Generate image · Muse
+Image inside the part's mask or box" (or the whole image for an abstract dimension), "Rewrite
+passage · Muse Spark" for a note, a board plugin, or "Connect a renderer" when nothing renders the
+item. The result is checked (did the target change, which other dimensions stayed) and shown on the
+card; **Keep** puts it on the board as an ordinary item with its own callouts, so the loop starts
+again from there. **Extract** on a part cuts it out as a new, linked item; **Re-analyse** on the
+item toolbar reads an item again. Each board has a daily allowance: analyses (uploads, Re-analyse,
+explore, extract) and renders (petals, note Visualize) are counted separately and refused with
+"Daily limit reached for this board, try tomorrow." once used up.
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `IMAGE_PROVIDER` | `muse-image` | Image-edit provider; `mock` is offline and deterministic (model id `mock-image`). |
 | `IMAGE_MODEL` | `muse-image-1.0` | Model id sent to the image provider. |
-| `EXPLORE_ENABLED` | `1` | Set `0` to hide Explore; `V` then opens the older Vary panel. |
+| `ANALYSE_PER_BOARD_PER_DAY` | `300` | Analyses one board may run per day. |
+| `RENDER_PER_BOARD_PER_DAY` | `60` | Renders one board may run per day. |
+| `EXPLORE_ENABLED` | `1` | Set `0` to turn exploring off: callouts still show, a dimension opens no flower. |
 
 Muse Image is restricted from India under Meta's Geographic Use Policy §2.2. It is used here for
 development only; set IMAGE_PROVIDER to another provider for the demo.

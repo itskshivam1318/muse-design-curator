@@ -139,14 +139,23 @@ export async function openDimension(page: Page, dimension: string): Promise<Loca
   return f
 }
 
+/** At most this many renders (and "More like this" batches) before renderUntilOk gives up. */
+const MAX_RENDERS = 16
+const MAX_MORE = 2
+
 /**
  * Open each petal in turn and render it until one's check reads ✓; returns that petal's card. The
  * mock answers "yes" for about a third of prompts, so "More like this" brings new options if needed.
+ * Bounded: fails after MAX_RENDERS renders or MAX_MORE batches, naming every check it read.
  */
 export async function renderUntilOk(page: Page, f: Locator, renderTitle: string, renderDetail: string): Promise<Locator> {
-  for (let i = 0; i < 24; i++) {
+  const tried: string[] = []
+  let more = 0
+  const giveUp = (why: string) =>
+    new Error(`renderUntilOk: ${why}; ${tried.length} render(s) without a ✓ check: ${tried.join(' | ') || 'none'}`)
+  for (let i = 0; tried.length < MAX_RENDERS; i++) {
     const n = await petals(f).count()
-    if (i >= n) throw new Error('no petal rendered with a ✓ check')
+    if (i >= n) throw giveUp(`ran out of petals at ${n}`)
     const petal = petals(f).nth(i)
     if ((await petal.getAttribute('aria-label'))?.match(/ · (rendered|drifted|kept)$/)) continue
     const optionId = (await petal.getAttribute('data-option-id'))!
@@ -160,18 +169,22 @@ export async function renderUntilOk(page: Page, f: Locator, renderTitle: string,
     const check = card.locator('.petal-check')
     await expect(check).toBeVisible({ timeout: 30_000 })
     await expect(check).not.toHaveText('Checking…', { timeout: 30_000 })
-    if ((await check.textContent())?.startsWith('✓')) return card
+    const text = (await check.textContent()) ?? ''
+    if (text.startsWith('✓')) return card
+    tried.push(`${await card.locator('.petal-card-name').textContent()}: ${text}`)
     // close the card (its petal toggles it; it may cover the next petal) and try the next one;
     // past the last, ask for more options
     await expect(f.locator(`[data-option-id="${optionId}"]`)).toHaveAttribute('aria-label', / · (rendered|drifted)$/)
     if (i === n - 1) {
+      if (more === MAX_MORE) throw giveUp(`asked for more options ${MAX_MORE} times`)
+      more += 1
       await card.getByRole('button', { name: 'More like this' }).click()
       await expect(petals(f)).toHaveCount(n + 8)
     }
     await petal.click()
     await expect(card).toHaveCount(0)
   }
-  throw new Error('no petal rendered with a ✓ check')
+  throw giveUp(`stopped at ${MAX_RENDERS} renders`)
 }
 
 /** Pan the view so the flower's hub sits in the upper left of the canvas, clear of the agent card. */
