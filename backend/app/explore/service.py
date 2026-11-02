@@ -245,8 +245,23 @@ def resting_status(session: Session, option_id: str) -> str:
     return "visualized" if explore_repo.has_generated(session, option_id) else "open"
 
 
+def set_offset(
+    session: Session, exploration_id: str, dx: float | None, dy: float | None
+) -> Exploration:
+    """Move a flower hub: its offset from the source item's centre (None, None = the automatic
+    slot); publishes the exploration."""
+    require_enabled()
+    e = session.get(Exploration, exploration_id)
+    if e is None:
+        raise AppError(404, "EXPLORATION_NOT_FOUND", "Exploration not found")
+    e.dx, e.dy = dx, dy
+    session.flush()
+    publish_later(session, e)
+    return e
+
+
 def update_option(session: Session, option_id: str, **fields: Any) -> ExploreOption:
-    """Dismiss, restore or move an option; publishes the exploration.
+    """Dismiss, restore, move, dock or undock an option; publishes the exploration.
 
     Restoring an option whose visualize job still holds its claim (it was dismissed mid-job, or
     is still running) keeps it `visualizing`, so the claim is not freed for a second job."""

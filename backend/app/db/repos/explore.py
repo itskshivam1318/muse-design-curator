@@ -97,7 +97,7 @@ def option_to_dict(o: ExploreOption, takes: list[str] | None = None) -> dict[str
         "parent_option_id": o.parent_option_id, "batch": o.batch, "steer": o.steer,
         "name": o.name, "description": o.description, "distance": o.distance,
         "value": o.value_json, "keeps": o.keeps_json, "edit_prompt": o.edit_prompt,
-        "status": o.status, "last_error": o.last_error, "x": o.x, "y": o.y,
+        "status": o.status, "last_error": o.last_error, "x": o.x, "y": o.y, "undocked": o.undocked,
         "created_at": o.created_at, "kept_item_id": o.kept_item_id, "takes": takes or [],
     }  # fmt: skip
 
@@ -107,5 +107,5 @@ def exploration_to_dict(
 ) -> dict[str, Any]:
     return {
         "id": e.id, "board_id": e.board_id, "item_id": e.item_id, "key": e.key,
-        "created_at": e.created_at, "options": [option_to_dict(o, (takes or {}).get(o.id)) for o in opts],
+        "dx": e.dx, "dy": e.dy, "created_at": e.created_at, "options": [option_to_dict(o, (takes or {}).get(o.id)) for o in opts],
     }  # fmt: skip

@@ -1,4 +1,4 @@
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
@@ -24,6 +24,17 @@ class OptionPatch(BaseModel):
     status: Literal["dismissed", "open"] | None = None
     x: float | None = None
     y: float | None = None
+    undocked: bool | None = None
+
+
+_Finite = Annotated[float, Field(allow_inf_nan=False)]
+
+
+class OffsetBody(BaseModel):
+    """A flower hub's offset from its source item's centre; both null = back to the automatic slot."""
+
+    dx: _Finite | None
+    dy: _Finite | None
 
 
 class VisualizeBody(BaseModel):
@@ -65,6 +76,13 @@ def board_explorations(board_id: str, session: SessionDep) -> dict[str, Any]:
             for e, opts in explore_repo.for_board(session, board_id)
         ]
     }
+
+
+@router.patch("/explorations/{exploration_id}")
+def patch_exploration(exploration_id: str, body: OffsetBody, session: SessionDep) -> dict[str, Any]:
+    e = service.set_offset(session, exploration_id, body.dx, body.dy)
+    opts = service.visible(session, e.id)
+    return explore_repo.exploration_to_dict(e, opts, _takes(session, opts))
 
 
 @router.patch("/options/{option_id}")

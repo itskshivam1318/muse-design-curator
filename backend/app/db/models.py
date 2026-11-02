@@ -185,6 +185,9 @@ class Exploration(Base):
     board_id: Mapped[str] = mapped_column(ForeignKey("boards.id"), index=True)
     item_id: Mapped[str] = mapped_column(ForeignKey("board_items.id"))
     key: Mapped[str] = mapped_column(String)
+    # the flower hub's offset from its source item's centre; None = the automatic slot
+    dx: Mapped[float | None] = mapped_column(Float)
+    dy: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[str] = _created()
     __table_args__ = (UniqueConstraint("item_id", "key"),)
 
@@ -209,6 +212,8 @@ class ExploreOption(Base):
     kept_item_id: Mapped[str | None] = mapped_column(String)
     x: Mapped[float | None] = mapped_column(Float)
     y: Mapped[float | None] = mapped_column(Float)
+    # its takes were dragged off the flower and float free at full size
+    undocked: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     created_at: Mapped[str] = _created()
     __table_args__ = (CheckConstraint(_in("status", OPTION_STATUS), name="ck_option_status"),)
 
