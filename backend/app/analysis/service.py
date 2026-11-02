@@ -225,6 +225,27 @@ def request_analyse(session: Session, item_id: str, *, count: bool = True) -> No
     queue_analyse(session, item_id, count=count)
 
 
+def recover_stuck_analyses(session: Session) -> int:
+    """Startup: queued jobs die with the process, so every live item left `pending` or
+    `processing` goes back to `pending` and is queued again (uncounted: it was counted when
+    first requested). `pending_lens` and `failed` items wait for a Re-analyse."""
+    ids = list(
+        session.scalars(
+            select(BoardItem.id).where(
+                BoardItem.parse_status.in_(("pending", "processing")),
+                BoardItem.removed_at.is_(None),
+            )
+        )
+    )
+    for item_id in ids:
+        session.execute(
+            update(BoardItem).where(BoardItem.id == item_id).values(parse_status="pending")
+        )
+        after_commit(session, partial(jobs.enqueue, "analyse_item", item_id=item_id))
+    session.flush()
+    return len(ids)
+
+
 def analyse_item_job(item_id: str) -> None:
     from app.api import deps
 
@@ -240,6 +261,10 @@ def analyse_item_job(item_id: str) -> None:
 jobs.register("analyse_item", analyse_item_job)
 
 __all__ = [
-    "analyse", "analyse_item_job", "merge_analysis", "queue_analyse",
+    "analyse",
+    "analyse_item_job",
+    "merge_analysis",
+    "queue_analyse",
+    "recover_stuck_analyses",
     "request_analyse",
 ]  # fmt: skip

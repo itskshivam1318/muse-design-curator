@@ -285,3 +285,65 @@ def test_part_dropped_by_new_analysis_is_deleted_unless_a_dimension_uses_it(
     monkeypatch.setattr(service, "run_analyser", lambda *_a: only_body)
     service.analyse(session, item.id)
     assert set(parts(session, item.id)) == {"body", "detail"}  # "detail" carries a you row
+
+
+def test_recover_stuck_analyses_requeues_pending_and_processing(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = boards_repo.create(session, "B")
+    stuck = [
+        add_image(session, board.id, shade=1, parse_status="pending"),
+        add_image(session, board.id, shade=2, parse_status="processing"),
+    ]
+    untouched = {
+        s: add_image(session, board.id, shade=i + 3, parse_status=s)
+        for i, s in enumerate(("failed", "completed", "pending_lens"))
+    }
+    gone = add_image(session, board.id, shade=9, parse_status="pending")
+    gone.removed_at = "2026-11-01T00:00:00+00:00"
+    session.commit()
+    queued: list[str] = []
+    monkeypatch.setattr(service.jobs, "enqueue", lambda name, **kw: queued.append(kw["item_id"]))
+
+    assert service.recover_stuck_analyses(session) == 2
+    session.commit()
+
+    assert sorted(queued) == sorted(i.id for i in stuck)
+    for item in stuck:
+        session.refresh(item)
+        assert item.parse_status == "pending"  # claimable again
+    for status, item in untouched.items():
+        session.refresh(item)
+        assert item.parse_status == status
+    session.refresh(gone)
+    assert gone.parse_status == "pending" and gone.id not in queued
+
+
+def test_recovered_processing_item_gets_analysed(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = boards_repo.create(session, "B")
+    item = add_image(session, board.id, parse_status="processing")
+    monkeypatch.setattr(service, "run_analyser", lambda *_a: blank)
+    blank = Analysis(content_type="image", summary="", parts=[], dimensions=[])
+    queued: list[str] = []
+    monkeypatch.setattr(service.jobs, "enqueue", lambda name, **kw: queued.append(kw["item_id"]))
+    service.recover_stuck_analyses(session)
+    session.commit()
+    assert queued == [item.id]
+    service.analyse(session, item.id)
+    session.refresh(item)
+    assert item.parse_status == "completed"
+
+
+def test_startup_recovery_calls_recover_stuck_analyses(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app import main
+
+    calls: list[object] = []
+    monkeypatch.setattr(deps, "new_session", lambda: session)
+    monkeypatch.setattr(service, "recover_stuck_analyses", lambda s: calls.append(s) or 0)
+    monkeypatch.setattr(session, "close", lambda: None)
+    main._recover_visualizing()
+    assert len(calls) == 1
