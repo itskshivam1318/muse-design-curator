@@ -131,6 +131,9 @@ Physics resolves any crowding. Persisting the auto offset on first settle is acc
 
 ## My calls (not discussed with the owner)
 
+- Locked demo: item moves keep today's behaviour (PATCH items is on the demo open list and saves); the new
+  writes — hub offsets, undock/dock, the one-time dock-in — stay local while locked.
+
 - **+** button placement beside the tool dock; reuses `AddActions` in a popover; Library keeps its copy.
 - Reduced motion turns off drift/bounce/flourishes.
 - Kept take docked size between petal and full image; undock threshold ≈ one ring radius.
