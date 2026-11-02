@@ -60,12 +60,15 @@ schema-constrained JSON 8.4 s, SAM image 2.2 s, SAM video 2.7 s, `/embeddings` 4
 ## The calm board
 
 The board is a quiet canvas: a rail on the left (Library, Plugins, and the other panels), a small
-floating toolbar at the bottom, and nothing else until you ask. **Notes**: press `N` and click to
-write a sentence on the board; hover it for **Visualize**, which turns the sentence into an image
-(captioned `generated · <model>`) beside it. **The axis** is text first: pick an attribute with the
-Axis tool (`A`) and the options appear as plain text cards along a line. Open one to Visualize,
-Regenerate (take 2, 3, ...) and Keep; only a kept card shows its picture, and Un-keep turns it back
-into text. **Plugins** are nodes you add from the rail and place from the toolbar's Nodes menu; see
+floating toolbar at the bottom, and nothing else until you ask. **Select an item** and its parts
+appear as callouts around it (a mask for a photo's parts, a box for a screen's, a passage for a
+note's), each with its dimensions, plus a "Whole item" card; hover a callout to see its region.
+**Click a dimension** and a flower grows beside the item: its options as note petals around a hub,
+nothing generated. Open a petal to render it with the renderer it names (Muse Image inside the
+part's mask or box, or Muse Spark rewriting only that passage); the result is checked, and **Keep**
+puts it on the board as an ordinary item with its own callouts, so the loop starts again from
+there. **Extract** cuts a part out as a linked item. **Notes**: press `N` and click to write on the
+board. **Plugins** are nodes you add from the rail and place from the toolbar's Nodes menu; see
 [Plugins](#plugins) and [docs/plugins.md](docs/plugins.md).
 
 ## Explore → Visualize

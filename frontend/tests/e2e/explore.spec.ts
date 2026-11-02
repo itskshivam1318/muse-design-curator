@@ -1,11 +1,24 @@
 import { expect, test } from '@playwright/test'
-import { boardItems, createBoard, escapeRe, expectItemCount, openLibrary, selectItem, sitePath } from './helpers.ts'
+import {
+  boardItems,
+  closeLibrary,
+  createBoard,
+  escapeRe,
+  expectItemCount,
+  openDimension,
+  openLibrary,
+  panToReach,
+  renderUntilOk,
+  selectItem,
+  sitePath,
+} from './helpers.ts'
 
 /**
- * Explore -> Visualize on mock providers: the mock reasoning provider returns eight options named
- * like "Option A 3f2c"; the mock image provider's model id is "mock-image".
+ * Explore -> render on mock providers: a dimension on a callout opens a flower of note petals (the
+ * mock reasoning provider names them like "Option A 3f2c"); a petal renders with Muse Image (the
+ * mock image model id is "mock-image") and a kept result is an ordinary item with a verdict.
  */
-test('explore option then visualize', async ({ page }) => {
+test('explore option then render', async ({ page }) => {
   const boardId = await createBoard(page, 'E2E explore', 'A field watch for a 38 mm wrist.')
   await openLibrary(page)
   await page
@@ -14,31 +27,27 @@ test('explore option then visualize', async ({ page }) => {
   await expectItemCount(page, 5)
   await expect(page.getByRole('complementary', { name: 'Board signals' }).getByText('Watch lens · curated')).toBeVisible()
   await expect.poll(async () => (await boardItems(boardId)).every((i) => i.parse_status === 'completed')).toBe(true)
+  await closeLibrary(page)
 
   await selectItem(page, /^image watch_01\.jpg/)
-  await page.keyboard.press('a') // the Axis tool
-  await page.getByRole('dialog', { name: 'Pick an attribute to explore' }).getByRole('button').first().click()
-
-  const cards = page.getByTestId('axis-card')
-  await expect(cards.first()).toBeVisible({ timeout: 30_000 })
-  const n = await cards.count()
-  expect(n).toBeGreaterThanOrEqual(6) // replaces the old option-note count: one text card per option
+  const f = await openDimension(page, 'Body colour')
+  expect(await f.getByTestId('petal').count()).toBeGreaterThanOrEqual(6) // one note petal per option
 
   const knownIds = new Set((await boardItems(boardId)).map((i) => i.id))
-  await cards.first().click()
-  const pop = page.getByRole('dialog').filter({ has: page.getByRole('button', { name: 'Visualize', exact: true }) })
-  await pop.getByRole('button', { name: 'Visualize', exact: true }).click()
-  // a take is a staged item: it shows in the popover, not yet on the board
-  await expect(page.getByRole('img', { name: / · take 1$/ })).toBeVisible({ timeout: 15_000 })
+  await panToReach(page, f)
+  const card = await renderUntilOk(page, f, 'Generate image', 'Muse Image · inside the Body mask')
+  // a result is a staged item: it shows on its petal and card, not yet on the board
+  await expect(card.locator('img.petal-img')).toBeVisible()
   await expectItemCount(page, 5)
-  await page.getByRole('button', { name: 'Keep', exact: true }).click()
+  await card.getByRole('button', { name: 'Keep', exact: true }).click()
   await expectItemCount(page, 6)
 
-  // the kept take is selected; find it by id and check its caption and verdict
+  // the kept result: find it by id and check its caption and verdict
   let generatedId = ''
   await expect
     .poll(async () => {
-      generatedId = (await boardItems(boardId)).find((i) => !knownIds.has(i.id) && i.parent_item_id)?.id ?? ''
+      generatedId =
+        (await boardItems(boardId)).find((i) => !knownIds.has(i.id) && i.parent_item_id && !i.staged)?.id ?? ''
       return generatedId
     })
     .not.toBe('')
@@ -46,10 +55,7 @@ test('explore option then visualize', async ({ page }) => {
   const label = gen.original_filename ?? gen.page_title ?? gen.page_url ?? gen.id
   await page.keyboard.press('Escape')
   await selectItem(page, new RegExp(escapeRe(label)))
-  await expect(page.getByRole('note', { name: 'Generated image' })).toHaveText(
-    'generated · mock-image',
-    { timeout: 10_000 },
-  )
+  await expect(page.getByRole('note', { name: 'Generated image' })).toHaveText('generated · mock-image', { timeout: 10_000 })
   await expect(page.locator('.credit-caption .verdict')).toBeVisible()
   await expect(page.locator('.credit-caption .verdict')).not.toHaveText('Checking…', { timeout: 15_000 })
 })

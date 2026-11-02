@@ -1,43 +1,33 @@
-import { expect, type Locator, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import {
-  type ApiItem,
   apiJson,
   boardIdOf,
   boardItems,
+  callout,
   canvas,
   closeLibrary,
   dropFiles,
-  escapeRe,
   expectItemCount,
+  flower,
   itemButton,
+  openDimension,
   openLibrary,
+  panToReach,
+  renderUntilOk,
   selectItem,
   sitePath,
 } from './helpers.ts'
 import { SITE_URL } from './ports.ts'
 
-const itemLabel = (i: ApiItem) => i.original_filename ?? i.page_title ?? i.page_url ?? i.id
-
-async function releaseProtected(panel: Locator): Promise<void> {
-  const chips = panel.getByRole('button', { name: /^Unprotect / })
-  while ((await chips.count()) > 0) await chips.first().click()
-}
-
 /**
- * The ten-step demo on mock providers and the fixture corpus. Mock values are a deterministic hash
- * of image, prompt (which includes the board context) and schema, so a run sees the same values every
- * time; they are not meaningful, which is why the Vary steps release protected attributes.
+ * The demo on mock providers and the fixture corpus. Mock values are a deterministic hash of image,
+ * prompt (which includes the board context) and schema, so a run sees the same values every time;
+ * they are not meaningful. Exploring is the flower on a part's callout: Vary and its Maybe strip
+ * are gone.
  */
-test('demo flow: board, references, lens, link, video, vary, keep, reject, nudge, reload', async ({ page }) => {
+test('demo flow: board, references, lens, link, video, explore, keep, not this, reload', async ({ page }) => {
   const context = 'A field watch for a 38 mm wrist: legible and plain, but warmer than steel.'
   let boardId = ''
-
-  // This spec walks the Vary path, which V reaches only when Explore is off (EXPLORE_ENABLED=0);
-  // explore.spec.ts covers the Explore path. The app reads the flag from /api/demo/status.
-  await page.route('**/api/demo/status', async (route) => {
-    const res = await route.fetch()
-    await route.fulfill({ response: res, json: { ...(await res.json()), explore_enabled: false } })
-  })
 
   await test.step('1. create a board and type the context', async () => {
     await page.goto('/')
@@ -110,111 +100,57 @@ test('demo flow: board, references, lens, link, video, vary, keep, reject, nudge
     await expect(frame2).toHaveAttribute('aria-pressed', 'true')
   })
 
-  const strip = page.getByRole('region', { name: 'Maybe strip' })
   let sourceId = ''
+  let optionId = ''
 
-  await test.step('6. select an item, Vary dial colour (Explore), Run', async () => {
+  await test.step('6. select an item; its callouts open a flower of note petals', async () => {
     await page.mouse.move(5, 5)
     await selectItem(page, /^image watch_01\.jpg/)
     sourceId = (await boardItems(boardId)).find((i) => i.original_filename === 'watch_01.jpg')!.id
-    await page.keyboard.press('v')
-    const panel = page.getByRole('complementary', { name: 'vary panel' })
-    await panel.getByRole('radio', { name: /^Dial colour/ }).click()
-    await expect(panel.getByRole('radio', { name: 'Explore' })).toHaveAttribute('aria-checked', 'true')
-    // Mock attribute values are arbitrary, so protecting all of them leaves nothing to return:
-    // release every protected attribute (a deliberate user action) and vary the colour alone.
-    await releaseProtected(panel)
-    await panel.getByRole('button', { name: 'Run' }).click()
-    await expect(panel).toHaveCount(0)
+    await expect(callout(page, 'Body')).toBeVisible()
+    const f = await openDimension(page, 'Body colour')
+    await expect(f.locator('img')).toHaveCount(0) // options are notes: nothing rendered yet
   })
 
-  await test.step('7. candidates stream into the Maybe strip; keep one; it lands with a lineage curve', async () => {
-    await expect(strip).toBeVisible()
-    await expect(strip.getByRole('button', { name: /^Candidate 2, validated/ })).toBeVisible()
-    await strip.getByRole('button', { name: /^Candidate 1, validated/ }).click()
-    const pop = page.getByRole('dialog', { name: 'Candidate' })
-    await expect(pop.getByRole('img', { name: 'Candidate image' })).toBeVisible()
-    await pop.getByRole('button', { name: 'Keep' }).click()
+  await test.step('7. render a petal inside its mask; keep it; it lands as an item linked to its source', async () => {
+    const f = flower(page, 'Body colour')
+    await panToReach(page, f)
+    const card = await renderUntilOk(page, f, 'Generate image', 'Muse Image · inside the Body mask')
+    optionId = (await f.locator('.petal.is-open').getAttribute('data-option-id'))!
+    await card.getByRole('button', { name: 'Keep', exact: true }).click()
     await expectItemCount(page, 8)
-    await expect(strip.getByRole('button', { name: 'Candidate 1, validated, kept' })).toBeVisible()
-    // the kept item is selected, which draws its lineage curve back to the source (parent_item_id)
-    const kept = (await boardItems(boardId)).filter((i) => i.parent_item_id === sourceId)
+    const kept = (await boardItems(boardId)).filter((i) => i.parent_item_id === sourceId && !i.staged)
     expect(kept).toHaveLength(1)
-    const k = kept[0]
-    const pressed = page.getByRole('list', { name: 'Items on this board' }).locator('button[aria-pressed="true"]')
-    await expect(pressed).toHaveCount(1)
-    await expect(pressed).toContainText(k.original_filename ?? k.page_title ?? k.page_url ?? k.id)
+    await expect(f.locator(`[data-option-id="${optionId}"]`)).toHaveAttribute('aria-label', / · kept$/)
   })
 
-  await test.step('8. reject one as "not my style", mark it not-this; counter-signals update', async () => {
-    await strip.getByRole('button', { name: /^Candidate 2, validated/ }).click()
-    const pop = page.getByRole('dialog', { name: 'Candidate' })
-    await pop.getByRole('button', { name: 'Reject' }).click()
-    await pop.getByRole('radio', { name: 'Not my style' }).click()
-    await pop.getByLabel('Mark as not this').check()
-    await pop.getByRole('button', { name: 'Confirm reject' }).click()
-    await expect(strip.getByRole('button', { name: 'Candidate 2, validated, rejected' })).toBeVisible()
-    await expectItemCount(page, 9)
-    await expect(itemButton(page, / · not this$/)).toHaveCount(1)
-    await page.keyboard.press('Escape')
-    // mark a second item not-this (counter-signals need two; see the profile unit tests)
+  await test.step('8. drop another option as "Not this"; mark an item not-this', async () => {
+    const f = flower(page, 'Body colour')
+    const before = await f.getByTestId('petal').count()
+    const other = f.locator('[data-testid="petal"]:not(.is-kept)').first()
+    await other.click()
+    await page.locator('.petal-card').getByRole('button', { name: 'Dismiss' }).click()
+    await expect(f.getByTestId('petal')).toHaveCount(before - 1)
+    await page.mouse.move(5, 5)
     await selectItem(page, /^image watch_05/)
+    await page.keyboard.press('f') // the flower was panned into reach: fit the board back
     await page.getByRole('toolbar', { name: 'Item actions' }).getByRole('button', { name: 'Not this' }).click()
-    await expect(itemButton(page, / · not this$/)).toHaveCount(2)
-    // whether a counter-signal appears depends on mock values coinciding; the profile unit tests cover it
+    await expect(itemButton(page, / · not this$/)).toHaveCount(1)
   })
 
-  await test.step('9. nudge "legibility: more" on another item', async () => {
-    // mock values depend on the image and the board context: find an item whose legibility is
-    // known and below the top of the scale (low | medium | high)
-    let target: { label: string; value: string } | null = null
-    for (const it of await boardItems(boardId)) {
-      if (it.id === sourceId || it.role !== 'reference') continue
-      const attrs = await apiJson<{ attributes: { key: string; value: unknown; enabled: boolean }[] }>(
-        `/items/${it.id}/attributes`,
-      )
-      const leg = attrs.attributes.find((x) => x.key === 'legibility')
-      if (leg?.enabled && (leg.value === 'low' || leg.value === 'medium')) {
-        target = { label: itemLabel(it), value: leg.value }
-        break
-      }
-    }
-    expect(target, 'an item with a known legibility below "high"').not.toBeNull()
-    await selectItem(page, new RegExp(`^\\w+ ${escapeRe(target!.label)}`))
-    await page.keyboard.press('v')
-    const panel = page.getByRole('complementary', { name: 'vary panel' })
-    await panel.getByRole('radio', { name: /^Legibility/ }).click()
-    await panel.getByRole('radio', { name: 'More' }).click()
-    await expect(panel.getByRole('radio', { name: 'More' })).toHaveAttribute('aria-checked', 'true')
-    await expect(panel.locator('.preflight-sentence')).toContainText(target!.value)
-    await releaseProtected(panel)
-    const started = page.waitForResponse(
-      (r) => r.request().method() === 'POST' && /\/api\/boards\/[^/]+\/runs$/.test(new URL(r.url()).pathname),
-    )
-    await panel.getByRole('button', { name: 'Run' }).click()
-    const { run_id: nudgeRun } = (await (await started).json()) as { run_id: string }
-    await expect(panel).toHaveCount(0)
-    // wait for the nudge run itself to finish, so the strip is not still showing the earlier run
-    await expect
-      .poll(async () => (await apiJson<{ run: { status: string } }>(`/runs/${nudgeRun}`)).run.status, { timeout: 30_000 })
-      .toBe('completed')
-    // the Maybe strip now follows the nudge run (no decided candidates) through to completion
-    await expect(strip.getByRole('status')).toHaveText(/ found\./, { timeout: 30_000 })
-    await expect(strip.getByRole('button', { name: /, (kept|rejected)$/ })).toHaveCount(0)
-  })
-
-  await test.step('10. reload; everything persists', async () => {
-    const before = await boardItems(boardId)
+  await test.step('9. reload; everything persists', async () => {
+    const before = (await boardItems(boardId)).filter((i) => !i.staged)
     await page.reload()
     await expectItemCount(page, before.length)
     await openLibrary(page) // the Board signals panel lives in the Library, which is closed after a reload
     const bar = page.getByRole('region', { name: 'Board context' })
     await expect(bar.getByRole('button', { name: new RegExp(context.slice(0, 30)) })).toContainText('Watch')
     await expect(signals.getByText('Watch lens · curated')).toBeVisible()
-    await expect(itemButton(page, / · not this$/)).toHaveCount(2)
+    await expect(itemButton(page, / · not this$/)).toHaveCount(1)
     const after = await boardItems(boardId)
-    const children = after.filter((i) => i.parent_item_id === sourceId)
-    expect(children.map((i) => i.role).sort()).toEqual(['counter_example', 'reference']) // kept + not-this
+    const children = after.filter((i) => i.parent_item_id === sourceId && !i.staged)
+    expect(children.map((i) => i.role)).toEqual(['reference']) // the kept result
+    await expect(page.locator(`[data-testid="petal"][data-option-id="${optionId}"]`)).toHaveAttribute('aria-label', / · kept$/)
     // the chosen video frame survived the reload
     const video = after.find((i) => i.kind === 'video')!
     const { frames } = await apiJson<{ frames: { chosen: boolean; t_ms: number }[] }>(`/items/${video.id}/frames`)

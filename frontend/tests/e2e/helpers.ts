@@ -16,7 +16,13 @@ export interface ApiItem {
   page_title: string | null
   page_url: string | null
   parent_item_id: string | null
+  x: number
+  y: number
+  w: number
+  h: number
   note_text?: string | null
+  /** A rendered result not yet kept: listed, but not on the canvas. */
+  staged?: boolean
 }
 
 export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -105,3 +111,76 @@ export async function closeLibrary(page: Page): Promise<void> {
 
 /** Escape a string for use inside a RegExp. */
 export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+// ---- the exploration map: callouts, flowers, petal cards ----
+
+/** A part's callout card (or "Whole item") around the selected item. */
+export const callout = (page: Page, name: string) => page.locator('.callout-layer').getByRole('group', { name, exact: true })
+export const flower = (page: Page, name: string) => page.getByRole('group', { name: `${name} flower`, exact: true })
+export const petals = (f: Locator) => f.getByTestId('petal')
+
+/** Click a dimension on the selected item's callouts and wait for its (new) flower. */
+export async function openDimension(page: Page, dimension: string): Promise<Locator> {
+  const named = flower(page, dimension)
+  const before = new Set(await named.evaluateAll((els) => els.map((e) => e.getAttribute('data-exploration-id'))))
+  await page.locator('.callout-layer').getByRole('button', { name: new RegExp(`^${escapeRe(dimension)} ·`) }).click()
+  let id: string | null | undefined
+  await expect
+    .poll(async () => {
+      const ids = await named.evaluateAll((els) => els.map((e) => e.getAttribute('data-exploration-id')))
+      id = ids.find((x) => !before.has(x))
+      return id
+    })
+    .toBeTruthy()
+  const f = page.locator(`[data-exploration-id="${id}"]`)
+  // the group itself has no box: its hub and petals are placed in canvas units
+  await expect(f.locator('.flower-hub')).toBeVisible()
+  await expect(petals(f).first()).toBeVisible()
+  return f
+}
+
+/**
+ * Open each petal in turn and render it until one's check reads ✓; returns that petal's card. The
+ * mock answers "yes" for about a third of prompts, so "More like this" brings new options if needed.
+ */
+export async function renderUntilOk(page: Page, f: Locator, renderTitle: string, renderDetail: string): Promise<Locator> {
+  for (let i = 0; i < 24; i++) {
+    const n = await petals(f).count()
+    if (i >= n) throw new Error('no petal rendered with a ✓ check')
+    const petal = petals(f).nth(i)
+    if ((await petal.getAttribute('aria-label'))?.match(/ · (rendered|drifted|kept)$/)) continue
+    const optionId = (await petal.getAttribute('data-option-id'))!
+    await petal.click()
+    const card = page.locator('.petal-card')
+    await expect(card).toBeVisible()
+    const render = card.getByRole('button', { name: new RegExp(`^${escapeRe(renderTitle)}`) })
+    await expect(render.locator('.petal-render-title')).toHaveText(renderTitle)
+    await expect(render.locator('.petal-render-detail')).toHaveText(renderDetail)
+    await render.click()
+    const check = card.locator('.petal-check')
+    await expect(check).toBeVisible({ timeout: 30_000 })
+    await expect(check).not.toHaveText('Checking…', { timeout: 30_000 })
+    if ((await check.textContent())?.startsWith('✓')) return card
+    // close the card (its petal toggles it; it may cover the next petal) and try the next one;
+    // past the last, ask for more options
+    await expect(f.locator(`[data-option-id="${optionId}"]`)).toHaveAttribute('aria-label', / · (rendered|drifted)$/)
+    if (i === n - 1) {
+      await card.getByRole('button', { name: 'More like this' }).click()
+      await expect(petals(f)).toHaveCount(n + 8)
+    }
+    await petal.click()
+    await expect(card).toHaveCount(0)
+  }
+  throw new Error('no petal rendered with a ✓ check')
+}
+
+/** Pan the view so the flower's hub sits in the upper left of the canvas, clear of the agent card. */
+export async function panToReach(page: Page, f: Locator): Promise<void> {
+  const c = (await canvas(page).boundingBox())!
+  const hub = (await f.locator('.flower-hub').boundingBox())!
+  await page.mouse.move(c.x + 20, c.y + c.height / 2)
+  await page.mouse.wheel(hub.x - (c.x + c.width * 0.3), hub.y - (c.y + c.height * 0.3))
+  await expect
+    .poll(async () => (await f.locator('.flower-hub').boundingBox())!.y)
+    .toBeLessThan(c.y + c.height * 0.4)
+}

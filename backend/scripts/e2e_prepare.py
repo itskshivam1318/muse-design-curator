@@ -6,9 +6,9 @@
 
 Wipes DATA_DIR (it must be an `e2e` directory), seeds the four demo boards from the committed
 fixture corpus, and writes the files the specs need under DATA_DIR/site (served by a static
-server during the run): five upload images, a page with an og:image, a page with a plain <img>
-for the extension, and a 3-second MP4 generated with PyAV. Nothing is downloaded and no model
-API is called: the script refuses to run unless every provider is the mock.
+server during the run): five upload images, a 1600x900 app screen, a page with an og:image, a
+page with a plain <img> for the extension, and a 3-second MP4 generated with PyAV. Nothing is
+downloaded and no model API is called: the script refuses to run unless every provider is the mock.
 """
 
 from __future__ import annotations
@@ -33,6 +33,7 @@ OG_IMAGE = "watch_06.jpg"
 CAPTURE_IMAGE = "watch_07.jpg"
 VIDEO_FRAMES = ["watch_08.jpg", "watch_06.jpg", "watch_07.jpg"]  # one second each
 VIDEO_SIZE = (480, 360)
+SCREEN_SIZE = (1600, 900)  # wide enough (>= 1.6) that the mock analysis reads it as a UI screen
 
 
 def _guard() -> Path:
@@ -77,6 +78,17 @@ def mp4_bytes(paths: list[Path], seconds_each: float = 1.0, fps: int = 10) -> by
     return buf.getvalue()
 
 
+def screen_png() -> bytes:
+    """A plain app-screen mock-up: a dark header bar and a button on a light page."""
+    w, h = SCREEN_SIZE
+    im = Image.new("RGB", (w, h), (244, 244, 240))
+    im.paste((34, 34, 34), (0, 0, w, int(h * 0.15)))
+    im.paste((40, 90, 200), (int(w * 0.35), int(h * 0.8), int(w * 0.65), int(h * 0.9)))
+    buf = io.BytesIO()
+    im.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>{title}</title>
 <meta property="og:title" content="{title}">
@@ -103,6 +115,7 @@ def write_site(site: Path) -> None:
             body='<img id="watch" src="/capture.jpg" alt="A watch" width="400">',
         )
     )  # fmt: skip
+    (site / "screen.png").write_bytes(screen_png())
     (site / "clip.mp4").write_bytes(mp4_bytes([FIXTURE_IMAGES / n for n in VIDEO_FRAMES]))
 
 
