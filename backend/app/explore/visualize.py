@@ -188,7 +188,7 @@ def visualize(session: Session, option_id: str) -> None:
     session.commit()
 
     try:  # a lens that could not grow never costs the user the image or its check
-        add_vocabulary(session, e.board_id, e.key, o.value_json)
+        add_vocabulary(session, e.board_id, e.key, o.value_json, item_id=e.item_id)
         session.commit()
     except Exception:
         session.rollback()

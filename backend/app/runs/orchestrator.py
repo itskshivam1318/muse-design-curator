@@ -20,7 +20,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 
 from app import events, jobs, lens_service
 from app.config import get_settings
-from app.db.models import VariationRun
+from app.db.models import ItemAttribute, VariationRun
 from app.db.repos import attributes as attrs_repo
 from app.db.repos import boards as boards_repo
 from app.db.repos import idempotency as idem_repo
@@ -65,20 +65,20 @@ JOB = "run_variation"
 # ---- source ----
 
 
+def record_of(r: ItemAttribute) -> AttributeRecord:
+    """One stored attribute as the engine uses it, measured data included."""
+    return AttributeRecord.model_validate({
+        "key": r.key, "label": r.label, "category": r.category, "kind": r.kind,
+        "part": r.part, "value": r.value_json, "confidence": r.confidence,
+        "status": r.status, "source": r.source, "source_detail": r.source_detail or "",
+        "evidence": Evidence.model_validate(r.evidence_json or {}),
+        "enabled": r.enabled, "measured": r.measured_json,
+    })  # fmt: skip
+
+
 def source_records(session: Session, item_id: str) -> list[AttributeRecord]:
     """The source item's attributes as the engine uses them, measured data included."""
-    out = []
-    for r in attrs_repo.for_item(session, item_id):
-        out.append(
-            AttributeRecord.model_validate({
-                "key": r.key, "label": r.label, "category": r.category, "kind": r.kind,
-                "part": r.part, "value": r.value_json, "confidence": r.confidence,
-                "status": r.status, "source": r.source, "source_detail": r.source_detail or "",
-                "evidence": Evidence.model_validate(r.evidence_json or {}),
-                "enabled": r.enabled, "measured": r.measured_json,
-            })
-        )  # fmt: skip
-    return out
+    return [record_of(r) for r in attrs_repo.for_item(session, item_id)]
 
 
 def _request_of(run: VariationRun) -> VariationRequest:

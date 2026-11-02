@@ -4,12 +4,14 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from app import demo, events
 from app.db.models import ItemAttribute
+from app.db.repos import attributes as attrs_repo
 from app.db.repos import boards as boards_repo
 from app.db.repos import lenses as lenses_repo
+from app.domain.kinds import EnumSpec
 from app.domain.lens import load_curated_lens
 from app.explore import service
 from tests.integration.runs.test_orchestrator import source_with
@@ -211,14 +213,13 @@ def test_model_edit_prompt_ends_with_the_keep_sentence(
     assert c["edit_prompt"] == f"Change the markers to C. {keep}"
 
 
-def test_unparsed_item_still_explores(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+def test_unparsed_item_has_no_dimension_to_explore(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
     s = world["session"]
     item = source(world)
     s.execute(delete(ItemAttribute).where(ItemAttribute.item_id == item))
     s.commit()
     r = explore(client, item)
-    assert r.status_code == 200, r.json()
-    assert len(r.json()["options"]) == 8
+    assert r.status_code == 400 and error(r) == "DIMENSION_NOT_ON_ITEM"
 
 
 def test_all_junk_returns_502_explore_empty(client: TestClient, world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -256,9 +257,24 @@ def test_options_are_capped_at_ten(client: TestClient, world, monkeypatch) -> No
     assert len(explore(client, source(world)).json()["options"]) == 10
 
 
-def test_unknown_key_400(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
-    r = client.post(f"/api/items/{source(world)}/explore", json={"key": "wheel_count"})
-    assert r.status_code == 400 and error(r) == "ATTRIBUTE_NOT_IN_LENS"
+def test_explore_unknown_key_is_400_dimension_not_on_item(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    item = source(world)
+    r = client.post(f"/api/items/{item}/explore", json={"key": "wheel_count"})
+    assert r.status_code == 400 and error(r) == "DIMENSION_NOT_ON_ITEM"
+    # a lens attribute the item does not carry is not explorable either
+    s = world["session"]
+    s.execute(delete(ItemAttribute).where(ItemAttribute.item_id == item,
+                                          ItemAttribute.key == "hands"))  # fmt: skip
+    s.commit()
+    r = client.post(f"/api/items/{item}/explore", json={"key": "hands"})
+    assert r.status_code == 400 and error(r) == "DIMENSION_NOT_ON_ITEM"
+    # a dimension the user removed is gone
+    row = s.scalar(select(ItemAttribute).where(ItemAttribute.item_id == item,
+                                               ItemAttribute.key == "markers"))  # fmt: skip
+    row.removed = True
+    s.commit()
+    r = explore(client, item)
+    assert r.status_code == 400 and error(r) == "DIMENSION_NOT_ON_ITEM"
 
 
 def test_unknown_item_404(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
@@ -274,17 +290,34 @@ def test_shape_kind_400(client: TestClient, world) -> None:  # type: ignore[no-u
                             status="confirmed")  # fmt: skip
     boards_repo.update(s, world["watch"], lens_id=lens.id)
     s.commit()
-    r = client.post(f"/api/items/{source(world)}/explore", json={"key": "case_silhouette"})
+    item = source(world)
+    attrs_repo.upsert(s, item, "case_silhouette", label="Case silhouette", category="case",
+                      kind="shape", part="case", value_json=None, confidence=0.0,
+                      status="missing", source="model")  # fmt: skip
+    s.commit()
+    r = client.post(f"/api/items/{item}/explore", json={"key": "case_silhouette"})
     assert r.status_code == 400 and error(r) == "KIND_NOT_EXPLORABLE"
 
 
-def test_board_without_lens_409(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+def test_explore_without_lens_on_item_dimension(client: TestClient, world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     s = world["session"]
     item = source(world)
     boards_repo.update(s, world["watch"], lens_id=None)
+    spec = EnumSpec(key="strap_stitching", label="Strap stitching", category="physical",
+                    part="strap", vocabulary=["contrast"], open_vocabulary=True)  # fmt: skip
+    attrs_repo.upsert(s, item, "strap_stitching", label="Strap stitching", category="physical",
+                      kind="enum", part="strap", value_json="contrast", confidence=0.9,
+                      status="extracted", source="model", dim_type="physical",
+                      spec_json=spec.model_dump(mode="json"))  # fmt: skip
     s.commit()
-    r = explore(client, item)
-    assert r.status_code == 409 and error(r) == "LENS_REQUIRED"
+    f = fake(monkeypatch, [opt("Tonal thread", keeps=["markers", "strap_stitching", "nope"])])
+    r = client.post(f"/api/items/{item}/explore", json={"key": "strap_stitching"})
+    assert r.status_code == 200, r.json()
+    (o,) = r.json()["options"]
+    assert o["value"] == "tonal_thread" and o["keeps"] == ["markers"]
+    assert '"Strap stitching" (strap_stitching)' in f.prompts[0]
+    # the item's own dimensions, lens or not, are the ones the model may keep
+    assert "- markers (" in f.prompts[0] and "- strap_stitching (" in f.prompts[0]
 
 
 def test_dismiss_hides_from_board_list(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]

@@ -79,6 +79,8 @@ def _kept_item(session: Session, candidate_id: str) -> BoardItem | None:
 
 
 def _copy_attributes(session: Session, item: BoardItem, cx: CorpusItem, lens: LensSpec) -> None:
+    """The corpus item's values as the kept item's own dimensions: each row stores the run
+    lens's spec, so `spec_for` reads it later without a board lens."""
     by_key = {a.key: a for a in lens.attributes}
     for row in corpus_repo.attributes(session, cx.id):
         spec = by_key.get(row.key)
@@ -95,6 +97,8 @@ def _copy_attributes(session: Session, item: BoardItem, cx: CorpusItem, lens: Le
             kind=spec.kind, part=spec.part, value_json=row.value_json,
             confidence=row.confidence, status=status, source="corpus_index",
             evidence_json=row.evidence_json, measured_json=row.measured_json,
+            dim_type="physical" if spec.part else "abstract",
+            spec_json=spec.model_dump(mode="json"),
         )  # fmt: skip
 
 

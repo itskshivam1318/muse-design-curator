@@ -1,17 +1,47 @@
+"""Keep / reject on the candidates of a Vary run made before Vary was retired."""
+
 from typing import Any
 
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
+from app.analysis.spec import spec_for
 from app.db.models import BoardItem, CorpusItem, Decision, RunCandidate, VariationRun
 from app.db.repos import attributes as attrs_repo
+from app.db.repos import corpus as corpus_repo
+from app.db.repos import decisions as decisions_repo
 from app.db.repos import profiles as profiles_repo
-from tests.integration.api.test_runs import post
+from app.db.repos import runs as runs_repo
+from tests.integration.runs.test_orchestrator import make_run
+
+
+def post(world: dict[str, Any]) -> str:
+    """A finished run, as one made while Vary was live (its routes are retired)."""
+    return make_run(world, world["watch"]).id
+
+
+def results(world: dict[str, Any], rid: str) -> list[dict[str, Any]]:
+    """The run's ranked candidates with their provenance and decisions, newest first."""
+    s = world["session"]
+    s.expire_all()
+    out = []
+    for c in runs_repo.candidates(s, rid):
+        if c.rank is None:
+            continue
+        cx = corpus_repo.get(s, c.corpus_item_id)
+        history = [{"decision": d.decision, "reason_code": d.reason_code, "item_id": d.item_id}
+                   for d in decisions_repo.history(s, c.id)]  # fmt: skip
+        out.append({
+            "id": c.id, "corpus_item_id": c.corpus_item_id,
+            "provenance": {"credit": cx.attribution_text, "landing_url": cx.landing_url},
+            "decision": history[0] if history else None, "decisions": history,
+        })  # fmt: skip
+    return out
 
 
 def setup(client: TestClient, world: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-    rid = post(client, world).json()["run_id"]
-    top = client.get(f"/api/runs/{rid}").json()["results"][0]
+    rid = post(world)
+    top = results(world, rid)[0]
     free_sha(world, top)
     return rid, top
 
@@ -77,8 +107,7 @@ def test_kept_item_carries_licence_credit_and_parent_link(client, world) -> None
     s = world["session"]
     s.expire_all()
     row = s.get(BoardItem, item["id"])
-    run = client.get(f"/api/runs/{rid}").json()["run"]
-    parent = s.get(BoardItem, run["source_item_id"])
+    parent = s.get(BoardItem, s.get(VariationRun, rid).source_item_id)
     assert row.origin == "candidate" and row.rights_status == "licensed"
     assert row.role == "reference" and row.parse_status == "completed"
     assert row.corpus_item_id == top["corpus_item_id"] and row.parent_item_id == parent.id
@@ -88,14 +117,14 @@ def test_kept_item_carries_licence_credit_and_parent_link(client, world) -> None
     attrs = {a.key: a for a in attrs_repo.for_item(s, row.id)}
     assert attrs and all(a.source == "corpus_index" for a in attrs.values())
     assert "dial_color" in attrs and attrs["dial_color"].value_json is not None
-    got = client.get(f"/api/runs/{rid}").json()["results"][0]
+    got = results(world, rid)[0]
     assert got["decision"]["item_id"] == row.id
 
 
 def test_second_kept_item_does_not_overlap_the_first(client, world) -> None:  # type: ignore[no-untyped-def]
     rid, _top = setup(client, world)
-    results = client.get(f"/api/runs/{rid}").json()["results"]
-    ids = [decide(client, rid, r["id"], decision="keep").json()["item"]["id"] for r in results[:3]]
+    ranked = results(world, rid)
+    ids = [decide(client, rid, r["id"], decision="keep").json()["item"]["id"] for r in ranked[:3]]
     s = world["session"]
     s.expire_all()
     rows = [s.get(BoardItem, i) for i in ids]
@@ -113,7 +142,7 @@ def test_keep_then_reject_appends_history_latest_is_reject(client, world) -> Non
     decide(client, rid, top["id"], decision="keep")
     r = decide(client, rid, top["id"], decision="reject", reason_code="not_my_style", note="meh")
     assert [h["decision"] for h in r.json()["history"]] == ["reject", "keep"]
-    got = client.get(f"/api/runs/{rid}").json()["results"][0]
+    got = results(world, rid)[0]
     assert got["decision"]["decision"] == "reject" and len(got["decisions"]) == 2
     assert got["decision"]["reason_code"] == "not_my_style"
 
@@ -138,7 +167,7 @@ def test_decision_on_excluded_candidate_is_409(client, world) -> None:  # type: 
 
 def test_candidate_from_another_run_is_404(client, world) -> None:  # type: ignore[no-untyped-def]
     rid, top = setup(client, world)
-    other = post(client, world).json()["run_id"]
+    other = post(world)
     assert decide(client, other, top["id"], decision="keep").status_code == 404
     assert decide(client, rid, "nope", decision="keep").status_code == 404
 
@@ -181,8 +210,8 @@ def test_csv_export(client, world) -> None:  # type: ignore[no-untyped-def]
 
 
 def test_keep_links_existing_item_with_same_image(client, world) -> None:  # type: ignore[no-untyped-def]
-    rid = post(client, world).json()["run_id"]
-    top = client.get(f"/api/runs/{rid}").json()["results"][0]
+    rid = post(world)
+    top = results(world, rid)[0]
     s = world["session"]
     sha = s.get(CorpusItem, top["corpus_item_id"]).sha256
     twin = s.scalars(select(BoardItem).where(
@@ -235,14 +264,17 @@ def test_kept_item_carries_corpus_embedding_and_palette(client, world) -> None: 
     assert np.allclose(np.asarray(row.embedding_json), expected, atol=1e-6)
 
 
-def test_kept_item_can_be_varied(client, world) -> None:  # type: ignore[no-untyped-def]
+def test_kept_item_carries_its_own_dimension_specs(client, world) -> None:  # type: ignore[no-untyped-def]
     rid, top = setup(client, world)
     item = decide(client, rid, top["id"], decision="keep").json()["item"]
-    r = client.post(
-        f"/api/boards/{world['watch']}/runs",
-        json={"source_item_id": item["id"], "target_key": "dial_color", "mode": "explore"},
-    )
-    assert r.status_code == 202, r.json()
+    s = world["session"]
+    s.expire_all()
+    rows = {r.key: r for r in attrs_repo.for_item(s, item["id"])}
+    assert rows and all(r.spec_json for r in rows.values())
+    dial = rows["dial_color"]
+    assert spec_for(dial).kind == "color" and spec_for(dial).label == dial.label
+    assert {r.dim_type for r in rows.values()} <= {"physical", "abstract"}
+    assert all((r.dim_type == "physical") == bool(r.part) for r in rows.values())
 
 
 def test_not_this_item_carries_corpus_embedding(client, world) -> None:  # type: ignore[no-untyped-def]

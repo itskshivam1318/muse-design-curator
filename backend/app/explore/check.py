@@ -1,24 +1,26 @@
 """Check a generated item: ask directly whether it shows the option, compare the kept attributes.
 
 The target is a direct visual question to the reasoning provider (re-parsing alone misses new
-values). Kept attributes use the validator's comparators against the source; only keys whose
-source value is reliable are judged; `of` counts the decidable ones (kept + drifted) and the
-ones the comparator calls "unknown" are counted apart.
-"""
+values). Kept attributes use the validator's comparators against the source; only the source
+item's own dimensions still found on it (not removed, not stale) whose value is reliable are
+judged; `of` counts the decidable ones (kept + drifted) and the ones the comparator calls
+"unknown" (a key the take does not carry among them) are counted apart."""
 
 import math
 from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.analysis.spec import spec_for
 from app.config import get_settings
-from app.db.models import Exploration, ExploreOption
-from app.domain.attributes import AttributeRecord
+from app.db.models import Exploration, ExploreOption, ItemAttribute
+from app.domain.lens import LensSpec
 from app.explore.prompts import build_check_prompt
+from app.explore.service import dimensions, is_held
 from app.extraction.service import _image_for, _require_item, current_lens
 from app.providers import get_reasoning
 from app.retrieval.config import RANKING_CONFIG
-from app.runs.orchestrator import source_records
+from app.runs.orchestrator import record_of
 from app.validation.comparators import AttrValue, compare
 
 ANSWERS = ("yes", "no", "unclear")
@@ -59,6 +61,13 @@ def _missing() -> AttrValue:
     return AttrValue(None, 0.0, "missing")
 
 
+def _label(row: ItemAttribute | None, key: str, lens: LensSpec | None) -> str:
+    """The explored dimension's label: the item's own, else the lens's, else its key."""
+    if row is not None:
+        return spec_for(row, lens).label
+    return next((a.label for a in lens.attributes if a.key == key), key) if lens else key
+
+
 def check_generated(
     session: Session, source_id: str, generated_id: str, option: ExploreOption
 ) -> dict[str, Any]:
@@ -69,27 +78,28 @@ def check_generated(
     assert e is not None
     gen = _require_item(session, generated_id)
     lens = current_lens(session, gen.board_id)
-    specs = {a.key: a for a in lens.attributes} if lens else {}
-    target_spec = specs.get(e.key)
+    rows = dimensions(session, source_id)
+    target = next((r for r in rows if r.key == e.key), None)
+    specs = {r.key: spec_for(r, lens) for r in rows}
     prompt = build_check_prompt(
-        label=target_spec.label if target_spec else e.key,
+        label=_label(target, e.key, lens),
         option_name=option.name, description=option.description or "",
     )  # fmt: skip
     image, _sha = _image_for(session, gen)
-    target = clean_target(get_reasoning(get_settings()).check_target([image], prompt))
+    answer = clean_target(get_reasoning(get_settings()).check_target([image], prompt))
 
-    before: dict[str, AttributeRecord] = {r.key: r for r in source_records(session, source_id)}
-    after: dict[str, AttributeRecord] = {r.key: r for r in source_records(session, generated_id)}
+    before = {r.key: record_of(r) for r in rows if is_held(r)}
+    after = {r.key: record_of(r) for r in dimensions(session, generated_id) if is_held(r)}
     kept, unknown, drifted = 0, 0, []
     for key in option.keeps_json or []:
-        spec, src = specs.get(key), before.get(key)
-        if spec is None or src is None:
+        src = before.get(key)
+        if src is None:
             continue
         a = AttrValue.from_record(src)
         if not a.reliable(RANKING_CONFIG):
             continue
         b = AttrValue.from_record(after[key]) if key in after else _missing()
-        verdict = compare(spec, a, b, RANKING_CONFIG)
+        verdict = compare(specs[key], a, b, RANKING_CONFIG)
         if verdict == "same":
             kept += 1
         elif verdict == "different":
@@ -97,7 +107,7 @@ def check_generated(
         else:
             unknown += 1
     return {
-        "target": target, "kept": kept, "of": kept + len(drifted), "drifted": drifted,
+        "target": answer, "kept": kept, "of": kept + len(drifted), "drifted": drifted,
         "unknown": unknown,
     }  # fmt: skip
 

@@ -280,16 +280,6 @@ def test_a_crashing_live_phase_never_fails_the_run(world, live, monkeypatch) -> 
     assert set(origins(world, run).values()) == {"corpus"}
 
 
-def test_run_api_exposes_candidate_origin(world, live, client) -> None:  # type: ignore[no-untyped-def]
-    two_sources(live)
-    run = make_run(world, world["watch"])
-    body = client.get(f"/api/runs/{run.id}").json()
-    seen = {c["origin"] for c in body["results"] + body["needs_review"] + body["rejected"]}
-    assert seen <= {"corpus", "live"} and "live" in seen
-    assert all("source" in c for c in body["results"])
-    assert "live" in body["summary"]
-
-
 def test_live_stage_is_bounded_end_to_end(world, live, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     import time
 

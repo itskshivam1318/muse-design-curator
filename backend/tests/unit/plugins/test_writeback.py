@@ -174,3 +174,21 @@ def test_parent_is_first_live_image_input(
     (item_id,) = res["created_item_ids"]
     item = db.get(BoardItem, item_id)
     assert item is not None and item.parent_item_id == second
+
+
+def test_existing_row_fits_its_own_spec_without_a_lens(
+    client: TestClient, board: str, db: Session, no_jobs: None
+) -> None:
+    img, run, node = setup(client, board, db, "palette")
+    own = EnumSpec(key="hardware", label="Hardware", category="physical", part="clasp",
+                   vocabulary=["brass", "chrome"], open_vocabulary=False)  # fmt: skip
+    attrs_repo.upsert(db, img, "hardware", label="Hardware", category="physical", kind="enum",
+                      part="clasp", value_json=None, confidence=0.5, status="extracted",
+                      source="model", dim_type="physical",
+                      spec_json=own.model_dump(mode="json"))  # fmt: skip
+    ok = apply_output(db, run, node, {"attributes": [{"item_id": img, "key": "hardware",
+                                                      "value": "Chrome"}]})  # fmt: skip
+    assert ok["skipped_attributes"] == [] and attr(db, img, "hardware").value_json == "chrome"
+    no = apply_output(db, run, node, {"attributes": [{"item_id": img, "key": "hardware",
+                                                      "value": "gunmetal"}]})  # fmt: skip
+    assert [s["key"] for s in no["skipped_attributes"]] == ["hardware"]
