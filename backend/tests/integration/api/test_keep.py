@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from app import demo, events
+from app import demo, events, jobs
 from app.db.ids import now_iso
 from app.db.models import BoardItem
 from app.db.repos import items as items_repo
@@ -240,3 +240,28 @@ def test_deleting_last_kept_take_reopens_option(client: TestClient, world) -> No
     assert client.delete(f"/api/items/{a}").status_code == 204
     row = option_row(world, oid)
     assert row.kept_item_id is None and row.status == "open"
+
+
+def test_kept_take_is_visible_and_analysed(  # type: ignore[no-untyped-def]
+    client: TestClient, world, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    oid, (a, b) = make_takes(client, world)
+    queued: list[tuple[str, dict[str, Any]]] = []
+    monkeypatch.setattr(jobs, "enqueue", lambda name, **kw: queued.append((name, kw)))
+    assert keep(client, oid, a, x=300, y=40).status_code == 200
+    assert fresh(world, a).staged is False
+    assert queued == [("analyse_item", {"item_id": a})]
+    assert keep(client, oid, a).status_code == 200  # nothing new was kept: nothing to analyse
+    assert queued == [("analyse_item", {"item_id": a})]
+    assert keep(client, oid, b).status_code == 200  # the second take is new on the canvas
+    assert queued[-1] == ("analyse_item", {"item_id": b}) and len(queued) == 2
+
+
+def test_keep_without_a_position_goes_beside_the_source(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    oid, (a, _b) = make_takes(client, world)
+    assert keep(client, oid, a).status_code == 200
+    src = items_repo.get(world["session"], source(world))
+    item = fresh(world, a)
+    assert src is not None and item.staged is False
+    assert (item.x, item.y) != (src.x, src.y)
+    assert item.x >= src.x + src.w or item.y >= src.y + src.h or item.x + item.w <= src.x

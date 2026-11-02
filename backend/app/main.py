@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from app import demo
 from app.analysis import service as _analysis  # noqa: F401  (registers the analyse_item job)
 from app.api import (
+    analysis,
     attributes,
     boards,
     decisions,
@@ -96,6 +97,7 @@ app.add_middleware(
 )
 register_error_handlers(app)
 app.include_router(boards.router)
+app.include_router(analysis.router)
 app.include_router(extension.router)
 app.include_router(items.router)
 app.include_router(media.router)

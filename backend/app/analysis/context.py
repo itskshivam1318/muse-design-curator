@@ -174,18 +174,23 @@ class Offer:
     kind: str
     count: int
     total: int
+    part: str | None = None  # the part a physical dimension reads; None for abstract
 
 
 def _norm(label: str) -> str:
     return " ".join(label.lower().split())
 
 
-def _entry_id(e: dict[str, Any]) -> tuple[str, str, str]:
-    return (_norm(str(e.get("label", ""))), str(e.get("dim_type", "")), str(e.get("kind", "")))
+def _entry_id(e: dict[str, Any]) -> tuple[str, str, str, str]:
+    """Label, type, kind and part: "Colour" on one part and "Colour" on another are two entries."""
+    dim_type = str(e.get("dim_type", ""))
+    part = str(e.get("part") or "") if dim_type == "physical" else ""
+    return (_norm(str(e.get("label", ""))), dim_type, str(e.get("kind", "")), part)
 
 
 def dimension_offers(session: Session, board_id: str) -> list[Offer]:
-    """Dimensions that recur on two or more items and are not yet a board dimension nor declined."""
+    """Dimensions that recur on two or more items and are not yet a board dimension nor declined.
+    A physical dimension is counted per part."""
     board = boards_repo.get(session, board_id)
     if board is None:
         return []
@@ -193,45 +198,43 @@ def dimension_offers(session: Session, board_id: str) -> list[Offer]:
     known |= {_entry_id(e) for e in (board.declined_json or [])}
     groups: dict[tuple[str, str, str, str], set[str]] = defaultdict(set)
     names: dict[tuple[str, str, str, str], Counter[str]] = defaultdict(Counter)
-    for item, a in _current_rows(session, board_id):
-        gid = (
-            _norm(a.label),
-            a.dim_type,
-            a.kind,
-            (a.part or "") if a.dim_type == "physical" else "",
-        )
+    rows = _current_rows(session, board_id)
+    for item, a in rows:
+        gid = _entry_id({"label": a.label, "dim_type": a.dim_type, "kind": a.kind, "part": a.part})
         groups[gid].add(item.id)
         names[gid][a.label] += 1
-    total = len({i.id for i, _ in _current_rows(session, board_id)})
-    merged: dict[tuple[str, str, str], Offer] = {}
+    total = len({i.id for i, _ in rows})
+    offers = []
     for gid in sorted(groups):
         n = len(groups[gid])
-        oid = gid[:3]
-        if n < OFFER_MIN_ITEMS or oid in known:
+        if n < OFFER_MIN_ITEMS or gid in known:
             continue
         label = min(names[gid].items(), key=lambda kv: (-kv[1], kv[0]))[0]
-        prev = merged.get(oid)
-        if prev is None or n > prev.count:
-            merged[oid] = Offer(label, gid[1], gid[2], n, total)
-    return sorted(merged.values(), key=lambda o: (-o.count, o.label.lower()))
+        offers.append(Offer(label, gid[1], gid[2], n, total, gid[3] or None))
+    return sorted(offers, key=lambda o: (-o.count, o.label.lower(), o.part or ""))
 
 
 def _append(
-    session: Session, board_id: str, column: str, label: str, dim_type: str, kind: str
-) -> None:
+    session: Session, board_id: str, column: str, label: str, dim_type: str, kind: str,
+    part: str | None,
+) -> None:  # fmt: skip
     board = boards_repo.get(session, board_id)
     if board is None:
         return
-    entry = {"label": label, "dim_type": dim_type, "kind": kind}
+    entry = {"label": label, "dim_type": dim_type, "kind": kind, "part": part}
     current = list(getattr(board, column) or [])
     if _entry_id(entry) not in {_entry_id(e) for e in current}:
         setattr(board, column, [*current, entry])
         session.flush()
 
 
-def accept_offer(session: Session, board_id: str, label: str, dim_type: str, kind: str) -> None:
-    _append(session, board_id, "dimensions_json", label, dim_type, kind)
+def accept_offer(
+    session: Session, board_id: str, label: str, dim_type: str, kind: str, part: str | None = None
+) -> None:
+    _append(session, board_id, "dimensions_json", label, dim_type, kind, part)
 
 
-def decline_offer(session: Session, board_id: str, label: str, dim_type: str, kind: str) -> None:
-    _append(session, board_id, "declined_json", label, dim_type, kind)
+def decline_offer(
+    session: Session, board_id: str, label: str, dim_type: str, kind: str, part: str | None = None
+) -> None:
+    _append(session, board_id, "declined_json", label, dim_type, kind, part)

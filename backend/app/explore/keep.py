@@ -10,6 +10,8 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app import events
+from app.analysis.extract import Bounds, free_slot
+from app.analysis.service import request_analyse
 from app.api.schemas import item_to_dict
 from app.board import profile_hook
 from app.db.models import BoardItem, Exploration, ExploreOption
@@ -38,6 +40,16 @@ def _finish(session: Session, o: ExploreOption, board_id: str) -> ExploreOption:
     publish_later(session, e)
     after_commit(session, partial(profile_hook.request_recompute, board_id))
     return o
+
+
+def _near_source(session: Session, item: BoardItem) -> tuple[float, float] | None:
+    """The free spot beside the take's source, for a keep that names no position."""
+    source = session.get(BoardItem, item.parent_item_id) if item.parent_item_id else None
+    if source is None:
+        return None
+    return free_slot(
+        session, item.board_id, Bounds(source.x, source.y, source.w, source.h), (item.w, item.h)
+    )
 
 
 def keep_take(
@@ -79,8 +91,12 @@ def keep_take(
         session.refresh(other)
     changed.extend(others)
     if item.staged:
+        if at is None:
+            at = _near_source(session, item)
         item.staged = False
         changed.append(item)
+        # a kept take is a normal item now: Muse reads it like any other
+        request_analyse(session, item.id, count=False)
     if at is not None and (item.x, item.y) != at:
         item.x, item.y = at
         if item not in changed:

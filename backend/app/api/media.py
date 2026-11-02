@@ -1,5 +1,8 @@
-"""Item media: thumbnails, originals and video frames, looked up by id only (never by path)."""
+"""Item media: thumbnails, originals and video frames, looked up by id only (never by path).
 
+Part masks are the one file served by name; the name must be exactly what locate writes."""
+
+import re
 from pathlib import Path
 from typing import Any, Literal
 
@@ -15,6 +18,7 @@ from app.storage import files
 
 router = APIRouter(prefix="/api")
 _CACHE = {"Cache-Control": "private, max-age=3600"}
+_MASK_NAME = re.compile(r"^[0-9a-f]{64}-[0-9a-f]{12}\.png$")  # <image sha>-<prompt hash>.png
 
 
 def _not_found() -> AppError:
@@ -75,3 +79,10 @@ def frame_image(item_id: str, frame_id: str, session: SessionDep) -> FileRespons
     if frame is None:
         raise _not_found()
     return _serve(frame.storage_path)
+
+
+@router.get("/media/masks/{name}")
+def mask_image(name: str) -> FileResponse:
+    if not _MASK_NAME.fullmatch(name):
+        raise _not_found()
+    return _serve(f"masks/{name}")

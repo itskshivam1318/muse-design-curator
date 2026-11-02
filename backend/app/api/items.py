@@ -8,6 +8,7 @@ from starlette.datastructures import UploadFile
 
 from app import demo, events, jobs
 from app.analysis import limits
+from app.analysis.label import set_content_type
 from app.api.boards import require_board
 from app.api.deps import SessionDep
 from app.api.extension import require_extension_token
@@ -182,6 +183,9 @@ def patch_item(
     fields = body.model_dump(exclude_none=True)
     if fields.keys() - POSITION_FIELDS:
         demo.require_unlocked(request)  # role and chosen frame are edits; moving is open
+    content_type = fields.pop("content_type", None)
+    if content_type is not None:
+        set_content_type(session, item_id, content_type)
     text = fields.pop("note_text", None)
     if text is not None:
         set_note_text(session, item_id, text)

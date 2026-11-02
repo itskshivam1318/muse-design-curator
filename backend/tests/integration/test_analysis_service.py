@@ -73,11 +73,12 @@ def test_upload_runs_analyse_and_stores_parts(client: TestClient) -> None:
         item = items_repo.get(s, item_id)
         assert item is not None
         assert (item.parse_status, item.content_type) == ("completed", "image")
-        assert set(parts(s, item_id)) == {"body", "detail"}
         got = rows(s, item_id)
         assert any(a.dim_type == "abstract" for a in got.values())
         assert got["body_colour"].dim_type == "physical" and got["body_colour"].spec_json
         assert got["subject"].source == "model" and got["subject"].prompt
+    view = client.get(f"/api/items/{item_id}/analysis").json()
+    assert {p["key"] for p in view["parts"]} == {"body", "detail"}
 
 
 def test_rerun_keeps_you_rows_and_respects_removed(session: Session) -> None:
