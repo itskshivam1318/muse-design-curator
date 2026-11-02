@@ -143,8 +143,9 @@ export function growScale(b: Body, now: number, reduced: boolean): number {
   return s * swell
 }
 
-export function stepWorld(w: World, dtFrames: number, now: number, opts: { reduced: boolean }): void {
+export function stepWorld(w: World, dtFrames: number, now: number, opts: { reduced: boolean; awake?: (b: Body) => boolean }): void {
   const { reduced } = opts
+  const awake = opts.awake ?? (() => true)
   const dt = Math.min(3, Math.max(0, dtFrames))
   const drift = reduced ? 0 : FEEL.drift
   const damp = reduced ? FEEL.dampReduced : FEEL.damp
@@ -159,7 +160,7 @@ export function stepWorld(w: World, dtFrames: number, now: number, opts: { reduc
   // Homes resolve against the parent's position before anyone moves this frame.
   const homes = bodies.map((b) => homeOf(w, b))
   bodies.forEach((b, i) => {
-    if (b.pinned || now < b.bornAt + (b.delay ?? 0)) return
+    if (b.pinned || !awake(b) || now < b.bornAt + (b.delay ?? 0)) return
     const h = homes[i]
     const tx = h.x + Math.sin(t * FEEL.driftW[0] + b.ph1) * drift
     const ty = h.y + Math.cos(t * FEEL.driftW[1] + b.ph2) * drift
@@ -170,7 +171,8 @@ export function stepWorld(w: World, dtFrames: number, now: number, opts: { reduc
     b.y += b.vy * dt
   })
 
-  const live = bodies.filter((b) => growScale(b, now, reduced) >= COLLIDE_MIN_SCALE)
+  // Sleeping bodies neither move nor collide.
+  const live = bodies.filter((b) => awake(b) && growScale(b, now, reduced) >= COLLIDE_MIN_SCALE)
   for (let it = 0; it < FEEL.iterations; it++) {
     for (let i = 0; i < live.length; i++) {
       for (let j = i + 1; j < live.length; j++) {

@@ -167,4 +167,17 @@ describe('physics', () => {
     syncWorld(w, [item('a', 0, 0)], 10)
     expect(w.bodies.get('a')!.ignore).toBeUndefined()
   })
+
+  it('bodies the awake predicate rejects neither move nor collide', () => {
+    const w = createWorld()
+    syncWorld(w, [item('a', 0, 0, { start: { x: 200, y: 0 } }), item('b', 0, 0, { start: { x: 10, y: 0 } })], 0)
+    let now = 1000
+    for (let i = 0; i < 20; i++) {
+      now += 16.67
+      stepWorld(w, 1, now, { reduced: true, awake: (b) => b.id === 'b' })
+    }
+    const a = w.bodies.get('a')!
+    expect(a.x).toBe(200)
+    expect(a.vx).toBe(0)
+  })
 })
