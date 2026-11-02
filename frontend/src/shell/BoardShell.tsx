@@ -21,13 +21,15 @@ interface Props {
   library?: ReactNode
   /** Floating things over the stage (onboarding, upload status, the maybe strip…). */
   overlays?: ReactNode
+  /** Floating add button, placed right of the tool dock. */
+  add?: ReactNode
   onFocusItem: (item: Item) => void
   /** Server flag: plugins on shows the Plugins rail icon and Nodes. */
   plugins: boolean
 }
 
 /** The calm board: header, slim left rail with slide-outs, the canvas stage, tools and the agent card. */
-export function BoardShell({ boardId, items, header, canvas, library, overlays, onFocusItem, plugins }: Props) {
+export function BoardShell({ boardId, items, header, canvas, library, overlays, add, onFocusItem, plugins }: Props) {
   const railState = useRail()
   const rail = railState.open === 'plugins' && !plugins ? null : railState.open
   const [nodesOpen, setNodesOpen] = useState(false)
@@ -81,7 +83,10 @@ export function BoardShell({ boardId, items, header, canvas, library, overlays, 
           )}
           <div className="bottom-dock">
             {showNodes && <NodesMenu boardId={boardId} onClose={() => setNodesOpen(false)} />}
-            <BottomToolbar onNodes={() => setNodesOpen((o) => !o)} plugins={plugins} nodesOpen={showNodes} />
+            <div className="dock-row">
+              <BottomToolbar onNodes={() => setNodesOpen((o) => !o)} plugins={plugins} nodesOpen={showNodes} />
+              {add}
+            </div>
           </div>
           <AgentCard boardId={boardId} />
         </section>

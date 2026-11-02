@@ -18,6 +18,7 @@ import { useAddFlow } from '../canvas/useAddFlow'
 import { useDemo } from '../demo'
 import { connectBoardEvents } from '../events'
 import { AddActions } from '../panels/AddMenu'
+import { AddFab } from '../panels/AddFab'
 import { BoardSignals } from '../panels/BoardSignals'
 import { ContextBar, type ContextBarHandle } from '../panels/ContextBar'
 import { DemoBadge } from '../panels/DemoBadge'
@@ -210,6 +211,13 @@ export function BoardPage({ boardId }: { boardId: string }) {
             spaceDown={spaceDown}
             readOnly={locked}
             onSendToNode={pluginsEnabled ? (pluginId, noteId) => void sendNoteToNode(qc, boardId, pluginId, noteId) : undefined}
+          />
+        }
+        add={
+          <AddFab
+            onFiles={(files) => uploadAt(files, center(), 'upload')}
+            onLink={(url) => addLink(url, center())}
+            disabled={locked}
           />
         }
         library={

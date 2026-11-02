@@ -319,6 +319,59 @@
   align-items: center;
   gap: 8px;
 }
+.dock-row {
+  position: relative;
+}
+/* the + sits just right of the toolbar without shifting the toolbar off-centre */
+.add-fab-wrap {
+  position: absolute;
+  left: calc(100% + 10px);
+  bottom: 0;
+}
+.add-fab {
+  width: 50px;
+  height: 50px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: var(--float-shadow);
+  cursor: pointer;
+}
+.add-fab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.add-fab-plus {
+  font-size: 28px;
+  line-height: 1;
+  transition: transform 0.2s ease;
+}
+.add-fab[aria-expanded='true'] .add-fab-plus {
+  transform: rotate(45deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .add-fab-plus {
+    transition: none;
+  }
+  .add-fab[aria-expanded='true'] .add-fab-plus {
+    transform: none;
+  }
+}
+.add-fab-pop {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  padding: 8px;
+  background: var(--raised);
+  border-radius: 12px;
+  box-shadow: var(--float-shadow);
+}
 .bottom-toolbar {
   display: flex;
   align-items: center;
