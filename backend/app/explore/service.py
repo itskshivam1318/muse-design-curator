@@ -168,8 +168,6 @@ def explore(
     item = _require_item(session, item_id)
     if item.staged:
         raise AppError(404, "ITEM_NOT_FOUND", "Item not found")
-    if item.kind == "note":
-        raise AppError(400, "NOT_AN_IMAGE", "A note has no image to explore")
     rows = dimensions(session, item.id)
     row = next((r for r in rows if r.key == key), None)
     if row is None:
@@ -206,10 +204,15 @@ def explore(
         dimension_prompt=row.prompt if dimension_type(row) == "abstract" else None,
         part_label=_part_label(session, row) if dimension_type(row) == "physical" else None,
     )  # fmt: skip
-    image, _sha = _image_for(session, item)
+    images: list[bytes]
+    if item.kind == "note":  # a text item: the options are read from its words
+        images = []
+        prompt += f"\n\nThere is no image: the item is this text.\n<<<TEXT\n{item.note_text or ''}\nTEXT>>>"
+    else:
+        images = [_image_for(session, item)[0]]
     limits.check_and_count(item.board_id, "analyse")
     try:
-        raw = get_reasoning(get_settings()).explore_options([image], prompt)
+        raw = get_reasoning(get_settings()).explore_options(images, prompt)
     except ModelError as exc:
         raise AppError(502, exc.code, f"The model could not explore: {exc.message}") from exc
 
