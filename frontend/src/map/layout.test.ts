@@ -1,0 +1,147 @@
+import { describe, expect, it } from 'vitest'
+import type { Bounds } from '../canvas/geometry'
+import { rectsIntersect } from '../canvas/geometry'
+import {
+  CALLOUT_H,
+  CALLOUT_W,
+  HUB_H,
+  HUB_W,
+  PETAL,
+  PETAL_KEPT,
+  RING,
+  calloutSlots,
+  layoutFlowers,
+  placeFlower,
+  visibleFlowers,
+  type FlowerInput,
+  type FlowerLayout,
+} from './layout'
+
+const item = (x: number, y: number, w = 240, h = 180): Bounds => ({ x, y, width: w, height: h })
+const parts = (l: FlowerLayout): Bounds[] => [l.hub, ...l.petals]
+const flower = (id: string, x: number, y: number, dir = 0, kept: number[] = []): FlowerInput => ({
+  id,
+  from: { x, y },
+  dir,
+  petals: 6,
+  kept,
+})
+
+describe('constants', () => {
+  it('match the spec', () => {
+    expect([CALLOUT_W, HUB_W, HUB_H, PETAL, PETAL_KEPT, RING]).toEqual([176, 150, 48, 88, 104, 175])
+  })
+})
+
+describe('calloutSlots', () => {
+  const it0 = item(500, 300)
+  it('sit on the anchor side', () => {
+    const slots = calloutSlots(
+      it0,
+      [
+        { key: 'l', anchor: { x: 520, y: 380 } },
+        { key: 'r', anchor: { x: 730, y: 380 } },
+        { key: 'b', anchor: { x: 620, y: 470 } },
+      ],
+      [],
+    )
+    const l = slots.get('l')!
+    expect(l.x + l.width).toBeLessThanOrEqual(it0.x)
+    expect(slots.get('r')!.x).toBeGreaterThanOrEqual(it0.x + it0.width)
+    expect(slots.get('b')!.y).toBeGreaterThanOrEqual(it0.y + it0.height)
+  })
+
+  it('stacks without overlap and avoids obstacles', () => {
+    const obstacle = item(300, 330, 190, 60)
+    const slots = calloutSlots(
+      it0,
+      ['a', 'b', 'c'].map((key) => ({ key, anchor: { x: 510, y: 350 } })),
+      [obstacle],
+    )
+    const all = [...slots.values()]
+    expect(all).toHaveLength(3)
+    all.forEach((s, i) => {
+      expect(s.width).toBe(CALLOUT_W)
+      expect(s.height).toBe(CALLOUT_H)
+      expect(rectsIntersect(s, obstacle)).toBe(false)
+      all.slice(i + 1).forEach((o) => expect(rectsIntersect(s, o)).toBe(false))
+    })
+  })
+})
+
+describe('placeFlower', () => {
+  it('lays six petals 46 degrees apart at RING and sizes kept petals larger', () => {
+    const l = placeFlower({ id: 'a', from: { x: 0, y: 0 }, dir: 0, petals: 6, kept: [2] }, [])
+    expect(l.petals).toHaveLength(6)
+    expect(l.petals[2].width).toBe(PETAL_KEPT)
+    expect(l.petals[0].width).toBe(PETAL)
+    const hubC = { x: l.hub.x + l.hub.width / 2, y: l.hub.y + l.hub.height / 2 }
+    const ang = l.petals.map((p) =>
+      Math.atan2(p.y + p.height / 2 - hubC.y, p.x + p.width / 2 - hubC.x),
+    )
+    expect((ang[1] - ang[0]) * (180 / Math.PI)).toBeCloseTo(46, 5)
+    const c = l.petals[0]
+    expect(Math.hypot(c.x + c.width / 2 - hubC.x, c.y + c.height / 2 - hubC.y)).toBeCloseTo(RING, 5)
+  })
+})
+
+describe('layoutFlowers', () => {
+  const items = [item(0, 0), item(600, 0), item(300, 500)]
+  const callouts = [{ x: 250, y: 20, width: CALLOUT_W, height: CALLOUT_H }]
+  const flowers = [
+    flower('1', 120, 90),
+    flower('2', 720, 90, Math.PI),
+    flower('3', 420, 590, -Math.PI / 2, [1, 4]),
+    flower('4', 120, 90, 0),
+  ]
+
+  it('petals never overlap items, callouts or other flowers', () => {
+    const out = layoutFlowers(flowers, items, callouts)
+    expect(out.size).toBe(4)
+    const boxes = [...items, ...callouts]
+    const ls = [...out.values()]
+    ls.forEach((l, i) => {
+      for (const p of parts(l)) {
+        boxes.forEach((b) => expect(rectsIntersect(p, b)).toBe(false))
+        ls.slice(i + 1).forEach((o) => parts(o).forEach((q) => expect(rectsIntersect(p, q)).toBe(false)))
+      }
+    })
+  })
+
+  it('opening a second flower does not move the first', () => {
+    const a = layoutFlowers([flowers[0]], items, callouts).get('1')
+    const both = layoutFlowers([flowers[1], flowers[0]], items, callouts).get('1')
+    expect(both).toEqual(a)
+  })
+
+  it('boxed-in item pushes the flower outward', () => {
+    const src = item(0, 0, 200, 150)
+    const ring: Bounds[] = []
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2
+      ring.push(item(100 + Math.cos(a) * 320 - 100, 75 + Math.sin(a) * 260 - 75, 200, 150))
+    }
+    const all = [src, ...ring]
+    const snapshot = JSON.stringify(all)
+    const l = layoutFlowers([flower('x', 100, 75)], all, []).get('x')!
+    expect(JSON.stringify(all)).toBe(snapshot)
+    all.forEach((b) => expect(rectsIntersect(l.bounds, b)).toBe(false))
+  })
+
+  it('is deterministic', () => {
+    expect(layoutFlowers(flowers, items, callouts)).toEqual(layoutFlowers(flowers, items, callouts))
+  })
+
+  it('places any number of flowers', () => {
+    const many = Array.from({ length: 12 }, (_, i) => flower(String(i).padStart(2, '0'), 120, 90, i))
+    const out = layoutFlowers(many, items, callouts)
+    expect(out.size).toBe(12)
+    const ls = [...out.values()]
+    ls.forEach((l, i) => ls.slice(i + 1).forEach((o) => expect(rectsIntersect(l.bounds, o.bounds)).toBe(false)))
+  })
+
+  it('culls flowers outside the viewport', () => {
+    const out = layoutFlowers([flower('near', 0, 0), flower('far', 5000, 5000)], [], [])
+    expect(visibleFlowers(out, { x: -500, y: -500, width: 1000, height: 1000 })).toEqual(['near'])
+  })
+})
