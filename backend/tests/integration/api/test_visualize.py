@@ -198,12 +198,12 @@ def test_check_target_answer_stored(client: TestClient, world, monkeypatch) -> N
 
 
 def test_parse_failure_keeps_item_with_check_error(client: TestClient, world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    from app.extraction import service as extraction
+    from app.analysis import service as analysis
 
     def down(*_a: Any, **_k: Any) -> Any:
         raise ModelError("MODEL_TIMEOUT", message="slow")
 
-    monkeypatch.setattr(extraction, "model_extract", down)
+    monkeypatch.setattr(analysis, "run_analyser", down)
     opt = first_option(client, world)
     run(client, opt["id"])
     (item,) = generated(world, opt["id"])

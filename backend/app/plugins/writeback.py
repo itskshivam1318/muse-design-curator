@@ -221,7 +221,7 @@ def apply_output(
         y += item.h + STACK_GAP
         added = item_to_dict(item)
         after_commit(session, partial(events.publish, item.board_id, "item.added", added))
-        after_commit(session, partial(jobs.enqueue, "parse_item", item_id=item.id))
+        after_commit(session, partial(jobs.enqueue, "analyse_item", item_id=item.id))
     for note in out.get("notes", []):
         item = create_note(session, node.board_id, note["text"], x, y)
         created.append(item.id)

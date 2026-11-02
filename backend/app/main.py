@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app import demo
+from app.analysis import service as _analysis  # noqa: F401  (registers the analyse_item job)
 from app.api import (
     attributes,
     boards,

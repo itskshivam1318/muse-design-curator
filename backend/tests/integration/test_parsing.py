@@ -90,6 +90,12 @@ def env(data_dir: Path) -> Iterator[None]:
 
 
 @pytest.fixture
+def legacy_parse(client: TestClient) -> None:
+    """The lens parser is no longer enqueued; route the analyse job to it to keep it covered."""
+    jobs.register("analyse_item", service.parse_item_job)
+
+
+@pytest.fixture
 def provider(monkeypatch: pytest.MonkeyPatch) -> Fake:
     p = Fake()
     monkeypatch.setattr(service, "get_reasoning", lambda _s: p)
@@ -343,6 +349,7 @@ def test_context_and_image_sent_to_model(session: Session, provider: Fake) -> No
     assert images == [two_tone()] and "vintage things" in prompt
 
 
+@pytest.mark.usefixtures("legacy_parse")
 def test_video_parsed_from_chosen_frame_and_choosing_reparses(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -371,6 +378,7 @@ def _frames(client: TestClient, item_id: str) -> list[Any]:
         return items_repo.frames(s, item_id)
 
 
+@pytest.mark.usefixtures("legacy_parse")
 def test_same_service_parses_two_boards_with_own_lenses(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -394,7 +402,9 @@ def test_same_service_parses_two_boards_with_own_lenses(
 
 
 @pytest.fixture
-def parsed(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> tuple[str, Fake]:
+def parsed(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, legacy_parse: None
+) -> tuple[str, Fake]:
     p = Fake({"kind": "region", "background_tone": "dark", "has_illustration": True})
     monkeypatch.setattr(service, "get_reasoning", lambda _s: p)
     b = client.post("/api/boards", json={"title": "u", "domain": "ui"}).json()

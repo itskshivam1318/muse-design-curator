@@ -142,7 +142,7 @@ def test_link_og_image_and_login_wall_and_ssrf(client: TestClient, board: str) -
 
 def test_events_and_parse_enqueue(client: TestClient, board: str) -> None:
     seen: list[str] = []
-    jobs.register("parse_item", lambda item_id: seen.append(item_id))
+    jobs.register("analyse_item", lambda item_id: seen.append(item_id))
     try:
         with events.subscribe(board) as sub:
             r = upload(client, board, [("a.png", image_bytes())])
@@ -151,7 +151,7 @@ def test_events_and_parse_enqueue(client: TestClient, board: str) -> None:
         assert ev and ev["type"] == "item.added" and ev["data"]["id"] == item_id
         assert seen == [item_id]
     finally:
-        jobs._registry.pop("parse_item", None)
+        jobs._registry.pop("analyse_item", None)
 
 
 def test_patch_and_delete_item(client: TestClient, board: str) -> None:
@@ -169,12 +169,12 @@ def test_patch_and_delete_item(client: TestClient, board: str) -> None:
     assert client.delete(f"/api/items/{it['id']}").status_code == 404
 
 
-def test_choosing_a_curated_domain_attaches_its_lens_and_parses_waiting_items(
+def test_choosing_a_curated_domain_attaches_its_lens_and_keeps_items_analysed(
     client: TestClient, board: str
 ) -> None:
     upload(client, board, [(f"f{i}.png", image_bytes(seed=i)) for i in range(2)])
     items = client.get(f"/api/boards/{board}/items").json()["items"]
-    assert [i["parse_status"] for i in items] == ["pending_lens", "pending_lens"]
+    assert [i["parse_status"] for i in items] == ["completed", "completed"]  # no lens needed
     b = client.patch(f"/api/boards/{board}", json={"domain": "watch"}).json()
     assert b["lens_id"] is not None
     lens = client.get(f"/api/boards/{board}/lens").json()["lens"]

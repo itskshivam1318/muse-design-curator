@@ -253,7 +253,7 @@ def test_pending_lens_items_requeued_after_confirmation(
     board, items = make_board(session, 5, status="pending_lens")
     items[0].parse_status = "completed"
     queued: list[str] = []
-    jobs.register("parse_item", lambda item_id: queued.append(item_id))
+    jobs.register("analyse_item", lambda item_id: queued.append(item_id))
     lens_service.propose_lens(session, board.id)
     lens_service.confirm_lens(session, board.id, None)
     assert queued == []  # nothing before commit

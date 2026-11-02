@@ -47,7 +47,7 @@ def _announce(session: Session, results: list[IngestResult]) -> None:
         i = r.item
         events.publish(i.board_id, "item.added", item_to_dict(i))
         if i.kind != "link" and i.parse_status == "pending":
-            jobs.enqueue("parse_item", item_id=i.id)
+            jobs.enqueue("analyse_item", item_id=i.id)
 
 
 def _origin_for_upload(request: Request) -> str:

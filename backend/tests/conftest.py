@@ -88,6 +88,7 @@ def _no_job_database(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def client(data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     from app import jobs
+    from app.analysis import service as analysis_service
     from app.api import deps
     from app.api.deps import get_session
     from app.db.session import make_engine, make_session_factory, run_migrations
@@ -114,6 +115,7 @@ def client(data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
 
     app.dependency_overrides[get_session] = override
     jobs.register("parse_item", service.parse_item_job)  # other tests may have cleared the registry
+    jobs.register("analyse_item", analysis_service.analyse_item_job)
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

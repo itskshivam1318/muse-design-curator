@@ -19,6 +19,7 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from app import events, jobs
+from app.analysis.service import analyse
 from app.api.schemas import item_to_dict
 from app.config import get_settings
 from app.db.ids import now_iso
@@ -29,7 +30,7 @@ from app.errors import AppError
 from app.explore.check import check_generated
 from app.explore.service import publish_later, require_enabled, resting_status
 from app.explore.vocab import add_vocabulary
-from app.extraction.service import _image_for, _require_item, parse_item
+from app.extraction.service import _image_for, _require_item
 from app.ingest.common import ItemMeta, create_item, default_size
 from app.ingest.images import decode_image
 from app.providers import get_image_provider
@@ -150,7 +151,7 @@ def _settle(session: Session, option_id: str, error: str | None) -> None:
 def _check(session: Session, source_id: str, item_id: str, o: ExploreOption) -> dict[str, Any]:
     """Parse the new item, then check it; a failure is stored as {"error": code}."""
     try:
-        parse_item(session, item_id)  # commits; a model failure marks the item failed
+        analyse(session, item_id)  # commits; a model failure marks the item failed
     except AppError as exc:
         return {"error": exc.code}
     session.expire_all()

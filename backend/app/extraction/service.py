@@ -407,20 +407,13 @@ def _finish(
 
 
 def request_parse(session: Session, item_id: str) -> bool:
-    """Queue a (re-)parse unless one is running. False when the item is processing."""
-    res = session.execute(
-        update(BoardItem)
-        .where(
-            BoardItem.id == item_id,
-            BoardItem.kind != "note",
-            BoardItem.parse_status.in_((*RETRYABLE, "pending")),
-        )
-        .values(parse_status="pending")
-    )  # fmt: skip
-    if not res.rowcount:  # type: ignore[attr-defined]
-        return False
-    after_commit(session, partial(jobs.enqueue, "parse_item", item_id=item_id))
-    return True
+    """Queue a (re-)analysis unless one is running. False when the item is processing.
+
+    Parsing against a lens is retired for new work: this now runs the item analysis.
+    """
+    from app.analysis.service import queue_analyse
+
+    return queue_analyse(session, item_id)
 
 
 def parse_item_job(item_id: str) -> None:
