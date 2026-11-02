@@ -27,6 +27,9 @@ export interface Body extends BodySpec {
   pinned: boolean
   ph1: number
   ph2: number
+  /** Size target: w/h ease toward it (spec w/h is the target). */
+  tw: number
+  th: number
 }
 
 export interface World {
@@ -52,6 +55,7 @@ export const FEEL = {
 const GROW_REDUCED_MS = 250
 const SWELL_MS = 700
 const SWELL_AMOUNT = 0.12
+const SIZE_EASE = 0.14
 const COLLIDE_MIN_SCALE = 0.25
 
 export function createWorld(): World {
@@ -60,15 +64,31 @@ export function createWorld(): World {
 
 export function syncWorld(w: World, specs: BodySpec[], now: number, rng: () => number = Math.random): void {
   const keep = new Set<string>()
+  const added: Body[] = []
   for (const spec of specs) {
     keep.add(spec.id)
     const existing = w.bodies.get(spec.id)
     if (existing) {
-      Object.assign(existing, spec)
+      existing.kind = spec.kind
+      existing.home = spec.home
+      existing.start = spec.start
+      existing.delay = spec.delay
+      existing.ignore = spec.ignore
+      existing.tw = spec.w
+      existing.th = spec.h
       continue
     }
     const body: Body = {
-      ...spec,
+      id: spec.id,
+      kind: spec.kind,
+      w: spec.w,
+      h: spec.h,
+      home: spec.home,
+      start: spec.start,
+      delay: spec.delay,
+      ignore: spec.ignore,
+      tw: spec.w,
+      th: spec.h,
       x: 0,
       y: 0,
       vx: 0,
@@ -80,11 +100,23 @@ export function syncWorld(w: World, specs: BodySpec[], now: number, rng: () => n
       ph2: rng() * Math.PI * 2,
     }
     w.bodies.set(spec.id, body)
-    const p = spec.start ?? homeOf(w, body)
-    body.x = p.x
-    body.y = p.y
+    added.push(body)
   }
   for (const id of [...w.bodies.keys()]) if (!keep.has(id)) w.bodies.delete(id)
+
+  // Second pass so a child listed before its new parent still starts beside it.
+  const pending = new Set(added)
+  const place = (b: Body): void => {
+    pending.delete(b)
+    if (b.home.kind === 'rel') {
+      const parent = w.bodies.get(b.home.to)
+      if (parent && pending.has(parent)) place(parent)
+    }
+    const p = b.start ?? homeOf(w, b)
+    b.x = p.x
+    b.y = p.y
+  }
+  for (const b of added) if (pending.has(b)) place(b)
 }
 
 export function homeOf(w: World, b: Body): Point {
@@ -118,6 +150,11 @@ export function stepWorld(w: World, dtFrames: number, now: number, opts: { reduc
   const damp = reduced ? FEEL.dampReduced : FEEL.damp
   const t = now / 1000
   const bodies = [...w.bodies.values()]
+  const ease = 1 - Math.pow(1 - SIZE_EASE, dt)
+  for (const b of bodies) {
+    b.w = reduced ? b.tw : b.w + (b.tw - b.w) * ease
+    b.h = reduced ? b.th : b.h + (b.th - b.h) * ease
+  }
 
   // Homes resolve against the parent's position before anyone moves this frame.
   const homes = bodies.map((b) => homeOf(w, b))

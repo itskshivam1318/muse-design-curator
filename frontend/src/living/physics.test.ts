@@ -126,8 +126,45 @@ describe('physics', () => {
     syncWorld(w, [item('a', 0, 0, { start: { x: 30, y: 40 } }), item('b', 500, 0)], 0)
     syncWorld(w, [item('a', 0, 0, { w: 150 })], 10)
     const a = w.bodies.get('a')!
-    expect([a.x, a.y, a.w]).toEqual([30, 40, 150])
+    expect([a.x, a.y, a.tw]).toEqual([30, 40, 150])
     expect(w.bodies.has('b')).toBe(false)
     expect(a.bornAt).toBe(0)
+  })
+
+  it('a new child listed before its new parent starts at parent + offset', () => {
+    const w = createWorld()
+    const rel = (id: string, to: string, dx: number, dy: number): BodySpec => ({ id, kind: 'petal', w: 10, h: 10, home: { kind: 'rel', to, dx, dy } })
+    syncWorld(w, [rel('petal', 'hub', 5, 6), rel('hub', 'it', 100, 200), item('it', 1000, 2000)], 0)
+    expect(w.bodies.get('it')!.x).toBe(1000)
+    expect([w.bodies.get('hub')!.x, w.bodies.get('hub')!.y]).toEqual([1100, 2200])
+    expect([w.bodies.get('petal')!.x, w.bodies.get('petal')!.y]).toEqual([1105, 2206])
+  })
+
+  it('a resized body eases to its new size', () => {
+    const w = createWorld()
+    syncWorld(w, [item('a', 0, 0)], 0)
+    syncWorld(w, [item('a', 0, 0, { w: 200 })], 10)
+    const a = w.bodies.get('a')!
+    expect(a.w).toBe(100)
+    stepWorld(w, 1, 1000, { reduced: false })
+    expect(a.w).toBeGreaterThan(100)
+    expect(a.w).toBeLessThan(200)
+    run(w, 200, false)
+    expect(a.w).toBeCloseTo(200, 1)
+  })
+
+  it('reduced motion snaps size', () => {
+    const w = createWorld()
+    syncWorld(w, [item('a', 0, 0)], 0)
+    syncWorld(w, [item('a', 0, 0, { w: 200, h: 10 })], 10)
+    stepWorld(w, 1, 1000, { reduced: true })
+    expect([w.bodies.get('a')!.w, w.bodies.get('a')!.h]).toEqual([200, 10])
+  })
+
+  it('a spec that drops ignore clears it', () => {
+    const w = createWorld()
+    syncWorld(w, [item('a', 0, 0, { ignore: 'b' })], 0)
+    syncWorld(w, [item('a', 0, 0)], 10)
+    expect(w.bodies.get('a')!.ignore).toBeUndefined()
   })
 })
