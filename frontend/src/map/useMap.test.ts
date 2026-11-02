@@ -48,17 +48,29 @@ describe('mapModel', () => {
     expect(mood.from.y).toBeCloseTo(whole.y + whole.height)
   })
 
-  it('draws no flower for an item off the board or whose analysis has not loaded', () => {
+  describe('draws flowers in id order up to the first item still loading', () => {
     const other = makeItem({ id: 'b', board_id: 'b1', x: 0, y: 600, w: 200, h: 150 })
-    const { flowers, callouts } = mapModel(
-      [exp('e1', 'hand_style', [opt('o1')]), exp('e2', 'hand_style', [opt('o2')], 'gone'), exp('e3', 'hand_style', [opt('o3')], 'b')],
-      [item, other],
-      new Map([['a', analysis]]),
-      () => false,
-      new Map(),
-    )
-    expect(flowers.map((f) => f.id)).toEqual(['e1'])
-    expect([...callouts.keys()]).toEqual(['a'])
+    const model = (exps: Exploration[], analyses: Map<string, AnalysisView | null>) =>
+      mapModel(exps, [item, other], analyses, () => false, new Map()).flowers.map((f) => f.id)
+
+    it('a later flower on a loading item waits; earlier ones draw; one off the board blocks nothing', () => {
+      const exps = [exp('e0', 'hand_style', [opt('o0')], 'gone'), exp('e1', 'hand_style', [opt('o1')]), exp('e2', 'hand_style', [opt('o2')], 'b')]
+      expect(model(exps, new Map([['a', analysis]]))).toEqual(['e1'])
+    })
+
+    it('an earlier flower on a loading item holds back every later one', () => {
+      const exps = [exp('e2', 'hand_style', [opt('o2')]), exp('e1', 'hand_style', [opt('o1')], 'b')]
+      expect(model(exps, new Map([['a', analysis]]))).toEqual([])
+      expect(model(exps, new Map([['a', analysis], ['b', analysis]]))).toEqual(['e1', 'e2'])
+    })
+
+    it('a failed analysis settles: its flower starts at the item edge, with no callouts', () => {
+      const exps = [exp('e1', 'hand_style', [opt('o1')], 'b'), exp('e2', 'hand_style', [opt('o2')])]
+      const { flowers, callouts } = mapModel(exps, [item, other], new Map([['a', analysis], ['b', null]]), () => false, new Map())
+      expect(flowers.map((f) => f.id)).toEqual(['e1', 'e2'])
+      expect(flowers[0]).toMatchObject({ dir: 0, from: { x: 200, y: 675 }, label: 'hand_style', part: null })
+      expect([...callouts.keys()]).toEqual(['a'])
+    })
   })
 
   it('a dimension gone from the analysis starts at the Whole item card, labelled from the lens', () => {

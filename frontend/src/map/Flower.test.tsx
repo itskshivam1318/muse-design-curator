@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useEffect, useMemo } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { type AnalysisView, type Exploration, type ExploreOption, type Item, keys } from '../api'
+import { type AnalysisView, ApiError, type Exploration, type ExploreOption, type Item, keys } from '../api'
 import { rectsIntersect } from '../canvas/geometry'
 import { LENS } from '../test/attrs'
 import { makeItem } from '../test/fixtures'
@@ -16,7 +16,7 @@ vi.mock('../api', async (orig) => ({
   getAnalysis: vi.fn(() => new Promise(() => {})),
   listItems: vi.fn(() => new Promise(() => {})),
 }))
-const { keepTake } = await import('../api')
+const { keepTake, getAnalysis } = await import('../api')
 const { FlowerLayer } = await import('./Flower')
 const { useMap } = await import('./useMap')
 const { useItems } = await import('../queries')
@@ -159,17 +159,37 @@ describe('FlowerLayer', () => {
     expect(screen.queryByRole('group', { name: 'Hand shape flower' })).toBeNull()
   })
 
-  it("draws no flower until every source's analysis has loaded, so nothing jumps on load", async () => {
-    const qc = setup(
-      [
-        { id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style', options: [opt({ id: 'o1' })] },
-        { id: 'e2', board_id: 'b1', item_id: 'b', key: 'hand_style', options: [opt({ id: 'o4', exploration_id: 'e2' })] },
-      ],
-      { analysed: ['a'] },
-    )
-    expect(screen.queryAllByTestId('petal')).toEqual([])
-    act(() => qc.setQueryData(keys.analysis('b'), analysis('Hand shape')))
-    expect(await screen.findAllByTestId('petal')).toHaveLength(2)
+  describe('flowers wait, in id order, for the analyses they start from', () => {
+    const onA = (id: string) => ({ id, board_id: 'b1', item_id: 'a', key: 'hand_style', options: [opt({ id: `${id}-o`, exploration_id: id })] })
+    const onB = (id: string) => ({ id, board_id: 'b1', item_id: 'b', key: 'hand_style', options: [opt({ id: `${id}-o`, exploration_id: id })] })
+    const drawn = () => screen.queryAllByTestId('petal').map((p) => p.dataset.optionId)
+
+    it("a later flower on an item still loading waits; the earlier one draws", () => {
+      setup([onA('e1'), onB('e2')], { analysed: ['a'] })
+      expect(drawn()).toEqual(['e1-o'])
+    })
+
+    it('an earlier flower still loading holds back the later one; once it settles both draw where they would have', async () => {
+      setup([onB('e1'), onA('e2')], { analysed: ['a'] })
+      expect(drawn()).toEqual([])
+      cleanup()
+      const settled = setup([onB('e1'), onA('e2')])
+      const expected = lastMap!.layouts.get('e2')
+      cleanup()
+      const qc = setup([onB('e1'), onA('e2')], { analysed: ['a'] })
+      expect(drawn()).toEqual([])
+      act(() => qc.setQueryData(keys.analysis('b'), settled.getQueryData(keys.analysis('b'))))
+      await waitFor(() => expect(drawn()).toEqual(['e1-o', 'e2-o']))
+      expect(lastMap!.layouts.get('e2')).toEqual(expected)
+    })
+
+    it('an analysis that fails settles: both flowers draw', async () => {
+      vi.mocked(getAnalysis).mockImplementation((id) => (id === 'b' ? Promise.reject(new ApiError(500, 'BOOM', 'Server error')) : new Promise(() => {})))
+      setup([onB('e1'), onA('e2')], { analysed: ['a'] })
+      expect(drawn()).toEqual([])
+      // one retry, then it settles as failed
+      await waitFor(() => expect(drawn()).toEqual(['e1-o', 'e2-o']), { timeout: 4000 })
+    })
   })
 
   it('a kept result lands in free space beside its petal and moves no flower', async () => {

@@ -168,7 +168,9 @@ export function PetalCard({ option, dimension, item, keepAt, onClose, locked = f
       role="dialog"
       aria-label={live.name}
       tabIndex={-1}
-      onKeyDown={onKeyDown} onMouseDown={(e) => e.stopPropagation()}>
+      onKeyDown={onKeyDown}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
       <div className="petal-card-head">
         <span className="petal-card-name">{live.name}</span>
         <span className="petal-tag" data-distance={live.distance}>
