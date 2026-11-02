@@ -222,11 +222,30 @@ describe('FlowerLayer', () => {
     expect(harness.released).toEqual([new Map([['hub:e1', { x: at.x + 50, y: at.y + 20 }]])])
     fireEvent.click(collapse) // the click that ends the drag does not collapse
     expect(isCollapsed('b1', 'e1')).toBe(false)
+    expect(harness.released).toHaveLength(1)
+  })
+
+  it('a drag that ends with no click does not swallow the next real click', async () => {
+    setup([{ id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style', dx: 300, dy: 0, options: [opt({ id: 'o1' })] }])
+    const el = document.querySelector<HTMLElement>('.flower-hub')!
+    const collapse = within(hub('Hand style')).getByRole('button', { name: 'Collapse Hand style' })
+    fireEvent.pointerDown(el, { button: 0, clientX: 10, clientY: 10 })
+    fireEvent.pointerMove(el, { clientX: 60, clientY: 30 })
+    fireEvent.pointerUp(el, { clientX: 60, clientY: 30 })
+    await new Promise((r) => setTimeout(r, 0))
+    fireEvent.click(collapse)
+    expect(isCollapsed('b1', 'e1')).toBe(true)
+    setCollapsed('b1', 'e1', false)
+  })
+
+  it('a press without movement on the collapse button is still a click', () => {
+    setup([{ id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style', dx: 300, dy: 0, options: [opt({ id: 'o1' })] }])
+    const collapse = within(hub('Hand style')).getByRole('button', { name: 'Collapse Hand style' })
     fireEvent.pointerDown(collapse, { button: 0, clientX: 10, clientY: 10 })
     fireEvent.pointerUp(collapse, { clientX: 10, clientY: 10 })
     fireEvent.click(collapse)
     expect(isCollapsed('b1', 'e1')).toBe(true)
-    expect(harness.released).toHaveLength(1)
+    expect(harness.released).toEqual([])
     setCollapsed('b1', 'e1', false)
   })
 

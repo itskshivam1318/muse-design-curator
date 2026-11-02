@@ -15,9 +15,10 @@ vi.mock('../api', async (orig) => ({
   exploreItem: vi.fn(),
   visualizeOption: vi.fn(),
   patchItem: vi.fn(() => Promise.resolve({})),
+  patchOption: vi.fn(() => Promise.resolve({})),
   getRenderers: vi.fn(() => Promise.resolve([])),
 }))
-const { getRegion, exploreItem, visualizeOption, patchItem } = await import('../api')
+const { getRegion, exploreItem, visualizeOption, patchItem, patchOption } = await import('../api')
 const { setCollapsed } = await import('../map/collapse')
 const { useItemActions } = await import('./actions')
 const { Canvas } = await import('./Canvas')
@@ -274,6 +275,22 @@ describe('Canvas item drag', () => {
     act(() => void boardActions!.undo())
     expect(patchItem).toHaveBeenLastCalledWith('src', { x: 0, y: 0 })
     await waitFor(() => expect(toolbar.style.left).toBe('180px'))
+  })
+
+  it('dragging a docked take out of its ring undocks it at full size, as one undo step', () => {
+    sized()
+    const src = makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })
+    const kept = makeItem({ id: 'k1', board_id: 'b1', x: 700, y: 0, w: 168, h: 105, explore_option_id: 'o1', origin: 'generated' })
+    const qc = client(
+      [{ id: 'e1', board_id: 'b1', dx: 300, dy: 0, item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1', status: 'kept', kept_item_id: 'k1', takes: ['k1'] })] }],
+      [src, kept],
+    )
+    renderBoard(qc)
+    drag(Konva.stages.at(-1)!.findOne('#k1')!, 1200, 0)
+    expect(patchOption).toHaveBeenCalledWith('o1', { undocked: true })
+    expect(vi.mocked(patchItem).mock.calls.find(([id]) => id === 'k1')?.[1]).toMatchObject({ w: 300, h: 187.5 })
+    expect(qc.getQueryData<Exploration[]>(keys.explorations('b1'))![0].options[0].undocked).toBe(true)
+    expect(undoHistory.size).toBe(1)
   })
 })
 

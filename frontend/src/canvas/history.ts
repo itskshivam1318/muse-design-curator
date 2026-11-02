@@ -22,6 +22,11 @@ export function createUndoHistory() {
     pushRevert(revert: () => void) {
       add({ kind: 'revert', revert })
     },
+    /** Forgets the entry with this revert (a change that failed and was already put back). */
+    drop(revert: () => void) {
+      const i = stack.findIndex((e) => e.revert === revert)
+      if (i >= 0) stack.splice(i, 1)
+    },
     /** The newest entry to undo; null when there is nothing to undo. */
     pop(): UndoEntry | null {
       return stack.pop() ?? null

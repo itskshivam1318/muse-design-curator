@@ -19,6 +19,16 @@ import { undoHistory as history } from './history'
 import { selection } from './selection'
 import { track } from '../telemetry'
 
+/** Calls `fn` on the first call only (one report for a release however many of its writes fail). */
+function once(fn: (e: unknown) => void): (e: unknown) => void {
+  let done = false
+  return (e) => {
+    if (done) return
+    done = true
+    fn(e)
+  }
+}
+
 /** Item mutations with optimistic cache updates; the server's SSE echo confirms them. */
 export function useItemActions(boardId: string) {
   const qc = useQueryClient()
@@ -45,19 +55,21 @@ export function useItemActions(boardId: string) {
   /** A release touches items and explorations: a failed write puts both back as the server has them. */
   const failRelease = useCallback(
     (e: unknown) => {
-      fail('Could not save position')(e)
+      report('Could not save position')(e)
+      resync()
       void qc.invalidateQueries({ queryKey: keys.explorations(boardId) })
     },
-    [fail, qc, boardId],
+    [report, resync, qc, boardId],
   )
 
   /**
-   * A release plan applied one way ('to') or back ('from'): the caches at once, then the writes.
-   * Locked (the public demo): only item positions are written (they are open there); sizes, hub
-   * offsets and dock flags stay local.
+   * A release plan applied one way ('to') or back ('from'): the caches at once, then the writes, each
+   * failure handed to `onFail`. Locked (the public demo): only the moves of plain grabbed items are
+   * written (item positions are open there); carried and docking takes, sizes, hub offsets and dock
+   * flags stay local.
    */
   const applyRelease = useCallback(
-    (plan: ReleasePlan, which: 'from' | 'to', locked: boolean) => {
+    (plan: ReleasePlan, which: 'from' | 'to', locked: boolean, onFail: (e: unknown) => void) => {
       const pos = new Map(plan.moves.map((m) => [m.id, m[which]]))
       const size = new Map(plan.dock.map((d) => [d.itemId, which === 'to' ? d.size : d.from]))
       const hub = new Map(plan.hubs.map((h) => [h.explorationId, which === 'to' ? h.to : h.from]))
@@ -73,15 +85,15 @@ export function useItemActions(boardId: string) {
           return hub.has(e.id) ? { ...e, dx: off?.dx ?? null, dy: off?.dy ?? null, options } : { ...e, options }
         }),
       )
-      for (const id of new Set([...pos.keys(), ...size.keys()])) {
-        const body = { ...pos.get(id), ...(locked ? undefined : size.get(id)) }
-        if (Object.keys(body).length > 0) patchItem(id, body).catch(failRelease)
+      if (locked) {
+        for (const m of plan.moves) if (m.plain) patchItem(m.id, m[which]).catch(onFail)
+        return
       }
-      if (locked) return
-      for (const [id, off] of hub) patchExploration(id, { dx: off?.dx ?? null, dy: off?.dy ?? null }).catch(failRelease)
-      for (const [id, u] of undocked) patchOption(id, { undocked: u }).catch(failRelease)
+      for (const id of new Set([...pos.keys(), ...size.keys()])) patchItem(id, { ...pos.get(id), ...size.get(id) }).catch(onFail)
+      for (const [id, off] of hub) patchExploration(id, { dx: off?.dx ?? null, dy: off?.dy ?? null }).catch(onFail)
+      for (const [id, u] of undocked) patchOption(id, { undocked: u }).catch(onFail)
     },
-    [qc, boardId, failRelease],
+    [qc, boardId],
   )
 
   const dropNote = useCallback(
@@ -126,8 +138,26 @@ export function useItemActions(boardId: string) {
        */
       commitRelease(plan: ReleasePlan, opts: { locked: boolean }) {
         if (plan.moves.length + plan.hubs.length + plan.dock.length === 0) return
-        applyRelease(plan, 'to', opts.locked)
-        history.pushRevert(() => applyRelease(plan, 'from', opts.locked))
+        let undone = false
+        const revert = () => {
+          undone = true
+          applyRelease(plan, 'from', opts.locked, once(failRelease))
+        }
+        // any write failing puts the whole release back (no half-undocked take), once, and forgets it
+        applyRelease(
+          plan,
+          'to',
+          opts.locked,
+          once((e) => {
+            if (!undone) {
+              undone = true
+              history.drop(revert)
+              applyRelease(plan, 'from', opts.locked, () => {})
+            }
+            failRelease(e)
+          }),
+        )
+        history.pushRevert(revert)
       },
       undo(): boolean {
         const last = history.pop()
@@ -198,7 +228,7 @@ export function useItemActions(boardId: string) {
         }
       },
     }),
-    [error, applyRelease, qc, boardId, fail, report, addNote, dropNote, setNoteText],
+    [error, applyRelease, failRelease, qc, boardId, fail, report, addNote, dropNote, setNoteText],
   )
 }
 

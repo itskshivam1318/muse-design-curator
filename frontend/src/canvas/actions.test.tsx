@@ -35,7 +35,7 @@ describe('useItemActions undo (⌘Z)', () => {
   it('undoes item moves and option reverts from the shared board history, newest first', () => {
     const { result, qc } = setup()
     const moves = [{ id: 'a', from: { x: 0, y: 0 }, to: { x: 50, y: 60 } }]
-    act(() => result.current.commitRelease({ moves, hubs: [], dock: [] }, { locked: false }))
+    act(() => result.current.commitRelease({ moves, hubs: [], dock: [], settled: new Map() }, { locked: false }))
     const revert = vi.fn()
     undoHistory.pushRevert(revert) // e.g. an option dismissed in the drawer
     let undone = false
@@ -88,11 +88,12 @@ describe('useItemActions commitRelease', () => {
   }
   const plan: ReleasePlan = {
     moves: [
-      { id: 'a', from: { x: 0, y: 0 }, to: { x: 50, y: 50 } },
+      { id: 'a', from: { x: 0, y: 0 }, to: { x: 50, y: 50 }, plain: true },
       { id: 't1', from: { x: 600, y: 0 }, to: { x: 900, y: 40 } },
     ],
     hubs: [{ explorationId: 'e1', from: null, to: { dx: 320, dy: 10 } }],
     dock: [{ optionId: 'o2', itemId: 't1', undocked: true, size: { w: 300, h: 187.5 }, from: { w: 168, h: 105 } }],
+    settled: new Map(),
   }
 
   it('commitRelease is one undo step', () => {
@@ -129,21 +130,30 @@ describe('useItemActions commitRelease', () => {
     expect(patchOption).not.toHaveBeenCalled()
   })
 
-  it('locked commitRelease still saves item positions (open in the demo)', () => {
-    const { result } = board()
+  it('locked commitRelease saves only a grabbed plain item (open in the demo); the undocked take stays local', () => {
+    const { result, items } = board()
     act(() => result.current.commitRelease(plan, { locked: true }))
-    expect(patchItem).toHaveBeenCalledWith('a', { x: 50, y: 50 })
-    expect(patchItem).toHaveBeenCalledWith('t1', { x: 900, y: 40 })
+    expect(items()[1]).toMatchObject({ x: 900, y: 40, w: 300 })
+    expect(vi.mocked(patchItem).mock.calls).toEqual([['a', { x: 50, y: 50 }]])
+    act(() => void result.current.undo())
+    expect(vi.mocked(patchItem).mock.calls).toEqual([['a', { x: 50, y: 50 }], ['a', { x: 0, y: 0 }]])
     expect(patchExploration).not.toHaveBeenCalled()
     expect(patchOption).not.toHaveBeenCalled()
   })
 
-  it('a failed write is reported and the board resyncs', async () => {
-    vi.mocked(patchExploration).mockRejectedValueOnce(new Error('boom'))
-    const { result, qc } = board()
+  it('a failed write puts the whole release back, writes it back, drops its undo step and reports once', async () => {
+    vi.mocked(patchOption).mockRejectedValueOnce(new Error('boom'))
+    vi.mocked(patchExploration).mockRejectedValueOnce(new Error('again'))
+    const { result, qc, items, e1 } = board()
     const invalidate = vi.spyOn(qc, 'invalidateQueries')
     await act(async () => result.current.commitRelease(plan, { locked: false }))
-    expect(result.current.error).toBe('Could not save position: boom')
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.explorations('b1') })
+    expect(items().map((i) => [i.x, i.y, i.w, i.h])).toEqual([[0, 0, 200, 150], [600, 0, 168, 105]])
+    expect([e1().dx, e1().dy, e1().options[0].undocked]).toEqual([null, null, false])
+    expect(patchItem).toHaveBeenLastCalledWith('t1', { x: 600, y: 0, w: 168, h: 105 })
+    expect(patchOption).toHaveBeenLastCalledWith('o2', { undocked: false })
+    expect(undoHistory.size).toBe(0)
+    // one report (the first failure), one resync
+    expect(result.current.error).toBe('Could not save position: again')
+    expect(invalidate.mock.calls.filter(([q]) => q?.queryKey?.[0] === 'explorations')).toHaveLength(1)
   })
 })

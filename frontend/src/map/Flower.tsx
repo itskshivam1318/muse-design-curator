@@ -78,6 +78,10 @@ function useHubDrag(id: string, scale: number, onRelease?: (centres: Map<string,
       drag.current = null
       if (!d?.moved) return
       dragged.current = true
+      // the click that ends the drag comes in this same task; if none comes, the next real one counts
+      setTimeout(() => {
+        dragged.current = false
+      }, 0)
       onRelease(world.release())
     },
     // a cancelled drag lets go without writing: the hub springs back to its home

@@ -34,9 +34,15 @@ def test_patch_sets_offset_and_get_returns_it(client: TestClient, world) -> None
     assert r.status_code == 200 and (r.json()["dx"], r.json()["dy"]) == (None, None)
 
 
-def test_patch_requires_both_finite(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+def test_patch_requires_both_finite_or_both_null(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
     got = explore(client, source(world)).json()
-    for body in ({"dx": 1}, {}, {"dx": 1, "dy": "inf"}):
+    for body in (
+        {"dx": 1},
+        {},
+        {"dx": 1, "dy": "inf"},
+        {"dx": 1, "dy": None},
+        {"dx": None, "dy": 2},
+    ):
         assert client.patch(f"/api/explorations/{got['id']}", json=body).status_code == 400
 
 

@@ -1,7 +1,7 @@
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.api.boards import require_board
 from app.api.deps import SessionDep
@@ -35,6 +35,12 @@ class OffsetBody(BaseModel):
 
     dx: _Finite | None
     dy: _Finite | None
+
+    @model_validator(mode="after")
+    def _both_or_neither(self) -> "OffsetBody":
+        if (self.dx is None) != (self.dy is None):
+            raise ValueError("dx and dy are both numbers or both null")
+        return self
 
 
 class VisualizeBody(BaseModel):

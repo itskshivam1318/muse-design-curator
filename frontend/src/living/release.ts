@@ -7,16 +7,22 @@ import type { Exploration, Item, Point } from '../api'
 import type { Move } from '../canvas/history'
 import type { Home } from './physics'
 import { dockedSize, undockedSize } from './ring'
-import type { Scene } from './scene'
+import { keptSlot, type Scene } from './scene'
+import type { LivingWorld } from './world'
 
 type Size = { w: number; h: number }
 type Offset = { dx: number; dy: number }
 
 export interface ReleasePlan {
-  /** Item top-left moves (docked takes carried along included). */
-  moves: Move[]
+  /**
+   * Item top-left moves (docked takes carried along included). `plain` marks a grabbed item that
+   * neither was nor becomes a docked take: the only kind of write a locked demo makes.
+   */
+  moves: (Move & { plain?: boolean })[]
   hubs: { explorationId: string; from: Offset | null; to: Offset }[]
   dock: { optionId: string; itemId: string; undocked: boolean; size: Size; from: Size }[]
+  /** Each released kept take's centre once the dock rules have had their say (its slot, or the drop). */
+  settled: Map<string, Point>
 }
 
 const HUB = 'hub:'
@@ -56,60 +62,76 @@ export function planRelease(
   homeAfter: (id: string) => Point,
 ): ReleasePlan {
   const itemById = new Map(items.map((i) => [i.id, i]))
+  const flowerByHub = new Map(scene.flowers.map((f) => [f.hubId, f]))
   const homes = new Map(scene.specs.map((s) => [s.id, s.home]))
-  const moves: Move[] = []
+  const moves: ReleasePlan['moves'] = []
   const hubs: ReleasePlan['hubs'] = []
   const dock: ReleasePlan['dock'] = []
-  // each released body's centre once the dock rules have had their say (a take snaps to its slot)
+  const settled = new Map<string, Point>()
+  // released centres, then the dock rules' say (a take snaps to its slot)
   const final = new Map(released)
-  const at = (id: string): Point => {
-    const c = final.get(id)
-    if (c) return c
-    const h = homes.get(id)
+  // hubs given a new offset: their ring opens along it, so their docked takes' slots turn
+  const turned = new Map<string, Point>()
+  const slotHome = (id: string): Home | undefined => {
+    const s = scene.slots.get(id)
+    if (!s) return undefined
+    const off = turned.get(s.hubId)
+    const f = flowerByHub.get(s.hubId)
+    if (!off || !f) return s.home
+    const d = keptSlot(f, s.index, off)
+    return { kind: 'rel', to: s.hubId, dx: d.x, dy: d.y }
+  }
+  const resolve = (h: Home | undefined, id: string): Point => {
     if (h?.kind !== 'rel') return homeAfter(id)
     const parent = at(h.to)
     return { x: parent.x + h.dx, y: parent.y + h.dy }
   }
-  const slotAt = (h: Home): Point => (h.kind === 'abs' ? { x: h.x, y: h.y } : { x: at(h.to).x + h.dx, y: at(h.to).y + h.dy })
-  const move = (it: Item, to: Point) => {
-    if (to.x !== it.x || to.y !== it.y) moves.push({ id: it.id, from: { x: it.x, y: it.y }, to })
+  const at = (id: string): Point => final.get(id) ?? resolve(scene.docked.has(id) ? slotHome(id) : homes.get(id), id)
+  const move = (it: Item, to: Point, plain = false) => {
+    if (to.x === it.x && to.y === it.y) return
+    moves.push({ id: it.id, from: { x: it.x, y: it.y }, to, ...(plain ? { plain } : {}) })
   }
 
-  // dragged items first: a kept take docks or undocks by how near its slot it lands
-  for (const [id, c] of released) {
-    const it = itemById.get(id)
-    if (!it || id.startsWith(HUB)) continue
-    const slot = scene.slots.get(id)
-    if (!slot) {
-      move(it, topLeft(c, it))
-      continue
-    }
-    const target = slotAt(slot.home)
-    const near = Math.hypot(c.x - target.x, c.y - target.y) <= slot.reach
-    const stored = { w: it.w, h: it.h }
-    if (scene.docked.has(id) && !near) {
-      const size = undockedSize(stored)
-      dock.push({ optionId: slot.optionId, itemId: id, undocked: true, size, from: stored })
-      move(it, topLeft(c, size))
-    } else if (!scene.docked.has(id) && near) {
-      const size = dockedSize(stored)
-      dock.push({ optionId: slot.optionId, itemId: id, undocked: false, size, from: stored })
-      final.set(id, target)
-      move(it, topLeft(target, size))
-    } else if (scene.docked.has(id)) {
-      final.set(id, target)
-      move(it, topLeft(target, stored))
-    } else move(it, topLeft(c, stored))
-  }
-
-  // dragged hubs: their offset from where their source ends up
+  // dragged hubs (a hub is dragged on its own): their offset from their source
   const byId = new Map(explorations.map((e) => [e.id, e]))
   for (const [id, c] of released) {
     const e = id.startsWith(HUB) ? byId.get(id.slice(HUB.length)) : undefined
     if (!e) continue
     const source = at(e.item_id)
     const from = e.dx != null && e.dy != null ? { dx: e.dx, dy: e.dy } : null
-    hubs.push({ explorationId: e.id, from, to: { dx: Math.round(c.x - source.x), dy: Math.round(c.y - source.y) } })
+    const to = { dx: Math.round(c.x - source.x), dy: Math.round(c.y - source.y) }
+    hubs.push({ explorationId: e.id, from, to })
+    turned.set(id, { x: to.dx, y: to.dy })
+  }
+
+  // dragged items: a kept take docks or undocks by how near its slot it lands
+  for (const [id, c] of released) {
+    const it = itemById.get(id)
+    if (!it || id.startsWith(HUB)) continue
+    const slot = scene.slots.get(id)
+    const stored = { w: it.w, h: it.h }
+    if (!slot) {
+      move(it, topLeft(c, stored), true)
+      continue
+    }
+    const target = resolve(slotHome(id), id)
+    const near = Math.hypot(c.x - target.x, c.y - target.y) <= slot.reach
+    const wasDocked = scene.docked.has(id)
+    if (wasDocked !== near) {
+      // undocked (it was docked and left its ring) or docked (it came back near its slot)
+      const size = near ? dockedSize(stored) : undockedSize(stored)
+      dock.push({ optionId: slot.optionId, itemId: id, undocked: !near, size, from: stored })
+      const centre = near ? target : c
+      settled.set(id, centre)
+      move(it, topLeft(centre, size))
+    } else if (wasDocked) {
+      settled.set(id, target)
+      move(it, topLeft(target, stored))
+    } else {
+      settled.set(id, c)
+      move(it, topLeft(c, stored), true)
+    }
+    final.set(id, settled.get(id)!)
   }
 
   // docked takes reachable from a released body follow to their new slot
@@ -130,5 +152,13 @@ export function planRelease(
     move(it, topLeft(at(id), it))
   }
 
-  return { moves, hubs, dock }
+  return { moves, hubs, dock, settled }
+}
+
+/**
+ * A dragged take is selected, so pinned: it would stay where it was dropped. Put each released kept
+ * take at its settled centre at once (its slot when it docked or snapped back), moved or not.
+ */
+export function placeSettled(world: Pick<LivingWorld, 'place'>, plan: ReleasePlan): void {
+  for (const [id, c] of plan.settled) world.place(id, c)
 }

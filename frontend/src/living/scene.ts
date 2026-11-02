@@ -52,9 +52,10 @@ export interface Scene {
   docked: Map<string, { optionId: string; hubId: string }>
   /**
    * Each kept take on the board (docked or not) → its slot in its flower's ring (`home`, rel to the
-   * hub) and how near (`reach`, the ring's radius) a drop must land to dock there.
+   * hub; `index` is its option's place in the flower's options) and how near (`reach`, the radius of
+   * the ring it shows) a drop must land to dock there.
    */
-  slots: Map<string, { optionId: string; hubId: string; home: Home; reach: number }>
+  slots: Map<string, { optionId: string; hubId: string; index: number; home: Home; reach: number }>
 }
 
 export interface SceneInput {
@@ -104,6 +105,17 @@ function cardsOf(item: Item, analysis: AnalysisView): Map<string, Card> {
 const calloutId = (itemId: string, card: string) => `callout:${itemId}:${card}`
 const rel = (to: string, p: Point): Home => ({ kind: 'rel', to, dx: p.x, dy: p.y })
 const polar = (angle: number, r: number): Point => ({ x: Math.cos(angle) * r, y: Math.sin(angle) * r })
+
+/** How far from its hub a kept take docks: past the petals, or close round a collapsed flower's badge. */
+const keptRadius = (m: FlowerModel) => (m.collapsed ? BADGE_KEPT_R : petalRadius(m.options.length) + KEPT_EXTRA)
+
+/**
+ * Where the take of the flower's option `index` docks, relative to its hub, for a hub `offset` from
+ * its source: the ring opens along the offset, so it turns as the hub moves round its source.
+ */
+export function keptSlot(m: FlowerModel, index: number, offset: Point): Point {
+  return polar(petalAngles(Math.atan2(offset.y, offset.x), m.options.length)[index], keptRadius(m))
+}
 
 export function buildScene(input: SceneInput): Scene {
   const { items, explorations, analyses, labels, collapsed, selectedId, formsOn = () => 0, calloutHeights, toolbar } = input
@@ -158,12 +170,11 @@ export function buildScene(input: SceneInput): Scene {
   const dockHome = new Map<string, Home>()
   const slots: Scene['slots'] = new Map()
   for (const f of flowers) {
-    const reach = petalRadius(f.model.options.length)
-    const r = f.model.collapsed ? BADGE_KEPT_R : reach + KEPT_EXTRA
+    const reach = f.model.collapsed ? BADGE_KEPT_R : petalRadius(f.model.options.length)
     f.model.options.forEach((o, i) => {
       if (!isKept(o) || !byId.has(o.kept_item_id!)) return
-      const home = rel(f.model.hubId, polar(f.angles[i], r))
-      slots.set(o.kept_item_id!, { optionId: o.id, hubId: f.model.hubId, home, reach })
+      const home = rel(f.model.hubId, keptSlot(f.model, i, f.offset))
+      slots.set(o.kept_item_id!, { optionId: o.id, hubId: f.model.hubId, index: i, home, reach })
       if (o.undocked) return
       docked.set(o.kept_item_id!, { optionId: o.id, hubId: f.model.hubId })
       dockHome.set(o.kept_item_id!, home)

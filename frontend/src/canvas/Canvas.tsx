@@ -22,7 +22,7 @@ import { Edges } from '../living/Edges'
 import { useKonvaBodies } from '../living/useKonvaBodies'
 import { useLiveBoxes } from '../living/useLiveBounds'
 import { LivingProvider } from '../living/useLiving'
-import { homesAfter, planRelease } from '../living/release'
+import { homesAfter, placeSettled, planRelease } from '../living/release'
 import { useLivingScene } from '../living/useLivingScene'
 import { createLivingWorld, type LivingWorld } from '../living/world'
 import { Callouts } from '../map/Callouts'
@@ -527,14 +527,7 @@ export function Canvas({
   const commitDrag = (centres: Map<string, Point>) => {
     const plan = planRelease(scene, visible, explorations ?? [], centres, homesAfter(scene, centres))
     actions.commitRelease(plan, { locked: readOnly })
-    // a dragged take is selected, so pinned: one that docked (or snapped back) goes to its slot at once
-    const sizes = new Map(plan.dock.map((d) => [d.itemId, d.size]))
-    for (const m of plan.moves) {
-      const it = byId.get(m.id)
-      if (!it || !centres.has(m.id) || !scene.slots.has(m.id)) continue
-      const s = sizes.get(m.id) ?? it
-      world.place(m.id, { x: m.to.x + s.w / 2, y: m.to.y + s.h / 2 })
-    }
+    placeSettled(world, plan)
   }
   useLayoutEffect(() => world.setPinned(selected), [world, selected])
   // a selected item is pinned: when its stored spot changes (an undo, a move elsewhere) it goes there at once
