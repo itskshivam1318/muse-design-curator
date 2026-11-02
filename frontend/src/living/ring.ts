@@ -1,6 +1,12 @@
 /** Ring geometry of the living board: where cards, hubs, petals and docked takes sit around their owner. */
 import type { Point } from '../api'
 
+/** Card sizes (canvas units), mirrored by the .callout, .flower-hub and .petal CSS. */
+export const CALLOUT_W = 176
+export const HUB_W = 150
+export const HUB_H = 48
+export const PETAL = 88
+
 /** A callout card clears its item by this much along each axis. */
 export const CALLOUT_GAP = { x: 105, y: 46 }
 /** A hub clears its source by this much along each axis (when it has no stored offset). */

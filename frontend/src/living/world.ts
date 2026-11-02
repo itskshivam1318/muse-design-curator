@@ -16,6 +16,13 @@ export interface LivingWorld {
   dragBy(dx: number, dy: number): void
   /** Grabbed ids → centres at release; ungrabs (selection-pinned bodies stay pinned). */
   release(): Map<string, Point>
+  /**
+   * Puts a body at `centre`, at rest: a pinned body whose home moved (a remote move, an undo). A
+   * grabbed body is left to the pointer.
+   */
+  place(id: string, centre: Point): void
+  /** The clock the world steps and grows bodies by. */
+  now(): number
   /** The keep swell / "already open" nudge. */
   pulse(id: string): void
   setReduced(r: boolean): void
@@ -118,6 +125,15 @@ export function createLivingWorld(opts: LivingWorldOpts): LivingWorld {
       applyPins()
       return out
     },
+    place(id, centre) {
+      const b = world.bodies.get(id)
+      if (!b || grabbed.has(id)) return
+      b.x = centre.x
+      b.y = centre.y
+      b.vx = 0
+      b.vy = 0
+    },
+    now,
     pulse(id) {
       const b = world.bodies.get(id)
       if (b) b.pulseAt = now()

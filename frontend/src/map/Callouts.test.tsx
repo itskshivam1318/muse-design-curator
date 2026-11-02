@@ -13,6 +13,9 @@ vi.mock('../api', async (orig) => ({
 const { extractPart, addDimension, addPart } = await import('../api')
 const { Callouts } = await import('./Callouts')
 const { partAnchor } = await import('./regions')
+const { buildScene } = await import('../living/scene')
+const { createLivingWorld } = await import('../living/world')
+const { LivingProvider } = await import('../living/useLiving')
 
 afterEach(() => {
   cleanup()
@@ -57,12 +60,22 @@ function setup(
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   const onOpenDimension = over.onOpenDimension ?? vi.fn()
   const onHoverPart = over.onHoverPart ?? vi.fn()
+  const target = over.item ?? item
+  const a = over.analysis ?? analysis
+  // the selected item's callouts are bodies of the world, ringed around it
+  const world = createLivingWorld({ reduced: true })
+  world.sync(
+    buildScene({ items: [target], explorations: [], analyses: new Map([[target.id, a]]), labels: new Map(), collapsed: () => false, selectedId: target.id }),
+    -1000,
+  )
   render(
     <QueryClientProvider client={qc}>
-      <Callouts item={over.item ?? item} analysis={over.analysis ?? analysis} view={view} onOpenDimension={onOpenDimension} onHoverPart={onHoverPart} locked={over.locked} />
+      <LivingProvider world={world}>
+        <Callouts item={target} analysis={a} view={view} onOpenDimension={onOpenDimension} onHoverPart={onHoverPart} locked={over.locked} />
+      </LivingProvider>
     </QueryClientProvider>,
   )
-  return { qc, onOpenDimension, onHoverPart }
+  return { qc, onOpenDimension, onHoverPart, world }
 }
 
 const card = (name: string) => screen.getByRole('group', { name })
@@ -89,6 +102,34 @@ describe('Callouts', () => {
     // one leader line and anchor dot per part, none for the whole item
     expect(document.querySelectorAll('.callout-leader')).toHaveLength(2)
     expect(document.querySelectorAll('.callout-anchor')).toHaveLength(2)
+  })
+
+  it("each card sits where its body is; a part's leader runs from its anchor to the card", () => {
+    const { world } = setup()
+    const body = world.body('callout:i1:hands')!
+    const hands = card('Hands')
+    const r2 = (n: number) => Math.round(n * 100) / 100
+    expect(hands.style.transform).toContain(`translate(${r2(body.x - body.w / 2)}px, ${r2(body.y - body.h / 2)}px)`)
+    expect(hands.style.left).toBe('')
+    const leader = document.querySelector('.callout-leader')!
+    const anchor = partAnchor({ x: 0, y: 0, width: 400, height: 300 }, analysis.parts[0])
+    expect([leader.getAttribute('x1'), leader.getAttribute('y1')]).toEqual([String(anchor.x), String(anchor.y)])
+    expect(Number(leader.getAttribute('x2'))).toBeGreaterThanOrEqual(body.x - body.w / 2)
+  })
+
+  it('an open add-form is reported, so the card body can grow to fit it', () => {
+    const onForms = vi.fn()
+    const qc = new QueryClient()
+    const world = createLivingWorld({ reduced: true })
+    render(
+      <QueryClientProvider client={qc}>
+        <LivingProvider world={world}>
+          <Callouts item={item} analysis={analysis} view={view} onHoverPart={vi.fn()} onForms={onForms} />
+        </LivingProvider>
+      </QueryClientProvider>,
+    )
+    fireEvent.click(within(card('Hands')).getByRole('button', { name: '+ Add dimension' }))
+    expect(onForms).toHaveBeenLastCalledWith({ hands: 1 })
   })
 
   it('hovering a callout or one of its dimensions reports the part; leaving clears it', () => {

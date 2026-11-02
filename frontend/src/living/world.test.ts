@@ -90,6 +90,27 @@ describe('living world', () => {
     off()
   })
 
+  it('place puts a body at a centre at rest; a grabbed body is left to the pointer', () => {
+    const { world } = rig()
+    world.sync(scene(item('a', 0, 0), item('b', 300, 0)))
+    world.setPinned(['a'])
+    world.body('a')!.vx = 4
+    world.place('a', { x: 120, y: -40 })
+    expect(world.body('a')).toMatchObject({ x: 120, y: -40, vx: 0, vy: 0, pinned: true })
+    world.grab(['b'])
+    world.dragBy(10, 10)
+    world.place('b', { x: 0, y: 0 })
+    expect(world.body('b')).toMatchObject({ x: 310, y: 10 })
+    world.place('nope', { x: 0, y: 0 }) // unknown ids are ignored
+  })
+
+  it('now() is the clock the world steps by', () => {
+    const { world, frame } = rig()
+    const t0 = world.now()
+    frame()
+    expect(world.now()).toBeGreaterThan(t0)
+  })
+
   it('offscreen bodies sleep', () => {
     const { world, frame } = rig()
     const a = item('a', 0, 0)

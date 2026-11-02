@@ -1,13 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { useEffect, useMemo } from 'react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { useLayoutEffect, useMemo } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type AnalysisView, ApiError, type Exploration, type ExploreOption, type Item, keys } from '../api'
 import { rectsIntersect } from '../canvas/geometry'
+import { itemBounds } from '../canvas/nodeProps'
 import { LENS } from '../test/attrs'
 import { makeItem } from '../test/fixtures'
 import { isCollapsed } from './collapse'
-import type { MapView } from './useMap'
 
 vi.mock('../api', async (orig) => ({
   ...(await orig<typeof import('../api')>()),
@@ -18,20 +18,25 @@ vi.mock('../api', async (orig) => ({
 }))
 const { keepTake, getAnalysis } = await import('../api')
 const { FlowerLayer } = await import('./Flower')
-const { useMap } = await import('./useMap')
+const { useLivingScene } = await import('../living/useLivingScene')
+const { createLivingWorld } = await import('../living/world')
+const { LivingProvider } = await import('../living/useLiving')
+const { Edges } = await import('../living/Edges')
 const { useItems } = await import('../queries')
 
-let lastMap: MapView | null = null
-/** The canvas in small: the map over the items, the layer drawing it. */
-function Harness({ size }: { size: { width: number; height: number } }) {
+/** The canvas in small: the scene over the items, synced into a world, the layer drawing it. */
+function Harness() {
   const all = useItems('b1').data
   const items = useMemo(() => (all ?? []).filter((i) => !i.staged), [all])
-  const viewport = useMemo(() => ({ x: 0, y: 0, ...size }), [size])
-  const map = useMap('b1', items, viewport)
-  useEffect(() => {
-    lastMap = map
-  })
-  return <FlowerLayer boardId="b1" items={items} view={view} map={map} />
+  const world = useMemo(() => createLivingWorld({ reduced: true }), [])
+  const scene = useLivingScene('b1', items, null)
+  useLayoutEffect(() => world.sync(scene), [world, scene])
+  return (
+    <LivingProvider world={world}>
+      <Edges scene={scene} view={view} />
+      <FlowerLayer boardId="b1" items={items} view={view} flowers={scene.flowers} />
+    </LivingProvider>
+  )
 }
 
 function opt(over: Partial<ExploreOption> & { id: string }): ExploreOption {
@@ -57,7 +62,7 @@ const view = { x: 0, y: 0, scale: 1 }
 
 function setup(
   explorations: Exploration[],
-  extra: { items?: Item[]; size?: { width: number; height: number }; analysed?: string[] } = {},
+  extra: { items?: Item[]; analysed?: string[] } = {},
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   qc.setQueryData(keys.demo, { demo_mode: false, explore_enabled: true })
@@ -69,7 +74,7 @@ function setup(
   if (analysed.includes('b')) qc.setQueryData(keys.analysis('b'), analysis('Hand shape'))
   render(
     <QueryClientProvider client={qc}>
-      <Harness size={extra.size ?? { width: 4000, height: 4000 }} />
+      <Harness />
     </QueryClientProvider>,
   )
   return qc
@@ -90,8 +95,8 @@ describe('FlowerLayer', () => {
     expect(within(hub('Hand style')).getByText('2 options · 0 kept')).toBeTruthy()
     expect(within(hub('Hand style')).getAllByTestId('petal').map((p) => p.dataset.optionId)).toEqual(['o1', 'o2'])
     expect(within(hub('Hand shape')).getByText('1 options · 0 kept')).toBeTruthy()
-    // a dashed line from the callout to each hub
-    expect(document.querySelectorAll('.flower-stem')).toHaveLength(2)
+    // a stem from each item to its hub
+    expect(document.querySelectorAll('path[data-edge-kind="stem"]')).toHaveLength(2)
   })
 
   it('petals show their state: note, rendering, rendered, kept and drifted', () => {
@@ -119,8 +124,8 @@ describe('FlowerLayer', () => {
     expect(petal('o2').querySelector('.spinner')).toBeTruthy()
     expect(petal('o3').className).toContain('is-rendered')
     expect(petal('o3').querySelector('img')).toBeTruthy()
-    expect(petal('o4').className).toContain('is-kept')
-    expect(petal('o4').style.width).toBe('104px')
+    // a kept option's take is docked in the ring in its place: no petal
+    expect(petal('o4')).toBeNull()
     expect(petal('o5').className).toContain('is-drifted')
     expect(within(hub('Hand style')).getByText('5 options · 1 kept')).toBeTruthy()
   })
@@ -181,56 +186,35 @@ describe('FlowerLayer', () => {
     expect(isCollapsed('b1', 'e1')).toBe(true)
     const badge = screen.getByRole('button', { name: 'Hand style · 2 options · 1 kept' })
     fireEvent.click(badge)
-    expect(screen.getAllByTestId('petal')).toHaveLength(2)
+    expect(screen.getAllByTestId('petal')).toHaveLength(1) // o2 is kept (its take is not on the board)
     expect(isCollapsed('b1', 'e1')).toBe(false)
   })
 
-  it('only flowers reaching the viewport mount', () => {
-    setup(
-      [
-        { id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style', options: [opt({ id: 'o1' })] },
-        { id: 'e2', board_id: 'b1', item_id: 'b', key: 'hand_style', options: [opt({ id: 'o4', exploration_id: 'e2' })] },
-      ],
-      { size: { width: 800, height: 600 } },
-    )
-    expect(hub('Hand style')).toBeTruthy()
-    expect(screen.queryByRole('group', { name: 'Hand shape flower' })).toBeNull()
-  })
-
-  describe('flowers wait, in id order, for the analyses they start from', () => {
-    const onA = (id: string) => ({ id, board_id: 'b1', item_id: 'a', key: 'hand_style', options: [opt({ id: `${id}-o`, exploration_id: id })] })
+  describe('flowers wait for the analyses they start from', () => {
+    const onA = (id: string, over: Partial<Exploration> = {}) => ({ id, board_id: 'b1', item_id: 'a', key: 'hand_style', options: [opt({ id: `${id}-o`, exploration_id: id })], ...over })
     const onB = (id: string) => ({ id, board_id: 'b1', item_id: 'b', key: 'hand_style', options: [opt({ id: `${id}-o`, exploration_id: id })] })
-    const drawn = () => screen.queryAllByTestId('petal').map((p) => p.dataset.optionId)
+    const drawn = () => screen.queryAllByTestId('petal').map((p) => p.dataset.optionId).sort()
 
-    it("a later flower on an item still loading waits; the earlier one draws", () => {
-      setup([onA('e1'), onB('e2')], { analysed: ['a'] })
+    it('a flower on an item still loading waits; the others draw', () => {
+      setup([onB('e1'), onA('e2')], { analysed: ['a'] })
+      expect(drawn()).toEqual(['e2-o'])
+    })
+
+    it('a flower with a stored offset draws at once, its analysis loading or not', () => {
+      setup([onA('e1', { dx: 300, dy: 0 })], { analysed: [] })
       expect(drawn()).toEqual(['e1-o'])
     })
 
-    it('an earlier flower still loading holds back the later one; once it settles both draw where they would have', async () => {
-      setup([onB('e1'), onA('e2')], { analysed: ['a'] })
-      expect(drawn()).toEqual([])
-      cleanup()
-      const settled = setup([onB('e1'), onA('e2')])
-      const expected = lastMap!.layouts.get('e2')
-      cleanup()
-      const qc = setup([onB('e1'), onA('e2')], { analysed: ['a'] })
-      expect(drawn()).toEqual([])
-      act(() => qc.setQueryData(keys.analysis('b'), settled.getQueryData(keys.analysis('b'))))
-      await waitFor(() => expect(drawn()).toEqual(['e1-o', 'e2-o']))
-      expect(lastMap!.layouts.get('e2')).toEqual(expected)
-    })
-
-    it('an analysis that fails settles: both flowers draw', async () => {
+    it('an analysis that fails settles: its flower draws', async () => {
       vi.mocked(getAnalysis).mockImplementation((id) => (id === 'b' ? Promise.reject(new ApiError(500, 'BOOM', 'Server error')) : new Promise(() => {})))
       setup([onB('e1'), onA('e2')], { analysed: ['a'] })
-      expect(drawn()).toEqual([])
+      expect(drawn()).toEqual(['e2-o'])
       // one retry, then it settles as failed
       await waitFor(() => expect(drawn()).toEqual(['e1-o', 'e2-o']), { timeout: 4000 })
     })
   })
 
-  it('a kept result lands in free space beside its petal and moves no flower', async () => {
+  it('a kept result lands in free space beside its petal, clear of the items', async () => {
     const t1 = makeItem({
       id: 't1', board_id: 'b1', origin: 'generated', staged: true, explore_option_id: 'o1', parent_item_id: 'a', w: 200, h: 150,
       check: { target: { answer: 'yes', confidence: 1, note: '' }, kept: 1, of: 1, drifted: [] },
@@ -244,18 +228,11 @@ describe('FlowerLayer', () => {
       ],
       { items: [t1] },
     )
-    const before = lastMap!
-    const lines = (m: MapView) => [...m.layouts].map(([id, l]) => [id, l.hub, l.lines])
     fireEvent.click(screen.getByRole('button', { name: /Copper/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Keep' }))
     await waitFor(() => expect(keepTake).toHaveBeenCalled())
     const at = vi.mocked(keepTake).mock.calls[0][2]!
     const slot = { x: at.x, y: at.y, width: 200, height: 150 }
-    for (const l of before.layouts.values()) expect(rectsIntersect(slot, l.bounds)).toBe(false)
-    for (const o of before.obstacles) expect(rectsIntersect(slot, o)).toBe(false) // items and callouts
-    // the kept item is on the board now; every flower stays where it was
-    await waitFor(() => expect(lastMap!.flowers.find((f) => f.id === 'e1')!.options[0].kept_item_id).toBe('t1'))
-    expect(lastMap!.obstacles).toContainEqual(slot)
-    expect(lines(lastMap!)).toEqual(lines(before))
+    for (const i of [a, b]) expect(rectsIntersect(slot, itemBounds(i))).toBe(false)
   })
 })

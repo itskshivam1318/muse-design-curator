@@ -1,12 +1,13 @@
 /**
  * Part callouts around the selected item (HTML over the canvas, in canvas units like the axes): one
  * card per part with its physical dimensions, Extract and "+ Add dimension"; a dashed "Whole item"
- * card with the abstract dimensions and "+ Add part" (images only). A leader line runs from each part card to an
- * anchor dot on its part. Hovering a card (or focusing one of its buttons) reports the part, so the
- * canvas can highlight its region.
+ * card with the abstract dimensions and "+ Add part" (images only). Each card is placed by its body in
+ * the living world (`callout:<itemId>:<card>`), ringed around the item. A leader line runs from each
+ * part card to an anchor dot on its part. Hovering a card (or focusing one of its buttons) reports the
+ * part, so the canvas can highlight its region.
  */
 import { useQueryClient } from '@tanstack/react-query'
-import { type FormEvent, type WheelEvent, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { type FocusEvent, type FormEvent, type ReactNode, type WheelEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   addDimension,
   addPart,
@@ -22,7 +23,8 @@ import {
 import { formatValue } from '../attrValues'
 import type { Bounds, View } from '../canvas/geometry'
 import { itemBounds } from '../canvas/nodeProps'
-import { calloutBounds, canAddPart, WHOLE } from './cards'
+import { useBodyElement, useLivingWorld } from '../living/useLiving'
+import { canAddPart, WHOLE } from './cards'
 import { partAnchor, REGION_TAG } from './regions'
 
 const WHOLE_LABEL = 'Whole item'
@@ -43,8 +45,8 @@ interface Props {
   /** Clicking a dimension opens its flower (exploring it first if it has none); settles when it is open. */
   onOpenDimension?: (key: string) => unknown
   onHoverPart: (key: string | null) => void
-  /** Other things on the board the cards keep clear of. */
-  obstacles?: Bounds[]
+  /** The open add-forms on each card (they make it taller), reported as they open and close. */
+  onForms?: (forms: Record<string, number>) => void
   /** Public demo, not unlocked: nothing that changes the item. */
   locked?: boolean
   onWheel?: (e: WheelEvent) => void
@@ -52,7 +54,9 @@ interface Props {
 
 type Form = { kind: 'dimension'; card: string } | { kind: 'part' } | null
 
-export function Callouts({ item, analysis, view, onOpenDimension, onHoverPart, obstacles = [], locked = false, onWheel }: Props) {
+const calloutId = (itemId: string, card: string) => `callout:${itemId}:${card}`
+
+export function Callouts({ item, analysis, view, onOpenDimension, onHoverPart, onForms, locked = false, onWheel }: Props) {
   const qc = useQueryClient()
   const [form, setForm] = useState<Form>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -63,15 +67,20 @@ export function Callouts({ item, analysis, view, onOpenDimension, onHoverPart, o
     hoverRef.current = onHoverPart
   })
   useEffect(() => () => hoverRef.current(null), [])
+  const formsRef = useRef(onForms)
+  useLayoutEffect(() => {
+    formsRef.current = onForms
+  })
+  useEffect(() => {
+    if (!form) return formsRef.current?.({})
+    formsRef.current?.({ [form.kind === 'part' ? WHOLE : form.card]: 1 })
+  }, [form])
+  useEffect(() => () => formsRef.current?.({}), [])
 
-  const bounds = itemBounds(item)
   const parts = analysis.parts
   const physical = (key: string) => analysis.dimensions.filter((d) => d.type === 'physical' && d.part === key)
   const abstract = analysis.dimensions.filter((d) => d.type === 'abstract')
-  const formsOn = (card: string) =>
-    (form?.kind === 'dimension' && form.card === card ? 1 : 0) + (card === WHOLE && form?.kind === 'part' ? 1 : 0)
-  const anchors = new Map(parts.map((p) => [p.key, partAnchor(bounds, p, item.note_text)]))
-  const slots = calloutBounds(item, analysis, obstacles, formsOn)
+  const anchors = useMemo(() => new Map(parts.map((p) => [p.key, partAnchor(itemBounds(item), p, item.note_text)])), [item, parts])
 
   const run = async (card: string, tag: string, fn: () => Promise<unknown>, fallback: string) => {
     setBusy(tag)
@@ -127,17 +136,13 @@ export function Callouts({ item, analysis, view, onOpenDimension, onHoverPart, o
   }
 
   const card = (key: string, title: string, tag: string, dims: DimensionView[], p: PartView | null) => {
-    const slot = slots.get(key)
-    if (!slot) return null
     const hoverKey = p ? p.key : null
     return (
-      <div
+      <Card
         key={key}
-        role="group"
-        aria-label={title}
-        className={p ? 'callout' : 'callout is-whole'}
-        data-part={p?.key}
-        style={{ left: slot.x, top: slot.y, width: slot.width, minHeight: slot.height }}
+        id={calloutId(item.id, key)}
+        title={title}
+        part={p?.key}
         onMouseEnter={() => onHoverPart(hoverKey)}
         onMouseLeave={() => onHoverPart(null)}
         onFocus={() => onHoverPart(hoverKey)}
@@ -196,32 +201,101 @@ export function Callouts({ item, analysis, view, onOpenDimension, onHoverPart, o
             {error.text}
           </p>
         )}
-      </div>
+      </Card>
     )
   }
 
-  const dot = 5 / view.scale
   return (
     <div className="callout-layer" onWheel={onWheel}>
       <div className="callout-world" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}>
-        <svg className="callout-lines" width="1" height="1" aria-hidden="true">
-          {parts.map((p) => {
-            const slot = slots.get(p.key)
-            const a = anchors.get(p.key)!
-            if (!slot) return null
-            const end = nearestOn(slot, a)
-            return (
-              <g key={p.key}>
-                <line className="callout-leader" x1={a.x} y1={a.y} x2={end.x} y2={end.y} vectorEffect="non-scaling-stroke" />
-                <circle className="callout-anchor" cx={a.x} cy={a.y} r={dot} strokeWidth={2 / view.scale} />
-              </g>
-            )
-          })}
-        </svg>
+        <Leaders item={item} anchors={anchors} view={view} />
         {parts.map((p) => card(p.key, p.label, REGION_TAG[p.region_kind], physical(p.key), p))}
         {card(WHOLE, WHOLE_LABEL, 'no mask', abstract, null)}
       </div>
     </div>
+  )
+}
+
+interface CardProps {
+  id: string
+  title: string
+  /** The part's key; none on the Whole item card. */
+  part?: string
+  onMouseEnter: () => void
+  onMouseLeave: () => void
+  onFocus: () => void
+  onBlur: (e: FocusEvent<HTMLDivElement>) => void
+  children: ReactNode
+}
+
+/** A callout card, placed by its body. */
+function Card({ id, title, part, children, ...handlers }: CardProps) {
+  const ref = useRef<HTMLDivElement>(null)
+  useBodyElement(id, ref)
+  return (
+    <div ref={ref} role="group" aria-label={title} className={part ? 'callout' : 'callout is-whole'} data-part={part} {...handlers}>
+      {children}
+    </div>
+  )
+}
+
+/**
+ * A leader from each part's anchor (where it sits on the item, carried with the item's body) to the
+ * nearest point of its card's body, written every frame.
+ */
+function Leaders({ item, anchors, view }: { item: Item; anchors: ReadonlyMap<string, Point>; view: View }) {
+  const world = useLivingWorld()
+  const lines = useRef(new Map<string, SVGLineElement>())
+  const dots = useRef(new Map<string, SVGCircleElement>())
+  useEffect(() => {
+    const home = itemBounds(item)
+    const cx = home.x + home.width / 2
+    const cy = home.y + home.height / 2
+    const write = (): void => {
+      const owner = world.body(item.id)
+      for (const [key, a] of anchors) {
+        const line = lines.current.get(key)
+        const dot = dots.current.get(key)
+        const card = world.body(calloutId(item.id, key))
+        if (!line || !dot || !card) continue
+        const at = owner ? { x: owner.x + a.x - cx, y: owner.y + a.y - cy } : a
+        const box: Bounds = { x: card.x - card.w / 2, y: card.y - card.h / 2, width: card.w, height: card.h }
+        const end = nearestOn(box, at)
+        line.setAttribute('x1', String(at.x))
+        line.setAttribute('y1', String(at.y))
+        line.setAttribute('x2', String(end.x))
+        line.setAttribute('y2', String(end.y))
+        dot.setAttribute('cx', String(at.x))
+        dot.setAttribute('cy', String(at.y))
+      }
+    }
+    write()
+    return world.onFrame(write)
+  }, [world, item, anchors])
+  return (
+    <svg className="callout-lines" width="1" height="1" aria-hidden="true">
+      {[...anchors.keys()].map((key) => (
+        <g key={key}>
+          <line
+            ref={(el) => {
+              if (el) lines.current.set(key, el)
+              else lines.current.delete(key)
+            }}
+            className="callout-leader"
+            vectorEffect="non-scaling-stroke"
+          />
+          <circle
+            ref={(el) => {
+              if (el) dots.current.set(key, el)
+              else dots.current.delete(key)
+            }}
+            className="callout-anchor"
+            r={5 / view.scale}
+            strokeWidth={2 / view.scale}
+          />
+        </g>
+      ))}
+    </svg>
   )
 }
 

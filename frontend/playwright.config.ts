@@ -37,6 +37,8 @@ export default defineConfig({
     trace: 'retain-on-failure',
     ...devices['Desktop Chrome'],
     viewport: { width: 1440, height: 900 },
+    // the living board drifts; with reduced motion it comes to rest, so elements are stable to click
+    reducedMotion: 'reduce',
   },
   webServer: [
     {

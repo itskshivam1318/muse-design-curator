@@ -1,9 +1,9 @@
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import Konva from 'konva'
+import { useEffect } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type AnalysisView, type Exploration, type ExploreOption, type Item, keys } from '../api'
-import type { Bounds } from './geometry'
 import '../panels/registerPanels'
 import { stubCanvasContext } from '../test/canvasStub'
 import { makeItem } from '../test/fixtures'
@@ -14,18 +14,19 @@ vi.mock('../api', async (orig) => ({
   getRegion: vi.fn(() => Promise.resolve({ kind: 'mask', box: [0.4, 0.2, 0.6, 0.5], mask_url: '/api/media/masks/hands.png' })),
   exploreItem: vi.fn(),
   visualizeOption: vi.fn(),
+  patchItem: vi.fn(() => Promise.resolve({})),
   getRenderers: vi.fn(() => Promise.resolve([])),
 }))
-const { getRegion, exploreItem, visualizeOption } = await import('../api')
+const { getRegion, exploreItem, visualizeOption, patchItem } = await import('../api')
 const { setCollapsed } = await import('../map/collapse')
-const { mapModel } = await import('../map/useMap')
-const { layoutFlowers } = await import('../map/layout')
-const { calloutBounds } = await import('../map/cards')
-const { itemBounds } = await import('./nodeProps')
-const { rectsIntersect } = await import('./geometry')
 const { useItemActions } = await import('./actions')
 const { Canvas } = await import('./Canvas')
 const { undoHistory } = await import('./history')
+
+const translateOf = (el: HTMLElement) => {
+  const m = /translate\(([-\d.e]+)px, ([-\d.e]+)px\)/.exec(el.style.transform)!
+  return { x: parseFloat(m[1]), y: parseFloat(m[2]) }
+}
 
 function opt(over: Partial<ExploreOption> & { id: string }): ExploreOption {
   return {
@@ -43,10 +44,14 @@ function client(explorations: Exploration[], items: Item[], explore = true) {
   return qc
 }
 
+let boardActions: ReturnType<typeof useItemActions> | null = null
 /** The board page in small: the canvas over the cached items, with the real item actions. */
 function Board({ onOpenPanel = vi.fn() }: { onOpenPanel?: (...args: unknown[]) => void }) {
   const items = useQuery<Item[]>({ queryKey: keys.items('b1'), queryFn: () => [] }).data ?? []
   const actions = useItemActions('b1')
+  useEffect(() => {
+    boardActions = actions
+  })
   return <Canvas boardId="b1" items={items} actions={actions} onFiles={vi.fn()} onOpenPanel={onOpenPanel} spaceDown={false} />
 }
 
@@ -135,42 +140,57 @@ describe('Canvas flowers', () => {
     expect(stage.x()).not.toBe(80)
     // the flower now sits inside the viewport
     const hub = document.querySelector<HTMLElement>('.flower-hub')!
-    const left = parseFloat(hub.style.left) + stage.x()
+    const left = translateOf(hub).x * stage.scaleX() + stage.x()
     expect(left).toBeGreaterThan(0)
-    expect(left + parseFloat(hub.style.width)).toBeLessThan(1600)
+    expect(left + parseFloat(hub.style.width) * stage.scaleX()).toBeLessThan(1600)
     expect(exploreItem).not.toHaveBeenCalled()
   })
 
-  it("a selected item's callouts keep clear of other items' flowers", () => {
+  const stems = () => document.querySelectorAll('path[data-edge-kind="stem"]')
+
+  it('flowers stay connected when nothing is selected', () => {
     sized()
-    const a = makeItem({ id: 'a', board_id: 'b1', x: 0, y: 0 })
-    const e: Exploration = { id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style', options: [1, 2, 3, 4, 5, 6].map((n) => opt({ id: `o${n}` })) }
-    // find a spot for item b whose callout, left alone, would sit on a's flower
-    let b: Item | undefined
-    let flower: Bounds | undefined
-    for (let y = -400; y <= 600 && !b; y += 20) {
-      for (let x = 0; x <= 600 && !b; x += 20) {
-        const cand = makeItem({ id: 'b', board_id: 'b1', x, y })
-        const boxes = [a, cand].map(itemBounds)
-        if (rectsIntersect(boxes[0], boxes[1])) continue
-        const { flowers, callouts } = mapModel([e], [a, cand], new Map([['a', analysis]]), () => false, new Map())
-        const l = layoutFlowers(flowers.map((f) => ({ id: f.id, itemId: f.itemId, from: f.from, dir: f.dir, petals: 6, kept: [] })), boxes, callouts).get('e1')!
-        const free = calloutBounds(cand, analysis, [boxes[0]]).get('hands')!
-        if (rectsIntersect(free, l.bounds) && !rectsIntersect(l.bounds, boxes[1])) {
-          b = cand
-          flower = l.bounds
-        }
-      }
-    }
-    expect(b).toBeTruthy()
-    const qc = client([e], [a, b!])
-    qc.setQueryData(keys.analysis('a'), analysis)
-    qc.setQueryData(keys.analysis('b'), analysis)
+    const qc = client(
+      [
+        { id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1' }), opt({ id: 'o2' })] },
+        { id: 'e2', board_id: 'b1', item_id: 'src', key: 'other', options: [opt({ id: 'o3', exploration_id: 'e2' })] },
+      ],
+      [makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })],
+    )
+    qc.setQueryData(keys.analysis('src'), analysis)
     renderBoard(qc)
-    act(() => selection.select(['b']))
-    const card = screen.getByRole('group', { name: 'Hands' })
-    const box = { x: parseFloat(card.style.left), y: parseFloat(card.style.top), width: parseFloat(card.style.width), height: parseFloat(card.style.minHeight) }
-    expect(rectsIntersect(box, flower!)).toBe(false)
+    expect(document.querySelectorAll('.flower-hub')).toHaveLength(2)
+    expect(stems()).toHaveLength(2)
+    expect([...stems()].map((p) => p.getAttribute('data-edge-id')).sort()).toEqual(['stem:e1', 'stem:e2'])
+    expect(document.querySelectorAll('path[data-edge-kind="spoke"]')).toHaveLength(3)
+  })
+
+  it('a selected item keeps one stem per flower, from its callout', () => {
+    sized()
+    const qc = client(
+      [{ id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1' })] }],
+      [makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })],
+    )
+    qc.setQueryData(keys.analysis('src'), analysis)
+    renderBoard(qc)
+    act(() => selection.select(['src']))
+    expect(screen.getByRole('group', { name: 'Hands' })).toBeTruthy()
+    expect(stems()).toHaveLength(1)
+  })
+
+  it('a hub, its petals and the callouts are placed by the world (a transform), not left/top', () => {
+    sized()
+    const qc = client(
+      [{ id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1' })] }],
+      [makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })],
+    )
+    qc.setQueryData(keys.analysis('src'), analysis)
+    renderBoard(qc)
+    act(() => selection.select(['src']))
+    for (const el of [document.querySelector<HTMLElement>('.flower-hub')!, screen.getAllByTestId('petal')[0], screen.getByRole('group', { name: 'Hands' })]) {
+      expect(el.style.transform).toMatch(/^translate\(/)
+      expect(el.style.left).toBe('')
+    }
   })
 
   it('draws no flowers when explore is off', () => {
@@ -185,7 +205,7 @@ describe('Canvas flowers', () => {
     expect(screen.queryAllByTestId('petal')).toEqual([])
   })
 
-  it('kept result is an ordinary item on the board, not hidden', () => {
+  it('a kept take is an ordinary item on the board, docked in its ring', () => {
     sized()
     const src = makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })
     const kept = makeItem({ id: 'k1', board_id: 'b1', x: 700, y: 0, original_filename: 'Honey.png', explore_option_id: 'o1', origin: 'generated', parent_item_id: 'src' })
@@ -195,13 +215,13 @@ describe('Canvas flowers', () => {
     )
     qc.setQueryData(keys.analysis('src'), analysis)
     renderBoard(qc)
-    // drawn on the stage where it was placed, and listed like any item
+    // drawn on the stage and listed like any item
     const node = Konva.stages.at(-1)!.findOne('#k1')!
     expect(node.visible()).toBe(true)
-    expect(node.x()).toBe(700)
     expect(screen.getByRole('list', { name: 'Items on this board' }).textContent).toContain('Honey.png')
-    // its petal shows it kept
-    expect(document.querySelector('[data-option-id="o1"]')!.className).toContain('is-kept')
+    // it stands in for its petal, tied to the hub by a kept spoke
+    expect(document.querySelector('[data-option-id="o1"]')).toBeNull()
+    expect(document.querySelector('path[data-edge-id="spoke:o1"]')!.classList.contains('is-kept')).toBe(true)
   })
 
   it('a kept result gets its own callouts when selected', () => {
@@ -216,6 +236,44 @@ describe('Canvas flowers', () => {
     renderBoard(qc)
     act(() => selection.select(['k1']))
     expect(screen.getByRole('group', { name: 'Hands' })).toBeTruthy()
+  })
+})
+
+describe('Canvas item drag', () => {
+  const sized = () => {
+    stubCanvasContext()
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1600)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(1200)
+  }
+  const drag = (node: Konva.Node, dx: number, dy: number) => {
+    const start = node.position()
+    const evt = new MouseEvent('mousemove')
+    act(() => {
+      node.fire('dragstart', { evt })
+      node.position({ x: start.x + dx / 2, y: start.y + dy / 2 })
+      node.fire('dragmove', { evt })
+      node.position({ x: start.x + dx, y: start.y + dy })
+      node.fire('dragmove', { evt })
+      node.fire('dragend', { evt })
+    })
+  }
+
+  it('a drag saves the released spot once, and undo moves the item back', async () => {
+    sized()
+    const qc = client([], [makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 }), makeItem({ id: 'far', board_id: 'b1', x: 2000, y: 0 })])
+    renderBoard(qc)
+    const node = Konva.stages.at(-1)!.findOne('#src')!
+    drag(node, 100, 50)
+    expect(patchItem).toHaveBeenCalledTimes(1)
+    expect(patchItem).toHaveBeenCalledWith('src', { x: 100, y: 50 })
+    expect(qc.getQueryData<Item[]>(keys.items('b1'))!.find((i) => i.id === 'src')).toMatchObject({ x: 100, y: 50 })
+    // the dragged item is selected (pinned): its toolbar sits over where it was dropped (view at 80, 80)
+    const toolbar = screen.getByRole('toolbar', { name: 'Item actions' })
+    await waitFor(() => expect(toolbar.style.left).toBe('280px'))
+    // undo puts it back, and the pinned body goes with it
+    act(() => void boardActions!.undo())
+    expect(patchItem).toHaveBeenLastCalledWith('src', { x: 0, y: 0 })
+    await waitFor(() => expect(toolbar.style.left).toBe('180px'))
   })
 })
 

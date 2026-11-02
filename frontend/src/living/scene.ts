@@ -7,11 +7,10 @@ import type { Bounds } from '../canvas/geometry'
 import { itemBounds } from '../canvas/nodeProps'
 import { optionTree } from '../explore/logic'
 import { calloutSize, cardOf, WHOLE } from '../map/cards'
-import { HUB_H, HUB_W, PETAL } from '../map/layout'
 import { partAnchor } from '../map/regions'
 import { isKept } from '../map/results'
 import { type BodySpec, FEEL, type Home } from './physics'
-import { CALLOUT_GAP, ellipsePoint, HUB_GAP, KEPT_EXTRA, petalAngles, petalRadius, ringAngles } from './ring'
+import { CALLOUT_GAP, ellipsePoint, HUB_GAP, HUB_H, HUB_W, KEPT_EXTRA, PETAL, petalAngles, petalRadius, ringAngles } from './ring'
 
 const BADGE_W = 120
 const BADGE_H = 28

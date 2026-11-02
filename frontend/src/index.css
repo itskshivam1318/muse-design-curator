@@ -1233,7 +1233,16 @@ button.onboarding-step:hover {
 .flower-layer.has-card {
   z-index: 5; /* over the callouts (4) while a petal card is open */
 }
-.flower-world {
+/* the lines between living bodies: over the canvas, under the flowers (same layer, earlier) */
+.edge-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 3;
+}
+.flower-world,
+.edge-world {
   position: absolute;
   left: 0;
   top: 0;
@@ -1256,11 +1265,18 @@ button.onboarding-step:hover {
   stroke: var(--rule);
   stroke-width: 1px;
 }
+.flower-spoke.is-kept {
+  stroke: var(--ok);
+  stroke-width: 1.6px;
+}
 .flower-root {
   fill: var(--accent);
 }
 .flower-hub {
+  /* placed by the living world: transform, width and height are written every frame */
   position: absolute;
+  left: 0;
+  top: 0;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -1301,8 +1317,9 @@ button.onboarding-step:hover {
 }
 .flower-badge {
   position: absolute;
-  transform: translate(0, -50%);
-  height: 26px;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
   padding: 0 10px;
   border: 1px dashed var(--accent);
   border-radius: 13px;
@@ -1310,6 +1327,8 @@ button.onboarding-step:hover {
   color: var(--ink);
   font: 11px var(--f-body);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
   pointer-events: auto;
 }
@@ -1319,6 +1338,8 @@ button.onboarding-step:hover {
 }
 .petal {
   position: absolute;
+  left: 0;
+  top: 0;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -1575,6 +1596,8 @@ button.onboarding-step:hover {
 }
 .callout {
   position: absolute;
+  left: 0;
+  top: 0;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;

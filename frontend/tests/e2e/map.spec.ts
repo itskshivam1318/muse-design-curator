@@ -38,25 +38,35 @@ async function boardWith(page: Page, title: string, files: string[]): Promise<st
   return boardId
 }
 
-/** A flower's drawn extent on screen: its hub and every petal. */
-async function flowerBox(f: Locator): Promise<Box> {
+/** A flower's drawn pieces on screen: its hub and every petal (they float apart, interleaving freely). */
+async function flowerBoxes(f: Locator): Promise<Box[]> {
   const boxes = [await f.locator('.flower-hub').boundingBox()]
   for (const p of await petals(f).all()) boxes.push(await p.boundingBox())
-  const bs = boxes.filter((b): b is Box => !!b)
-  const x = Math.min(...bs.map((b) => b.x))
-  const y = Math.min(...bs.map((b) => b.y))
-  return {
-    x,
-    y,
-    width: Math.max(...bs.map((b) => b.x + b.width)) - x,
-    height: Math.max(...bs.map((b) => b.y + b.height)) - y,
-  }
+  return boxes.filter((b): b is Box => !!b)
 }
 
 const overlaps = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
 
-/** The hub's place in canvas units (its style): unaffected by panning or zooming the view. */
-const hubAt = (f: Locator) => f.locator('.flower-hub').evaluate((el: HTMLElement) => `${el.style.left},${el.style.top}`)
+/** The hub's place in canvas units (its transform): unaffected by panning or zooming the view. */
+const hubAt = (f: Locator) =>
+  f.locator('.flower-hub').evaluate((el: HTMLElement) => {
+    const m = /translate\(([-\d.e]+)px, ([-\d.e]+)px\)/.exec(el.style.transform)
+    return m ? { x: Number(m[1]), y: Number(m[2]) } : null
+  })
+/** The hub's place once it has grown out and come to rest (reduced motion: no drift). */
+async function restingHubAt(page: Page, f: Locator) {
+  let last = await hubAt(f)
+  await expect
+    .poll(async () => {
+      await page.waitForTimeout(250)
+      const now = await hubAt(f)
+      const still = !!now && !!last && Math.hypot(now.x - last.x, now.y - last.y) < 0.5
+      last = now
+      return still
+    })
+    .toBe(true)
+  return last!
+}
 
 test('callouts: parts, the whole item, and the hovered region', async ({ page }) => {
   await boardWith(page, 'E2E callouts', ['watch_01.jpg'])
@@ -112,7 +122,7 @@ test('three flowers: no overlap, nothing moves', async ({ page }) => {
 
   await selectItem(page, /^image watch_01\.jpg/)
   const first = await openDimension(page, 'Body colour')
-  const hub = await hubAt(first)
+  const hub = await restingHubAt(page, first)
   const second = await openDimension(page, 'Detail style')
   await page.keyboard.press('Escape')
   await selectItem(page, /^image watch_02\.jpg/)
@@ -131,11 +141,16 @@ test('three flowers: no overlap, nothing moves', async ({ page }) => {
     await page.keyboard.up('Control')
   }
   await expect(flowers).toHaveCount(3)
-  const boxes = [await flowerBox(first), await flowerBox(second), await flowerBox(third)]
+  const boxes = [await flowerBoxes(first), await flowerBoxes(second), await flowerBoxes(third)]
   for (let i = 0; i < boxes.length; i++) {
-    for (let j = i + 1; j < boxes.length; j++) expect(overlaps(boxes[i], boxes[j]), `flowers ${i} and ${j} overlap`).toBe(false)
+    for (let j = i + 1; j < boxes.length; j++) {
+      const hit = boxes[i].some((a) => boxes[j].some((b) => overlaps(a, b)))
+      expect(hit, `flowers ${i} and ${j} overlap`).toBe(false)
+    }
   }
-  expect(await hubAt(first)).toBe(hub)
+  // the first hub is where it was (bodies only nudge each other apart, a few px at most)
+  const now = await restingHubAt(page, first)
+  expect(Math.hypot(now.x - hub.x, now.y - hub.y)).toBeLessThan(20)
   expect(await positions()).toEqual(placed)
 })
 

@@ -1,9 +1,6 @@
-/** Where the callout cards sit around an item: shared by the callouts and the flowers that start at them. */
+/** The callout cards around an item: which card a dimension sits on, and each card's size. */
 import type { AnalysisView, Item } from '../api'
-import type { Bounds } from '../canvas/geometry'
-import { itemBounds } from '../canvas/nodeProps'
-import { CALLOUT_W, calloutSlots } from './layout'
-import { partAnchor } from './regions'
+import { CALLOUT_W } from '../living/ring'
 
 /** The Whole item card's key among the part keys (part keys are slugs: no colon). */
 export const WHOLE = 'whole:item'
@@ -43,30 +40,4 @@ export function calloutSize(item: Item, analysis: AnalysisView, card: string, fo
   }
   const rows = analysis.dimensions.filter((d) => d.type === 'physical' && d.part === card).length
   return { w: CALLOUT_W, h: cardHeight(rows, 1, forms) }
-}
-
-/**
- * Where each card goes around `item` (keyed by part key, and WHOLE): the same slots the callouts draw,
- * so flowers can start at their dimension's card even while it is not shown. `formsOn` counts the
- * open add-forms on a card (they make it taller).
- */
-export function calloutBounds(
-  item: Item,
-  analysis: AnalysisView,
-  obstacles: Bounds[],
-  formsOn: (card: string) => number = () => 0,
-): Map<string, Bounds> {
-  const bounds = itemBounds(item)
-  return calloutSlots(
-    bounds,
-    [
-      ...analysis.parts.map((p) => ({
-        key: p.key,
-        anchor: partAnchor(bounds, p, item.note_text),
-        height: calloutSize(item, analysis, p.key, formsOn(p.key)).h,
-      })),
-      { key: WHOLE, anchor: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height }, height: calloutSize(item, analysis, WHOLE, formsOn(WHOLE)).h },
-    ],
-    obstacles,
-  )
 }

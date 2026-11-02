@@ -3,6 +3,7 @@ import { act } from 'react'
 import { useRef } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { LivingProvider, useBodyElement, useLivingWorld } from './useLiving'
+import { useLiveBounds } from './useLiveBounds'
 import { createLivingWorld } from './world'
 import type { Scene } from './scene'
 
@@ -44,6 +45,13 @@ describe('useBodyElement', () => {
     expect(el.style.opacity).toBe('1')
   })
 
+  it('writes once on mount, before any frame', () => {
+    const { world } = setup()
+    world.sync(scene('a'), -1000)
+    const { getByTestId } = render(<LivingProvider world={world}><Box id="a" /></LivingProvider>)
+    expect(getByTestId('box').style.transform).toContain('translate(150px, 60px)')
+  })
+
   it('hides the element when the body is missing', () => {
     const { world, frame } = setup()
     const { getByTestId } = render(<LivingProvider world={world}><Box id="nope" /></LivingProvider>)
@@ -61,5 +69,37 @@ describe('useBodyElement', () => {
     console.error = () => {}
     expect(() => render(<Bad />)).toThrow()
     console.error = err
+  })
+})
+
+describe('useLiveBounds', () => {
+  let renders = 0
+  function Probe({ id }: { id: string }) {
+    renders++
+    const b = useLiveBounds(id)
+    return <div data-testid="probe">{b ? `${b.x},${b.y},${b.width},${b.height}` : 'none'}</div>
+  }
+
+  it("follows the body's top-left and size, re-rendering only when it moves", () => {
+    const { world, frame } = setup()
+    world.sync(scene('a'), 0)
+    renders = 0
+    const { getByTestId } = render(<LivingProvider world={world}><Probe id="a" /></LivingProvider>)
+    expect(getByTestId('probe').textContent).toBe('150,60,100,80')
+    world.start()
+    world.setPinned(['a'])
+    const before = renders
+    frame()
+    frame()
+    expect(renders).toBe(before) // pinned and still: no re-render
+    world.place('a', { x: 300, y: 100 })
+    frame()
+    expect(getByTestId('probe').textContent).toBe('250,60,100,80')
+  })
+
+  it('is null for an unknown body', () => {
+    const { world } = setup()
+    const { getByTestId } = render(<LivingProvider world={world}><Probe id="nope" /></LivingProvider>)
+    expect(getByTestId('probe').textContent).toBe('none')
   })
 })

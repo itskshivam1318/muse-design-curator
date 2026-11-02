@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { AnalysisView, Exploration, Item } from '../api'
-import { CALLOUT_W } from '../map/layout'
 import { calloutSize, WHOLE } from '../map/cards'
 import { makeItem } from '../test/fixtures'
 import { analysis, exp, item, opt } from '../test/explore'
 import { FEEL } from './physics'
-import { ellipsePoint, HUB_GAP, KEPT_EXTRA, petalAngles, petalRadius, ringAngles, CALLOUT_GAP } from './ring'
+import { CALLOUT_GAP, CALLOUT_W, ellipsePoint, HUB_GAP, KEPT_EXTRA, petalAngles, petalRadius, ringAngles } from './ring'
 import { buildScene, type SceneInput } from './scene'
 
 const scene = (over: Partial<SceneInput> & { explorations: Exploration[] }) =>
@@ -159,5 +158,26 @@ describe('buildScene', () => {
     expect(spec(s, 'hub:e2')!.home).toMatchObject({ kind: 'rel', to: 't1' })
     expect(edge(s, 'stem:e2')).toMatchObject({ from: { body: 't1' }, to: { body: 'hub:e2' } })
     expect(s.flowers.map((f) => [f.id, f.sourceId])).toEqual([['e1', 'a'], ['e2', 't1']])
+  })
+
+  // from the old map model (useMap)
+  it('dismissed options are no petals', () => {
+    const s = scene({ explorations: [exp('e1', 'hand_style', [opt('o1'), opt('o2', { status: 'dismissed' }), opt('o3')])] })
+    expect(s.flowers[0].options.map((o) => o.id)).toEqual(['o1', 'o3'])
+    expect(spec(s, 'petal:o2')).toBeUndefined()
+  })
+
+  it('a flower whose item is not on the board has nothing, and holds back no other', () => {
+    const s = scene({ explorations: [exp('e0', 'hand_style', [opt('o0')], 'gone'), exp('e1', 'hand_style', [opt('o1')])] })
+    expect(s.flowers.map((f) => f.id)).toEqual(['e1'])
+    expect(spec(s, 'hub:e0')).toBeUndefined()
+  })
+
+  it('a dimension gone from the analysis is labelled from the lens, on no part, its stem from the item edge', () => {
+    const s = scene({ explorations: [exp('e1', 'old_key', [opt('o1')])], labels: new Map([['old_key', 'Old key']]) })
+    expect(s.flowers[0]).toMatchObject({ label: 'Old key', part: null })
+    expect(edge(s, 'stem:e1')!.from).toEqual({ body: 'a' })
+    // no lens label either: the key itself
+    expect(scene({ explorations: [exp('e1', 'old_key', [opt('o1')])] }).flowers[0].label).toBe('old_key')
   })
 })
