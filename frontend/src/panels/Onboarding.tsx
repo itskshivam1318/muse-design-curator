@@ -1,14 +1,19 @@
+import type { Item } from '../api'
+import { countedItems, visibleItems } from '../queries'
+
 export const UNLOCK_AT = 5
 
 interface Props {
-  itemCount: number
+  /** The board's items (staged ones are not on the board). */
+  items: Item[]
   onFocusContext: () => void
   onOpenAdd: () => void
 }
 
-/** Three steps drawn on the empty canvas itself. Gone as soon as the board has an item. */
-export function Onboarding({ itemCount, onFocusContext, onOpenAdd }: Props) {
-  if (itemCount > 0) return null
+/** Three steps drawn on the empty canvas itself. Gone as soon as the board has an item, a note included. */
+export function Onboarding({ items, onFocusContext, onOpenAdd }: Props) {
+  if (visibleItems(items).length > 0) return null
+  const itemCount = countedItems(items).length
   return (
     <section className="onboarding" aria-label="Getting started">
       <ol>

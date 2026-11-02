@@ -170,3 +170,29 @@ export function visibleFlowers(layouts: Map<string, FlowerLayout>, viewport: Bou
     .filter(([, l]) => rectsIntersect(unionBounds([l.bounds, { ...l.lines[0][0], width: 0, height: 0 }])!, viewport))
     .map(([id]) => id)
 }
+
+/**
+ * Where an open card of `size` goes (screen pixels, in the layer's own coordinates): at `at`, pulled inside
+ * `area` (keeping `margin` from its edges), then off `avoid` (the fixed agent card) by the shorter of moving
+ * left of it or above it.
+ */
+export function clampCard(
+  at: Point,
+  size: { width: number; height: number },
+  area: { width: number; height: number },
+  avoid: Bounds | null,
+  margin = 8,
+): Point {
+  const within = (v: number, extent: number, room: number) => Math.max(margin, Math.min(v, room - margin - extent))
+  let x = within(at.x, size.width, area.width)
+  let y = within(at.y, size.height, area.height)
+  if (avoid && rectsIntersect({ x, y, width: size.width, height: size.height }, avoid)) {
+    const left = avoid.x - margin - size.width
+    const up = avoid.y - margin - size.height
+    const canLeft = left >= margin
+    const canUp = up >= margin
+    if (canLeft && (!canUp || x - left <= y - up)) x = left
+    else if (canUp) y = up
+  }
+  return { x, y }
+}

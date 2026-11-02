@@ -10,6 +10,7 @@ import {
   PETAL_KEPT,
   RING,
   calloutSlots,
+  clampCard,
   layoutFlowers,
   placeBeside,
   placeFlower,
@@ -211,5 +212,34 @@ describe('placeBeside', () => {
     expect(rectsIntersect(b, petal)).toBe(false)
     // deterministic
     expect(placeBeside(petal, 0, { width: 200, height: 150 }, [petal, wall])).toEqual(b)
+  })
+})
+
+describe('clampCard', () => {
+  const size = { width: 260, height: 300 }
+  const area = { width: 1200, height: 800 }
+  const agent = { x: 844, y: 584, width: 340, height: 200 } // bottom-right, 16px in
+
+  it('leaves a card that fits where it is', () => {
+    expect(clampCard({ x: 100, y: 100 }, size, area, agent)).toEqual({ x: 100, y: 100 })
+  })
+
+  it('pulls a card back inside the area, keeping the margin', () => {
+    expect(clampCard({ x: 1100, y: -50 }, size, area, null)).toEqual({ x: 1200 - 8 - 260, y: 8 })
+    expect(clampCard({ x: -40, y: 700 }, size, area, null)).toEqual({ x: 8, y: 800 - 8 - 300 })
+  })
+
+  it('moves a card off the agent card by the shorter way: left of it or above it', () => {
+    // near its left edge: moving left is shorter
+    expect(clampCard({ x: 700, y: 450 }, size, area, agent)).toEqual({ x: 844 - 8 - 260, y: 450 })
+    // over its middle, near its top: moving up is shorter
+    const tall = { width: 260, height: 100 }
+    expect(clampCard({ x: 900, y: 560 }, tall, area, agent)).toEqual({ x: 900, y: 584 - 8 - 100 })
+  })
+
+  it('a card that cannot clear the agent card upward goes left of it', () => {
+    const tall = { width: 260, height: 700 }
+    const p = clampCard({ x: 900, y: 0 }, tall, area, agent)
+    expect(p).toEqual({ x: 844 - 8 - 260, y: 8 })
   })
 })

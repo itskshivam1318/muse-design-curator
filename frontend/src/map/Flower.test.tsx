@@ -136,6 +136,34 @@ describe('FlowerLayer', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
+  it('an open card stays in the viewport and clear of the agent card', () => {
+    const rect = (x: number, y: number, width: number, height: number) =>
+      ({ x, y, left: x, top: y, width, height, right: x + width, bottom: y + height, toJSON: () => ({}) }) as DOMRect
+    const agent = document.createElement('aside')
+    agent.className = 'agent-card'
+    document.body.appendChild(agent)
+    const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.classList.contains('flower-layer')) return rect(0, 0, 500, 500)
+      if (this.classList.contains('agent-card')) return rect(232, 380, 252, 104)
+      if (this.classList.contains('petal-card-anchor')) return rect(0, 0, 260, 300)
+      return rect(0, 0, 0, 0)
+    })
+    try {
+      setup([{ id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style', options: [opt({ id: 'o1', name: 'Copper' })] }])
+      fireEvent.click(screen.getByRole('button', { name: /Copper/ }))
+      const anchor = document.querySelector<HTMLElement>('.petal-card-anchor')!
+      const [left, top] = [parseFloat(anchor.style.left), parseFloat(anchor.style.top)]
+      expect(left).toBeGreaterThanOrEqual(8)
+      expect(top).toBeGreaterThanOrEqual(8)
+      expect(left + 260).toBeLessThanOrEqual(500 - 8)
+      expect(top + 300).toBeLessThanOrEqual(500 - 8)
+      expect(rectsIntersect({ x: left, y: top, width: 260, height: 300 }, { x: 232, y: 380, width: 252, height: 104 })).toBe(false)
+    } finally {
+      spy.mockRestore()
+      agent.remove()
+    }
+  })
+
   it('an open card lifts the flower layer above the callouts (their cards would cover it)', () => {
     setup([{ id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style', options: [opt({ id: 'o1', name: 'Copper' })] }])
     const layer = document.querySelector('.flower-layer')!

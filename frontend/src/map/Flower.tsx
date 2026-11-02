@@ -3,13 +3,13 @@
  * the dimension's callout to a hub, the options around it as petals. A petal opens its card; the hub
  * collapses the flower to a badge on its callout. Only flowers reaching the viewport mount.
  */
-import { type WheelEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { type WheelEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ExploreOption, Item, Point } from '../api'
 import type { Bounds, View } from '../canvas/geometry'
 import { resultCheck } from '../explore/verdict'
 import { useItems } from '../queries'
 import { setCollapsed } from './collapse'
-import { type FlowerLayout, PETAL, PETAL_KEPT, placeBeside } from './layout'
+import { clampCard, type FlowerLayout, PETAL, PETAL_KEPT, placeBeside } from './layout'
 import { PetalCard, ResultPreview } from './PetalCard'
 import { isKept, resultOf } from './results'
 import type { FlowerModel, MapView } from './useMap'
@@ -127,6 +127,9 @@ export function FlowerLayer({ boardId, items, view, map, locked = false, onWheel
   const byId = useMemo(() => new Map((allItems ?? items).map((i) => [i.id, i])), [allItems, items])
   const [open, setOpen] = useState<{ flowerId: string; optionId: string } | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
+  const anchorRef = useRef<HTMLDivElement>(null)
+  // the open card's spot after clamping: inside the layer and clear of the agent card
+  const [placed, setPlaced] = useState<Point | null>(null)
 
   // a click anywhere else closes the card
   useEffect(() => {
@@ -154,6 +157,7 @@ export function FlowerLayer({ boardId, items, view, map, locked = false, onWheel
   }
 
   let card = null
+  let wanted: Point | null = null
   if (open) {
     const model = flowers.find((f) => f.id === open.flowerId)
     const index = model ? model.options.findIndex((o) => o.id === open.optionId) : -1
@@ -161,9 +165,10 @@ export function FlowerLayer({ boardId, items, view, map, locked = false, onWheel
     const layout = layouts.get(open.flowerId)
     if (model && source && layout && index >= 0 && !model.collapsed) {
       const petal = layout.petals[index]
-      const at = { left: view.x + (petal.x + petal.width) * view.scale + 8, top: view.y + petal.y * view.scale }
+      wanted = { x: view.x + (petal.x + petal.width) * view.scale + 8, y: view.y + petal.y * view.scale }
+      const at = placed ?? wanted
       card = (
-        <div className="petal-card-anchor" style={at}>
+        <div ref={anchorRef} className="petal-card-anchor" style={{ left: at.x, top: at.y }}>
           <PetalCard
             key={open.optionId}
             option={model.options[index]}
@@ -177,6 +182,30 @@ export function FlowerLayer({ boardId, items, view, map, locked = false, onWheel
       )
     }
   }
+
+  // after every render, and when the card itself grows (a result lands): keep it on screen
+  useLayoutEffect(() => {
+    const place = () => {
+      const el = anchorRef.current
+      const layer = rootRef.current?.getBoundingClientRect()
+      let next: Point | null = null
+      if (wanted && el && layer && layer.width > 0 && layer.height > 0) {
+        const card = el.getBoundingClientRect()
+        const agent = document.querySelector('.agent-card')?.getBoundingClientRect()
+        const avoid = agent && agent.width > 0
+          ? { x: agent.left - layer.left, y: agent.top - layer.top, width: agent.width, height: agent.height }
+          : null // prettier-ignore
+        next = clampCard(wanted, { width: card.width, height: card.height }, layer, avoid)
+      }
+      setPlaced((old) => (old?.x === next?.x && old?.y === next?.y ? old : next))
+    }
+    place()
+    const el = anchorRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(place)
+    ro.observe(el)
+    return () => ro.disconnect()
+  })
 
   if (flowers.length === 0) return null
   return (

@@ -25,7 +25,7 @@ import { Onboarding } from '../panels/Onboarding'
 import { hasDrawerPanel } from '../panels/drawerRegistry'
 import '../panels/registerPanels'
 import { UploadStatus } from '../panels/UploadStatus'
-import { countedItems, useBoard, useItems, useProfile } from '../queries'
+import { useBoard, useItems, useProfile } from '../queries'
 import { Link } from '../Link'
 import { BoardShell } from '../shell/BoardShell'
 import { closeRail, openRail, railStore, setTool } from '../shell/tools'
@@ -226,7 +226,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
           <>
             {items.isSuccess && (
               <Onboarding
-                itemCount={countedItems(list).length}
+                items={list}
                 onFocusContext={() => contextBar.current?.focus()}
                 onOpenAdd={() => openRail('library')}
               />

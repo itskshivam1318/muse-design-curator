@@ -81,9 +81,16 @@ export function PetalCard({ option, dimension, item, keepAt, onClose, locked = f
   const [error, setError] = useState<string | null>(null)
   // one request at a time, even when a second press lands before the re-render disables the button
   const inFlight = useRef(false)
-  // focused when it opens, so Escape closes it straight away
+  // focused when it opens, so Escape closes it straight away; and again when a render starts or
+  // its result lands (the button that had focus is gone then), unless focus went somewhere else
   const cardRef = useRef<HTMLDivElement>(null)
   useEffect(() => cardRef.current?.focus(), [])
+  const resultId = result?.id
+  useEffect(() => {
+    const el = cardRef.current
+    const at = document.activeElement
+    if (el && (at === null || at === document.body || !at.isConnected)) el.focus()
+  }, [rendering, resultId, kept])
 
   const act = async (work: () => Promise<void>, fallback: string) => {
     if (inFlight.current) return

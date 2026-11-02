@@ -294,13 +294,20 @@ function applyToCache(qc: QueryClient, boardId: string, type: string, d: Record<
         }),
       )
       return
-    case 'item.analysed':
-      void qc.invalidateQueries({ queryKey: keys.analysis(String(d.item_id)) })
+    case 'item.analysed': {
+      // new parts and dimensions: their regions, renderers and the board's offers may change too
+      const id = String(d.item_id)
+      void qc.invalidateQueries({ queryKey: keys.analysis(id) })
+      void qc.invalidateQueries({ queryKey: ['region', id] })
+      void qc.invalidateQueries({ queryKey: ['renderers', id] })
+      void qc.invalidateQueries({ queryKey: keys.boardContext(boardId) })
       return
+    }
     case 'board.learned':
       void qc.invalidateQueries({ queryKey: keys.boardContext(boardId) })
       return
     case 'item.failed':
+      void qc.invalidateQueries({ queryKey: keys.analysis(String(d.item_id)) })
       qc.setQueryData<Item[]>(keys.items(boardId), (old) =>
         patch(old, String(d.item_id), {
           parse_status: 'failed',

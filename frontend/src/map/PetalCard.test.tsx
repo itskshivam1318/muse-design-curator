@@ -82,6 +82,29 @@ describe('PetalCard', () => {
     expect(current().status).toBe('visualizing') // spins at once
   })
 
+  it('after a render (start and result) the card holds focus again, so Escape still closes it', async () => {
+    vi.mocked(visualizeOption).mockResolvedValue(undefined)
+    const { qc, onClose } = setup(opt())
+    const button = await screen.findByRole('button', { name: /^Generate image/ })
+    button.focus()
+    fireEvent.click(button)
+    await screen.findByRole('status') // rendering: the button that had focus is gone
+    const card = screen.getByRole('dialog', { name: 'Copper dauphine' })
+    await waitFor(() => expect(document.activeElement).toBe(card))
+    // the result lands (the server's explore.updated and item.added)
+    const t = take('t1', { check: { target: { answer: 'yes', confidence: 0.9, note: '' }, kept: 3, of: 3, drifted: [] } })
+    act(() => {
+      qc.setQueryData(keys.items('b1'), [source, t])
+      qc.setQueryData(keys.explorations('b1'), [
+        { id: 'e1', board_id: 'b1', item_id: 'src', key: 'hand_style', options: [opt({ status: 'visualized', takes: ['t1'] })] },
+      ])
+    })
+    await screen.findByRole('button', { name: 'Keep' })
+    expect(document.activeElement).toBe(card)
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
   it('no renderer → "Connect a renderer"', async () => {
     setup(opt(), { renderers: [] })
     const connect = await screen.findByRole('button', { name: /Connect a renderer/ })
