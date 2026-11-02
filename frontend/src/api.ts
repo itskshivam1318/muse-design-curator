@@ -56,7 +56,7 @@ export interface Item {
 }
 
 export type ContentType = 'image' | 'ui' | 'text'
-export type RegionKind = 'box' | 'range' | 'mask' | 'whole'
+export type RegionKind = 'mask' | 'box' | 'text_range'
 
 /** Where a part lives: a box (x, y, w, h as fractions), a text range, or a mask image. */
 export interface Region {
@@ -70,7 +70,8 @@ export interface PartView {
   key: string
   label: string
   region_kind: RegionKind
-  region: Region | null
+  /** The stored region: box [x0,y0,x1,y1] in 0..1, text_range [start,end], null for an un-located mask. */
+  region: number[] | null
   mask_url: string | null
   source: string
 }
@@ -81,7 +82,7 @@ export interface DimensionView {
   type: 'physical' | 'abstract'
   part: string | null
   prompt: string | null
-  kind: string
+  kind: AttrKind
   value: string | number | boolean | null
   confidence: number | null
   source: string
@@ -106,7 +107,7 @@ export interface RendererInfo {
 export interface Offer {
   label: string
   dim_type: 'physical' | 'abstract'
-  kind: string
+  kind: AttrKind
   part: string | null
   count: number
   total: number
@@ -816,7 +817,7 @@ export const removePart = (itemId: string, partKey: string) =>
   request<void>(`${item(itemId)}/parts/${enc(partKey)}`, { method: 'DELETE' })
 export const addDimension = (
   itemId: string,
-  body: { label: string; type: DimensionView['type']; part?: string | null; prompt?: string; kind?: string },
+  body: { label: string; type: DimensionView['type']; part?: string | null; prompt?: string; kind?: AttrKind },
 ) => request<DimensionView>(`${item(itemId)}/dimensions`, { method: 'POST', json: body })
 export const updateDimension = (
   itemId: string,

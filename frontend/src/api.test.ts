@@ -113,7 +113,7 @@ describe('analysis calls', () => {
 
   it('a 429 surfaces the server message', async () => {
     const message = 'Daily limit reached for this board, try tomorrow.'
-    fetchMock.mockResolvedValue(json({ error: { code: 'RATE_LIMITED', message } }, 429))
-    await expect(api.analyseItem('i1')).rejects.toMatchObject({ status: 429, code: 'RATE_LIMITED', message })
+    fetchMock.mockResolvedValue(json({ error: { code: 'DAILY_LIMIT', message } }, 429))
+    await expect(api.analyseItem('i1')).rejects.toMatchObject({ status: 429, code: 'DAILY_LIMIT', message })
   })
 })
