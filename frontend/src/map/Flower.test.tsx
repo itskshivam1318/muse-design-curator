@@ -169,6 +169,26 @@ describe('FlowerLayer', () => {
     }
   })
 
+  it('an open card never covers its own petal (clicking the petal again closes it)', () => {
+    const rect = (x: number, y: number, width: number, height: number) =>
+      ({ x, y, left: x, top: y, width, height, right: x + width, bottom: y + height, toJSON: () => ({}) }) as DOMRect
+    const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.classList.contains('flower-layer')) return rect(0, 0, 500, 500)
+      if (this.classList.contains('petal-card-anchor')) return rect(0, 0, 260, 300)
+      // the petal spans the layer's top: the card has to go below it
+      if (this.classList.contains('petal')) return rect(0, 0, 500, 180)
+      return rect(0, 0, 0, 0)
+    })
+    try {
+      setup([{ id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style', options: [opt({ id: 'o1', name: 'Copper' })] }])
+      fireEvent.click(screen.getByRole('button', { name: /Copper/ }))
+      const anchor = document.querySelector<HTMLElement>('.petal-card-anchor')!
+      expect(parseFloat(anchor.style.top)).toBeGreaterThanOrEqual(188)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('an open card lifts the flower layer above the callouts (their cards would cover it)', () => {
     setup([{ id: 'e1', board_id: 'b1', item_id: 'a', key: 'hand_style', options: [opt({ id: 'o1', name: 'Copper' })] }])
     const layer = document.querySelector('.flower-layer')!

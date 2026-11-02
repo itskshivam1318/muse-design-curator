@@ -71,6 +71,24 @@ describe('useBodyElement', () => {
     expect(getByTestId('box').hasAttribute('inert')).toBe(false)
   })
 
+  it('another element under the same id and ref is written at once (a hub becoming its badge)', () => {
+    const { world, frame } = setup()
+    world.sync(scene('a'), -1000)
+    world.setPinned(['a'])
+    function Swap({ badge }: { badge: boolean }) {
+      const ref = useRef<HTMLElement>(null)
+      useBodyElement('a', ref)
+      return badge ? <button ref={ref as never} data-testid="el" /> : <div ref={ref as never} data-testid="el" />
+    }
+    const { getByTestId, rerender } = render(<LivingProvider world={world}><Swap badge={false} /></LivingProvider>)
+    world.start()
+    frame()
+    rerender(<LivingProvider world={world}><Swap badge /></LivingProvider>)
+    frame()
+    expect(getByTestId('el').tagName).toBe('BUTTON')
+    expect(getByTestId('el').style.transform).toContain('translate(150px, 60px)')
+  })
+
   it('leaves the style alone while the body is at rest', () => {
     const { world, frame } = setup()
     world.sync(scene('a'), -1000)

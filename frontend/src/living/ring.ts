@@ -1,5 +1,6 @@
 /** Ring geometry of the living board: where cards, hubs, petals and docked takes sit around their owner. */
 import type { Point } from '../api'
+import { FEEL } from './physics'
 
 /** Card sizes (canvas units), mirrored by the .callout, .flower-hub and .petal CSS. */
 export const CALLOUT_W = 176
@@ -57,8 +58,12 @@ export function petalAngles(dir: number, n: number): number[] {
   return Array.from({ length: n }, (_, i) => dir - PETAL_ARC + (i * 2 * PETAL_ARC) / (n - 1))
 }
 
-/** How far a hub's petals sit from it: wider rings for more petals. */
-export const petalRadius = (n: number) => Math.max(135, n * 19)
+/**
+ * How far a hub's petals sit from it: wider rings for more petals, and never so tight that
+ * neighbouring slots on the arc sit closer than a petal plus the gap (springs would squeeze them).
+ */
+export const petalRadius = (n: number) =>
+  Math.max(135, n * 19, n > 1 ? (PETAL + FEEL.gap) / (2 * Math.sin(PETAL_ARC / (n - 1))) : 0)
 
 /** A take's size docked in its ring: DOCKED_W wide, same aspect. */
 export function dockedSize(s: { w: number; h: number }): { w: number; h: number } {

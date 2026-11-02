@@ -37,6 +37,35 @@ describe('physics', () => {
     expect(c.y).toBeCloseTo(350, 0)
   })
 
+  // true overlap: the rects themselves intersecting (the soft gap aside)
+  const trueOverlap = (a: { x: number; y: number; w: number; h: number }, c: { x: number; y: number; w: number; h: number }) =>
+    Math.min((a.w + c.w) / 2 - Math.abs(a.x - c.x), (a.h + c.h) / 2 - Math.abs(a.y - c.y))
+
+  it('no true overlap at rest: 8 petals squeezed by springs', () => {
+    const w = createWorld()
+    // eight petals whose homes sit only 60px apart around a pinned hub
+    const petals: BodySpec[] = Array.from({ length: 8 }, (_, i) => {
+      const a = -1 + (i * 2) / 7
+      return { id: `p${i}`, kind: 'petal', w: 88, h: 88, home: { kind: 'rel', to: 'hub', dx: Math.cos(a) * 160, dy: Math.sin(a) * 160 } }
+    })
+    syncWorld(w, [{ id: 'hub', kind: 'hub', w: 150, h: 48, home: { kind: 'abs', x: 0, y: 0 } }, ...petals], 0)
+    w.bodies.get('hub')!.pinned = true
+    run(w, 900, true)
+    const bodies = [...w.bodies.values()]
+    for (let i = 0; i < bodies.length; i++)
+      for (let j = i + 1; j < bodies.length; j++)
+        expect(trueOverlap(bodies[i], bodies[j]), `${bodies[i].id} / ${bodies[j].id}`).toBeLessThanOrEqual(0.01)
+  })
+
+  it('a petal never rests inside a pinned item', () => {
+    const w = createWorld()
+    syncWorld(w, [item('a', 0, 0, { w: 200, h: 150 }), { id: 'p', kind: 'petal', w: 88, h: 88, home: { kind: 'abs', x: 60, y: 40 } }], 0)
+    w.bodies.get('a')!.pinned = true
+    run(w, 900, true)
+    expect(w.bodies.get('a')).toMatchObject({ x: 0, y: 0 })
+    expect(trueOverlap(w.bodies.get('a')!, w.bodies.get('p')!)).toBeLessThanOrEqual(0.01)
+  })
+
   it('an obstacle never moves and pushes a callout off it', () => {
     const w = createWorld()
     syncWorld(

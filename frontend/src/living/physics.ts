@@ -54,6 +54,13 @@ export const FEEL = {
 }
 
 const GROW_REDUCED_MS = 250
+/**
+ * Passes of the hard resolve at most (it stops once nothing truly intersects): a row of bodies
+ * squeezed together needs about one pass per body to pass the push along.
+ */
+const HARD_PASSES = 8
+/** Separated bodies are left this far apart, so passing a push along does not re-touch them. */
+const HARD_SLACK = 0.05
 const SWELL_MS = 700
 const SWELL_AMOUNT = 0.12
 const SIZE_EASE = 0.14
@@ -217,6 +224,39 @@ export function stepWorld(w: World, dtFrames: number, now: number, opts: { reduc
         a.vy -= ny * kick * ia
         c.vx += nx * kick * ic
         c.vy += ny * kick * ic
+      }
+    }
+  }
+
+  // The soft gap is the feel; true overlap is forbidden: what still intersects is moved apart by the
+  // whole overlap (split by inverse mass, a pinned body or an obstacle takes none), with no kick.
+  for (let pass = 0, moved = true; pass < HARD_PASSES && moved; pass++) {
+    moved = false
+    for (let i = 0; i < live.length; i++) {
+      for (let j = i + 1; j < live.length; j++) {
+        const a = live[i]
+        const c = live[j]
+        if (a.ignore === c.id || c.ignore === a.id) continue
+        const dx = c.x - a.x
+        const dy = c.y - a.y
+        const ox = (a.w + c.w) / 2 - Math.abs(dx)
+        const oy = (a.h + c.h) / 2 - Math.abs(dy)
+        if (ox <= 0 || oy <= 0) continue
+        const ia = a.pinned ? 0 : FEEL.invMass[a.kind]
+        const ic = c.pinned ? 0 : FEEL.invMass[c.kind]
+        const sum = ia + ic
+        if (!sum) continue
+        moved = true
+        const alongX = ox < oy
+        const n = alongX ? Math.sign(dx) || 1 : Math.sign(dy) || 1
+        const o = (alongX ? ox : oy) + HARD_SLACK
+        if (alongX) {
+          a.x -= (n * o * ia) / sum
+          c.x += (n * o * ic) / sum
+        } else {
+          a.y -= (n * o * ia) / sum
+          c.y += (n * o * ic) / sum
+        }
       }
     }
   }

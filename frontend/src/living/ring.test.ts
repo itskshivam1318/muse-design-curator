@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { dockedSize, ellipsePoint, petalAngles, ringAngles, undockedSize } from './ring'
+import { FEEL } from './physics'
+import { dockedSize, ellipsePoint, PETAL, petalAngles, petalRadius, ringAngles, undockedSize } from './ring'
 
 const gap = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)))
 
@@ -36,5 +37,15 @@ describe('ring geometry', () => {
   it('dockedSize keeps the aspect at 168 wide', () => {
     expect(dockedSize({ w: 400, h: 250 })).toEqual({ w: 168, h: 105 })
     expect(undockedSize({ w: 168, h: 105 })).toEqual({ w: 300, h: 187.5 })
+  })
+
+  it('neighbouring petal slots are at least a petal + gap apart for n = 2..12', () => {
+    for (let n = 2; n <= 12; n++) {
+      const R = petalRadius(n)
+      const [a, b] = petalAngles(0, n)
+      const chord = Math.hypot(Math.cos(a) * R - Math.cos(b) * R, Math.sin(a) * R - Math.sin(b) * R)
+      expect(chord, `n = ${n}`).toBeGreaterThanOrEqual(PETAL + FEEL.gap - 1e-9)
+      expect(R).toBeGreaterThanOrEqual(135)
+    }
   })
 })

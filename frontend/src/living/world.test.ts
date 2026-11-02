@@ -111,6 +111,26 @@ describe('living world', () => {
     expect(world.now()).toBeGreaterThan(t0)
   })
 
+  it('comes to rest under uneven frame times (fixed steps)', () => {
+    let t = 0
+    let cb: FrameRequestCallback | null = null
+    const world = createLivingWorld({ reduced: true, now: () => t, schedule: (f) => ((cb = f), 1), cancel: () => {} })
+    // three bodies pressed together: their rest depends on the push, which must not depend on the frame time
+    world.sync(scene(item('a', 0, 0), item('b', 60, 0), item('c', 120, 0)), 0)
+    world.start()
+    const durations = [0.7, 1.3, 1, 1.6, 0.9, 1.2]
+    const step = (i: number) => {
+      t += (1000 / 60) * durations[i % durations.length]
+      const f = cb
+      cb = null
+      f?.(t)
+    }
+    for (let i = 0; i < 2000; i++) step(i)
+    const at = ['a', 'b', 'c'].map((id) => ({ ...world.body(id)! }))
+    for (let i = 0; i < 12; i++) step(i)
+    expect(['a', 'b', 'c'].map((id) => world.body(id)!.x)).toEqual(at.map((b) => b.x))
+  })
+
   it('offscreen bodies sleep', () => {
     const { world, frame } = rig()
     const a = item('a', 0, 0)

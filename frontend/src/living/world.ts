@@ -44,6 +44,8 @@ export interface LivingWorldOpts {
 }
 
 const FRAME_MS = 1000 / 60
+/** At most this many fixed steps per frame (after a stall the world catches up only so far). */
+const MAX_STEPS = 3
 
 export function createLivingWorld(opts: LivingWorldOpts): LivingWorld {
   const now = opts.now ?? (() => performance.now())
@@ -57,6 +59,7 @@ export function createLivingWorld(opts: LivingWorldOpts): LivingWorld {
   let viewport: Bounds | null = null
   let handle: number | null = null
   let last = 0
+  let pending = 0 // frames of time not yet stepped
 
   const applyPins = (): void => {
     for (const b of world.bodies.values()) b.pinned = grabbed.has(b.id) || selection.has(b.id)
@@ -72,8 +75,14 @@ export function createLivingWorld(opts: LivingWorldOpts): LivingWorld {
 
   const tick = (): void => {
     const t = now()
-    stepWorld(world, (t - last) / FRAME_MS, t, { reduced, awake })
+    // fixed steps of one 60 Hz frame: the push between bodies is per step, so a variable step would
+    // move their resting point every frame (the board would never be still)
+    pending = Math.min(MAX_STEPS, pending + (t - last) / FRAME_MS)
     last = t
+    while (pending >= 1 - 1e-6) {
+      stepWorld(world, 1, t, { reduced, awake })
+      pending = Math.max(0, pending - 1)
+    }
     for (const fn of [...subs]) fn(t)
     if (handle !== null) handle = schedule(tick)
   }
@@ -148,6 +157,7 @@ export function createLivingWorld(opts: LivingWorldOpts): LivingWorld {
     start() {
       if (handle !== null) return
       last = now()
+      pending = 0
       handle = schedule(tick)
     },
     stop() {

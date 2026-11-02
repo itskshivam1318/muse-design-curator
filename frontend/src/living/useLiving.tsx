@@ -28,9 +28,15 @@ export function useBodyElement(id: string, ref: RefObject<HTMLElement | null>, o
   const ownHeight = opts.ownHeight ?? false
   useEffect(() => {
     let last = ''
+    let lastEl: HTMLElement | null = null
     const write = (now: number): void => {
       const el = ref.current
       if (!el) return
+      // another element under the same ref (a hub becoming its badge): it has none of the style yet
+      if (el !== lastEl) {
+        lastEl = el
+        last = ''
+      }
       const b = world.body(id)
       const s = b ? growScale(b, now, world.reduced()) : 0
       // to 0.01px: a body at rest keeps an identical style (no float noise), so it reads as still

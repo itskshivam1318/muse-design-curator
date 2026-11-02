@@ -5,6 +5,8 @@ import { lineagePoints } from '../canvas/nodeProps'
 import { growScale } from './physics'
 import type { LivingWorld } from './world'
 
+const r2 = (n: number) => Math.round(n * 100) / 100
+
 /**
  * Each frame, puts the layer's board nodes where the world has their bodies, without a React render:
  * a node whose id is a body's (an item), or that names one in its `body` attr (what is drawn around an
@@ -26,7 +28,7 @@ export function useKonvaBodies(world: LivingWorld, layerRef: RefObject<Konva.Lay
         if (link) {
           const [from, to] = link.map(boxOf)
           if (!from || !to) continue
-          const points = lineagePoints(from, to)
+          const points = lineagePoints(from, to).map(r2)
           const line = node as Konva.Line
           const old = line.points()
           if (old.length !== points.length || old.some((v, i) => v !== points[i])) {
@@ -37,9 +39,10 @@ export function useKonvaBodies(world: LivingWorld, layerRef: RefObject<Konva.Lay
         }
         const b = world.body((node.attrs.body as string | undefined) ?? node.id())
         if (!b || node.isDragging()) continue
-        const s = Math.max(growScale(b, now, world.reduced()), 0.001) // a zero scale cannot be hit-tested
-        const x = b.x - (b.w * s) / 2
-        const y = b.y - (b.h * s) / 2
+        // to 0.01: a settled board compares equal and is not redrawn
+        const s = r2(Math.max(growScale(b, now, world.reduced()), 0.001)) // a zero scale cannot be hit-tested
+        const x = r2(b.x - (b.w * s) / 2)
+        const y = r2(b.y - (b.h * s) / 2)
         if (node.x() !== x || node.y() !== y || node.scaleX() !== s || node.scaleY() !== s) {
           node.position({ x, y })
           node.scale({ x: s, y: s })
