@@ -4,10 +4,8 @@ import { setBoard as setTelemetryBoard } from '../telemetry'
 import {
   ApiError,
   type Board,
-  confirmLens,
   type Item,
   keys,
-  type LensSpec,
   patchBoard,
   type Point,
   type UploadOrigin,
@@ -23,15 +21,14 @@ import { AddActions } from '../panels/AddMenu'
 import { BoardSignals } from '../panels/BoardSignals'
 import { ContextBar, type ContextBarHandle } from '../panels/ContextBar'
 import { DemoBadge } from '../panels/DemoBadge'
-import { LensReview } from '../panels/LensReview'
 import { Onboarding } from '../panels/Onboarding'
 import { hasDrawerPanel } from '../panels/drawerRegistry'
 import '../panels/registerPanels'
 import { UploadStatus } from '../panels/UploadStatus'
-import { countedItems, useBoard, useBoardLens, useItems, useProfile } from '../queries'
+import { countedItems, useBoard, useItems, useProfile } from '../queries'
 import { Link } from '../Link'
 import { BoardShell } from '../shell/BoardShell'
-import { closeRail, noteLensProposal, openRail, railStore, setTool } from '../shell/tools'
+import { closeRail, openRail, railStore, setTool } from '../shell/tools'
 import { sendNoteToNode } from '../plugins/nodeDrop'
 import { insideOverlay, isTyping, itemShortcut } from './shortcutGuard'
 
@@ -40,12 +37,10 @@ export function BoardPage({ boardId }: { boardId: string }) {
   const board = useBoard(boardId)
   const items = useItems(boardId)
   const profile = useProfile(boardId)
-  const lens = useBoardLens(boardId)
   const actions = useItemActions(boardId)
   const add = useAddFlow(boardId)
   const canvas = useRef<CanvasHandle>(null)
   const contextBar = useRef<ContextBarHandle>(null)
-  const [dismissedLens, setDismissedLens] = useState<string | null>(null)
   const [spaceDown, setSpaceDown] = useState(false)
   const [live, setLive] = useState<'connecting' | 'open' | 'reconnecting'>('connecting')
   const { locked, pluginsEnabled } = useDemo()
@@ -158,16 +153,6 @@ export function BoardPage({ boardId }: { boardId: string }) {
     if ('domain' in patch) void qc.invalidateQueries({ queryKey: keys.lens(boardId) })
   }
 
-  const onConfirmLens = async (spec?: LensSpec) => {
-    const row = await confirmLens(boardId, spec)
-    qc.setQueryData(keys.lens(boardId), row)
-    void qc.invalidateQueries({ queryKey: keys.board(boardId) })
-  }
-
-  // a lens proposal waits in Library: open it there once, or flag Library if another panel is open
-  const proposedId = lens.data?.status === 'proposed' && lens.data.id !== dismissedLens ? lens.data.id : null
-  useEffect(() => noteLensProposal(proposedId !== null), [proposedId])
-
   if (board.isError) {
     const notFound = board.error instanceof ApiError && board.error.status === 404
     return (
@@ -180,7 +165,6 @@ export function BoardPage({ boardId }: { boardId: string }) {
   }
 
   const list = items.data ?? []
-  const proposed = lens.data && lens.data.status === 'proposed' && lens.data.id !== dismissedLens ? lens.data : null
 
   const focusItem = (item: Item) => {
     selection.select([item.id])
@@ -236,15 +220,6 @@ export function BoardPage({ boardId }: { boardId: string }) {
               disabled={locked}
             />
             <BoardSignals boardId={boardId} />
-            {proposed && (
-              <LensReview
-                key={proposed.id}
-                lens={proposed}
-                onConfirm={onConfirmLens}
-                onDismiss={() => setDismissedLens(proposed.id)}
-                locked={locked}
-              />
-            )}
           </>
         }
         overlays={

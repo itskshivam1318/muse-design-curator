@@ -2,6 +2,7 @@ import { type ReactNode, type Ref, useId, useImperativeHandle, useRef, useState 
 import type { Board, BoardProfile } from '../api'
 import { LOCKED_TITLE } from '../demo'
 import { humanize } from '../format'
+import { BoardLearned } from './BoardLearned'
 import { DOMAINS, inferredDomain, toSnake } from './domains'
 
 const AUTO = ''
@@ -140,6 +141,7 @@ export function ContextBar({ board, profile, onSave, ref, locked = false, badge 
             placeholder="A dress-adjacent field watch for a 38 mm wrist. Legible and plain, but warmer."
             onChange={(e) => setContext(e.target.value)}
           />
+          <BoardLearned boardId={board.id} locked={locked} />
           <label htmlFor={`${ids}-domain`}>Domain</label>
           <select id={`${ids}-domain`} value={domainChoice} onChange={(e) => setDomainChoice(e.target.value)}>
             <option value={AUTO}>Auto{auto ? ` (looks like ${humanize(auto).toLowerCase()})` : ''}</option>
