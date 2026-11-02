@@ -3,7 +3,7 @@ import type { AnalysisView, Exploration, Item } from '../api'
 import { CALLOUT_W } from '../map/layout'
 import { calloutSize, WHOLE } from '../map/cards'
 import { makeItem } from '../test/fixtures'
-import { analysis, exp, item, opt } from './fixtures'
+import { analysis, exp, item, opt } from '../test/explore'
 import { FEEL } from './physics'
 import { ellipsePoint, HUB_GAP, KEPT_EXTRA, petalAngles, petalRadius, ringAngles, CALLOUT_GAP } from './ring'
 import { buildScene, type SceneInput } from './scene'
@@ -62,6 +62,28 @@ describe('buildScene', () => {
     expect(home.dy).toBeCloseTo(75 + HUB_GAP.y)
     expect(edge(s, 'stem:e1')).toMatchObject({ from: { body: 'a' }, to: { body: 'hub:e1' } })
     expect(s.flowers[0]).toMatchObject({ label: 'hand_style', part: null })
+  })
+
+  it('a flower whose analysis is still loading waits (no hub) unless it has a stored offset', () => {
+    const options = [opt('o1'), opt('o2', { kept_item_id: 't1' })]
+    const exps = [exp('e1', 'hand_style', options), exp('e2', 'mood', [opt('o3')], 'a', { dx: 0, dy: 300 })]
+    const s = scene({ items: [item, take('t1')], explorations: exps, analyses: new Map() })
+    expect(s.flowers.map((f) => f.id)).toEqual(['e2'])
+    expect(spec(s, 'hub:e1')).toBeUndefined()
+    expect(spec(s, 'petal:o1')).toBeUndefined()
+    expect(edge(s, 'stem:e1')).toBeUndefined()
+    // its docked take is an ordinary item until the flower appears
+    expect(spec(s, 't1')).toMatchObject({ kind: 'item', home: { kind: 'abs' } })
+    expect(s.docked.size).toBe(0)
+    // a stored offset does not depend on the analysis: the hub is there, its stem leaves the item's edge
+    expect(spec(s, 'hub:e2')).toMatchObject({ kind: 'hub', home: { kind: 'rel', to: 'a', dx: 0, dy: 300 } })
+    expect(edge(s, 'stem:e2')).toMatchObject({ from: { body: 'a' }, to: { body: 'hub:e2' } })
+  })
+
+  it('petals grow in one after another, skipping kept options', () => {
+    const options = [opt('o1'), opt('o2', { kept_item_id: 't1' }), opt('o3'), opt('o4')]
+    const s = scene({ items: [item, take('t1')], explorations: [exp('e1', 'hand_style', options)] })
+    expect(['petal:o1', 'petal:o3', 'petal:o4'].map((id) => spec(s, id)!.delay)).toEqual([0, 1, 2].map((i) => FEEL.hubLeadMs + i * FEEL.petalStaggerMs))
   })
 
   it('a kept take is docked: kind kept, rel to its hub, and no petal for its option', () => {

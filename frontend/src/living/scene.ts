@@ -56,7 +56,10 @@ export interface Scene {
 export interface SceneInput {
   items: readonly Item[]
   explorations: readonly Exploration[]
-  /** Each item's analysis: null when it failed, undefined while loading (both: no callouts, hubs open downward). */
+  /**
+   * Each item's analysis: null when it failed (no callouts, hubs open downward); undefined while
+   * loading (no callouts; its flowers without a stored offset wait).
+   */
   analyses: ReadonlyMap<string, AnalysisView | null | undefined>
   labels: ReadonlyMap<string, string>
   collapsed: (explorationId: string) => boolean
@@ -104,9 +107,12 @@ export function buildScene(input: SceneInput): Scene {
     return cardCache.get(item.id)!
   }
 
-  // each flower's geometry first: docked takes (listed among the items) need their hub's direction
+  // each flower's geometry first: docked takes (listed among the items) need their hub's direction.
+  // A flower whose source analysis is still loading and that has no stored offset waits (no hub, no
+  // petals, its docked takes are ordinary items until then): it would otherwise home at a guess.
+  const stored = (e: Exploration) => e.dx != null && e.dy != null
   const flowers = [...explorations]
-    .filter((e) => byId.has(e.item_id))
+    .filter((e) => byId.has(e.item_id) && (stored(e) || analyses.get(e.item_id) !== undefined))
     .sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0))
     .map((e) => {
       const source = byId.get(e.item_id)!
@@ -115,8 +121,8 @@ export function buildScene(input: SceneInput): Scene {
       const slot = card ? cards(source)!.get(card)! : null
       const b = itemBounds(source)
       const offset: Point =
-        e.dx != null && e.dy != null
-          ? { x: e.dx, y: e.dy }
+        stored(e)
+          ? { x: e.dx!, y: e.dy! }
           : ellipsePoint({ w: b.width, h: b.height }, slot?.angle ?? Math.PI / 2, HUB_GAP)
       const options = optionTree(e.options).map((r) => r.option)
       const dim = analysis?.dimensions.find((d) => d.key === e.key)
@@ -180,6 +186,7 @@ export function buildScene(input: SceneInput): Scene {
       specs.push({ id: hubId, kind: 'hub', w: HUB_W, h: HUB_H, home: rel(source.id, offset), start, delay: 0 })
     }
     const R = petalRadius(model.options.length)
+    let shown = 0 // petals grow in one after another; kept options keep their slot but no turn
     model.options.forEach((o, i) => {
       if (isKept(o)) {
         if (docked.get(o.kept_item_id!)?.hubId === hubId) {
@@ -189,7 +196,7 @@ export function buildScene(input: SceneInput): Scene {
       }
       if (model.collapsed) return
       const id = `petal:${o.id}`
-      specs.push({ id, kind: 'petal', w: PETAL, h: PETAL, home: rel(hubId, polar(f.angles[i], R)), delay: FEEL.hubLeadMs + i * FEEL.petalStaggerMs })
+      specs.push({ id, kind: 'petal', w: PETAL, h: PETAL, home: rel(hubId, polar(f.angles[i], R)), delay: FEEL.hubLeadMs + shown++ * FEEL.petalStaggerMs })
       edges.push({ id: `spoke:${o.id}`, kind: 'spoke', from: { body: hubId }, to: { body: id } })
     })
   }

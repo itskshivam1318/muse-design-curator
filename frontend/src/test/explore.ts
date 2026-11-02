@@ -1,6 +1,6 @@
-/** Test-only builders shared by the map and living-board tests. */
+/** Test-only builders for explorations and analyses, shared by the map and living-board tests. */
 import type { AnalysisView, Exploration, ExploreOption } from '../api'
-import { makeItem } from '../test/fixtures'
+import { makeItem } from './fixtures'
 
 export const opt = (id: string, over: Partial<ExploreOption> = {}): ExploreOption => ({
   id, exploration_id: 'e1', parent_option_id: null, batch: 1, steer: null, name: id, description: '', distance: 'near',

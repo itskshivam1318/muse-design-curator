@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AnalysisView, Exploration } from '../api'
-import { analysis, exp, item, opt } from '../living/fixtures'
+import { analysis, exp, item, opt } from '../test/explore'
 import { makeItem } from '../test/fixtures'
 import { calloutBounds, WHOLE } from './cards'
 import { mapModel } from './useMap'
