@@ -103,11 +103,18 @@ export function placeFlower(input: FlowerInput, obstacles: Bounds[]): FlowerLayo
       if (!firstHit(inflate(l.bounds, PETAL_GAP), obstacles)) return l
     }
   }
-  // Nothing free within reach: park it as far out as the search goes.
-  return build(input, input.dir, MAX_OUTWARD_STEPS)
+  // Capped trials failed: keep stepping outward along `dir` until clear. Obstacles are finite, so this terminates.
+  for (let steps = MAX_OUTWARD_STEPS + 1; ; steps++) {
+    const l = build(input, input.dir, steps)
+    if (!firstHit(inflate(l.bounds, PETAL_GAP), obstacles)) return l
+  }
 }
 
-/** Places flowers in id order; each placed flower becomes an obstacle for the next. Items and callouts are read-only. */
+/**
+ * Places flowers in id order; each placed flower becomes an obstacle for the next.
+ * Contract: callers must pass EVERY flower, collapsed ones included (collapsing only hides rendering), and ids must
+ * sort by creation order (monotonic ULIDs), so closing or collapsing a flower never shifts the others.
+ */
 export function layoutFlowers(flowers: FlowerInput[], items: Bounds[], callouts: Bounds[]): Map<string, FlowerLayout> {
   const sorted = [...flowers].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   const obstacles = [...items, ...callouts]
@@ -120,6 +127,9 @@ export function layoutFlowers(flowers: FlowerInput[], items: Bounds[], callouts:
   return out
 }
 
+/** Ids of flowers whose bounds or source-to-hub connector reach the viewport. */
 export function visibleFlowers(layouts: Map<string, FlowerLayout>, viewport: Bounds): string[] {
-  return [...layouts].filter(([, l]) => rectsIntersect(l.bounds, viewport)).map(([id]) => id)
+  return [...layouts]
+    .filter(([, l]) => rectsIntersect(unionBounds([l.bounds, { ...l.lines[0][0], width: 0, height: 0 }])!, viewport))
+    .map(([id]) => id)
 }

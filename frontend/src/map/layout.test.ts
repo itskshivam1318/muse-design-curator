@@ -132,6 +132,17 @@ describe('layoutFlowers', () => {
     expect(layoutFlowers(flowers, items, callouts)).toEqual(layoutFlowers(flowers, items, callouts))
   })
 
+  it('is independent of input array order', () => {
+    const shuffled = [flowers[2], flowers[0], flowers[3], flowers[1]]
+    expect(layoutFlowers(shuffled, items, callouts)).toEqual(layoutFlowers(flowers, items, callouts))
+  })
+
+  it('keeps stepping outward past the capped trials until clear', () => {
+    const wall = item(-5000, -5000, 10000, 10000)
+    const l = layoutFlowers([flower('w', 0, 0)], [wall], []).get('w')!
+    expect(rectsIntersect(l.bounds, wall)).toBe(false)
+  })
+
   it('places any number of flowers', () => {
     const many = Array.from({ length: 12 }, (_, i) => flower(String(i).padStart(2, '0'), 120, 90, i))
     const out = layoutFlowers(many, items, callouts)
@@ -143,5 +154,15 @@ describe('layoutFlowers', () => {
   it('culls flowers outside the viewport', () => {
     const out = layoutFlowers([flower('near', 0, 0), flower('far', 5000, 5000)], [], [])
     expect(visibleFlowers(out, { x: -500, y: -500, width: 1000, height: 1000 })).toEqual(['near'])
+  })
+
+  it('counts the source connector as visible', () => {
+    const far: Bounds = { x: 1000, y: 0, width: 100, height: 100 }
+    const out = new Map<string, FlowerLayout>([
+      ['c', { hub: far, petals: [], lines: [[{ x: 0, y: 0 }, { x: 1000, y: 50 }]], bounds: far }],
+    ])
+    const vp = { x: -50, y: -50, width: 80, height: 80 }
+    expect(rectsIntersect(far, vp)).toBe(false)
+    expect(visibleFlowers(out, vp)).toEqual(['c'])
   })
 })
