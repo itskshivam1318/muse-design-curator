@@ -45,12 +45,11 @@ describe('ItemToolbar Re-analyse', () => {
   const props = { screen: screenBox, onInspect: noop, onCompare: noop, onNotThis: noop, onRemove: noop }
   const button = () => screen.queryByRole('button', { name: 'Re-analyse' }) as HTMLButtonElement | null
 
-  it('is on one image, video or note on the board, whatever its status (failed, legacy, waiting for a lens)', () => {
+  it('is on one image or video on the board, whatever its status (failed, legacy, waiting for a lens)', () => {
     const onReanalyse = vi.fn(() => Promise.resolve())
     for (const over of [
       { kind: 'image' as const, parse_status: 'failed' as const, parse_error_code: 'DAILY_LIMIT' },
       { kind: 'video' as const, parse_status: 'pending_lens' as const },
-      { kind: 'note' as const, parse_status: 'completed' as const, content_type: null },
     ]) {
       render(<ItemToolbar items={[makeItem({ id: 'i1', ...over })]} {...props} onReanalyse={onReanalyse} />)
       expect(button()?.disabled).toBe(false)
@@ -58,7 +57,7 @@ describe('ItemToolbar Re-analyse', () => {
       expect(onReanalyse).toHaveBeenLastCalledWith('i1')
       cleanup()
     }
-    expect(onReanalyse).toHaveBeenCalledTimes(3)
+    expect(onReanalyse).toHaveBeenCalledTimes(2)
   })
 
   it('is not on links, staged takes or a multi-selection; disabled while analysing or locked', () => {

@@ -21,7 +21,7 @@ export const COMPARE_MAX = 4
 
 /**
  * Floating toolbar above the selection. One item: Inspect · Re-analyse · Not this · Remove (+ Open
- * source); Re-analyse is on images, videos and notes on the board (not staged takes).
+ * source); Re-analyse is on images and videos on the board (not staged takes).
  * Several: Compare (2–4) · Not this · Remove. Panel buttons appear once their panels are registered.
  */
 export function ItemToolbar({
@@ -41,7 +41,7 @@ export function ItemToolbar({
   const allNot = items.every((i) => i.role === 'counter_example')
   const canPanel = single !== null && single.kind !== 'link'
   const canReanalyse =
-    single !== null && onReanalyse !== undefined && !single.staged && ['image', 'video', 'note'].includes(single.kind)
+    single !== null && onReanalyse !== undefined && !single.staged && ['image', 'video'].includes(single.kind)
   const analysing = single !== null && (single.parse_status === 'pending' || single.parse_status === 'processing')
   const reanalyse = async (id: string) => {
     setBusy(id)

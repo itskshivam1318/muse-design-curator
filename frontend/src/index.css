@@ -2226,3 +2226,11 @@ button.onboarding-step:hover {
   border: 2px dashed #ffd166;
   border-radius: 4px;
 }
+
+.note-bar > .item-toolbar-error {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin: 4px 0 0;
+  white-space: nowrap;
+}

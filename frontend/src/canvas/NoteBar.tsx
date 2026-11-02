@@ -1,4 +1,4 @@
-/** The small bar under a hovered or selected note: Visualize, and ⋯ for Edit, Send to node, Delete. */
+/** The small bar under a hovered or selected note: Visualize, and ⋯ for Edit, Re-analyse, Send to node, Delete. */
 import { useEffect, useRef, useState } from 'react'
 import type { Item } from '../api'
 import { LOCKED_TITLE, useDemo } from '../demo'
@@ -15,6 +15,8 @@ interface Props {
   onVisualize: () => void
   onEdit: () => void
   onDelete: () => void
+  /** Analyse the note again; rejects with the refusal (e.g. the daily limit). */
+  onReanalyse?: (noteId: string) => Promise<unknown>
   /** Task 12 wires this to its node creation; the entries are hidden until it is passed. */
   onSendToNode?: (pluginId: string, noteId: string) => void
   onEnter?: () => void
@@ -46,13 +48,27 @@ function useNotePlugins(boardId: string) {
   return all.filter((p) => added.includes(p.id) && p.inputs.kinds.includes('note'))
 }
 
-export function NoteBar({ boardId, note, screen, readOnly, onVisualize, onEdit, onDelete, onSendToNode, onEnter, onLeave }: Props) {
+export function NoteBar({ boardId, note, screen, readOnly, onVisualize, onEdit, onDelete, onReanalyse, onSendToNode, onEnter, onLeave }: Props) {
   const visualizing = useNoteVisualizing(note.id)
   const plugins = useNotePlugins(boardId)
   const [menuOpen, setMenuOpen] = useState(false)
   const more = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDivElement>(null)
   const empty = !(note.note_text ?? '').trim()
+  const [busy, setBusy] = useState(false)
+  const [refusal, setRefusal] = useState<string | null>(null)
+  const analysing = note.parse_status === 'pending' || note.parse_status === 'processing'
+  const reanalyse = async () => {
+    setBusy(true)
+    setRefusal(null)
+    try {
+      await onReanalyse?.(note.id)
+    } catch (e) {
+      setRefusal(e instanceof Error && e.message ? e.message : 'Could not analyse again')
+    } finally {
+      setBusy(false)
+    }
+  }
 
   useEffect(() => {
     if (menuOpen) menu.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()
@@ -98,6 +114,11 @@ export function NoteBar({ boardId, note, screen, readOnly, onVisualize, onEdit, 
       >
         <Dots />
       </button>
+      {refusal && (
+        <p className="item-toolbar-error" role="alert">
+          {refusal}
+        </p>
+      )}
       {menuOpen && (
         <div
           ref={menu}
@@ -118,6 +139,17 @@ export function NoteBar({ boardId, note, screen, readOnly, onVisualize, onEdit, 
           <button type="button" role="menuitem" disabled={readOnly} onClick={choose(onEdit)}>
             Edit text
           </button>
+          {onReanalyse && (
+            <button
+              type="button"
+              role="menuitem"
+              disabled={readOnly || busy || analysing}
+              title={analysing ? 'Muse is analysing this note' : undefined}
+              onClick={choose(() => void reanalyse())}
+            >
+              Re-analyse
+            </button>
+          )}
           {onSendToNode && plugins.length > 0 && (
             <div role="group" aria-label="Send to node">
               <span className="note-bar-menu-label" aria-hidden="true">

@@ -715,6 +715,7 @@ export function Canvas({
           onVisualize={() => actions.visualizeNote(barNote.id)}
           onEdit={() => setEditing({ id: barNote.id })}
           onDelete={() => actions.deleteNote(barNote)}
+          onReanalyse={actions.reanalyse}
           onSendToNode={onSendToNode}
           onEnter={() => {
             overNoteBar.current = true
