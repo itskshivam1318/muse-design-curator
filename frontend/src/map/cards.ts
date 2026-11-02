@@ -19,6 +19,15 @@ const FORM_H = 34
 const cardHeight = (rows: number, actionRows: number, forms: number) =>
   PAD * 2 + HEAD_H + (rows + actionRows) * (ROW_H + ROW_GAP) + forms * FORM_H
 
+/**
+ * Whether the Whole item card offers "+ Add part": images only this phase. A note's part needs a
+ * text range and a UI screenshot's a box (no segmentation for UI), which a name alone cannot give.
+ */
+export function canAddPart(item: Item, analysis: AnalysisView): boolean {
+  if (item.kind !== 'image' && item.kind !== 'video') return false
+  return (analysis.content_type ?? item.content_type) !== 'ui'
+}
+
 /** The card a dimension sits on: its part's, or Whole item (abstract, or a part that is gone). */
 export function cardOf(analysis: AnalysisView, key: string): string | null {
   const d = analysis.dimensions.find((x) => x.key === key)
@@ -48,7 +57,7 @@ export function calloutBounds(
         anchor: partAnchor(bounds, p, item.note_text),
         height: cardHeight(count(p.key), 1, formsOn(p.key)),
       })),
-      { key: WHOLE, anchor: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height }, height: cardHeight(abstract, 2, formsOn(WHOLE)) },
+      { key: WHOLE, anchor: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height }, height: cardHeight(abstract, canAddPart(item, analysis) ? 2 : 1, formsOn(WHOLE)) },
     ],
     obstacles,
   )

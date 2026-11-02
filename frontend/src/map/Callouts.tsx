@@ -1,7 +1,7 @@
 /**
  * Part callouts around the selected item (HTML over the canvas, in canvas units like the axes): one
  * card per part with its physical dimensions, Extract and "+ Add dimension"; a dashed "Whole item"
- * card with the abstract dimensions and "+ Add part". A leader line runs from each part card to an
+ * card with the abstract dimensions and "+ Add part" (images only). A leader line runs from each part card to an
  * anchor dot on its part. Hovering a card (or focusing one of its buttons) reports the part, so the
  * canvas can highlight its region.
  */
@@ -22,7 +22,7 @@ import {
 import { formatValue } from '../attrValues'
 import type { Bounds, View } from '../canvas/geometry'
 import { itemBounds } from '../canvas/nodeProps'
-import { calloutBounds, WHOLE } from './cards'
+import { calloutBounds, canAddPart, WHOLE } from './cards'
 import { partAnchor, REGION_TAG } from './regions'
 
 const WHOLE_LABEL = 'Whole item'
@@ -179,7 +179,7 @@ export function Callouts({ item, analysis, view, onOpenDimension, onHoverPart, o
             + Add dimension
           </button>
         </div>
-        {!p && (
+        {!p && canAddPart(item, analysis) && (
           <>
             {form?.kind === 'part' && (
               <LabelForm name="New part" placeholder="Part name" busy={busy === 'add'} onSubmit={(l) => void submitPart(l)} onCancel={() => setForm(null)} />

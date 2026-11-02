@@ -87,6 +87,15 @@ describe('analysis calls', () => {
     expect(lastCall()).toEqual({ path: '/items/i%201/analysis', method: 'GET', body: undefined })
   })
 
+  it('analyseItem posts with no body; the daily limit rejects with its message', async () => {
+    fetchMock.mockResolvedValueOnce(json({ parse_status: 'pending' }, 202))
+    await api.analyseItem('i1')
+    expect(lastCall()).toEqual({ path: '/items/i1/analyse', method: 'POST', body: undefined })
+    const message = 'Daily limit reached for this board, try tomorrow.'
+    fetchMock.mockResolvedValueOnce(json({ error: { code: 'DAILY_LIMIT', message, details: { retry_after_s: 60 } } }, 429))
+    await expect(api.analyseItem('i1')).rejects.toMatchObject({ status: 429, code: 'DAILY_LIMIT', message })
+  })
+
   it('extractPart posts to the part extract path', async () => {
     fetchMock.mockResolvedValue(json({ id: 'new' }))
     await api.extractPart('i1', 'hero')

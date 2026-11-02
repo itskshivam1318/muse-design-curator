@@ -669,6 +669,7 @@ export function Canvas({
           }
           onNotThis={() => actions.toggleNotThis(selectedItems)}
           onRemove={() => actions.remove(selected)}
+          onReanalyse={actions.reanalyse}
           readOnly={readOnly}
         />
       )}

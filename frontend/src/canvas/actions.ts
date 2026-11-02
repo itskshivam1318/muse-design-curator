@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
+  analyseItem,
   ApiError,
   createNote,
   deleteItem,
@@ -138,6 +139,15 @@ export function useItemActions(boardId: string) {
           setVisualizing(noteId, false)
           report('Could not visualize note')(e)
         })
+      },
+      /** Analyse the item again (counts against the board's daily limit). Throws the refusal (a 429
+       *  DAILY_LIMIT, a 409 while one is queued) for the caller to show. */
+      async reanalyse(itemId: string) {
+        await analyseItem(itemId)
+        qc.setQueryData<Item[]>(keys.items(boardId), (old) =>
+          old?.map((i) => (i.id === itemId ? { ...i, parse_status: 'pending', parse_error_code: null } : i)),
+        )
+        await qc.invalidateQueries({ queryKey: keys.analysis(itemId) })
       },
       async chooseFrame(itemId: string, frameId: string) {
         try {

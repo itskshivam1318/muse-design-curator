@@ -45,13 +45,21 @@ const analysis: AnalysisView = {
 const item = makeItem({ id: 'i1', board_id: 'b1', x: 0, y: 0, w: 400, h: 300 })
 const view = { x: 0, y: 0, scale: 1 }
 
-function setup(over: { onOpenDimension?: (key: string) => void; onHoverPart?: (key: string | null) => void; locked?: boolean } = {}) {
+function setup(
+  over: {
+    onOpenDimension?: (key: string) => void
+    onHoverPart?: (key: string | null) => void
+    locked?: boolean
+    item?: typeof item
+    analysis?: AnalysisView
+  } = {},
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   const onOpenDimension = over.onOpenDimension ?? vi.fn()
   const onHoverPart = over.onHoverPart ?? vi.fn()
   render(
     <QueryClientProvider client={qc}>
-      <Callouts item={item} analysis={analysis} view={view} onOpenDimension={onOpenDimension} onHoverPart={onHoverPart} locked={over.locked} />
+      <Callouts item={over.item ?? item} analysis={over.analysis ?? analysis} view={view} onOpenDimension={onOpenDimension} onHoverPart={onHoverPart} locked={over.locked} />
     </QueryClientProvider>,
   )
   return { qc, onOpenDimension, onHoverPart }
@@ -135,6 +143,18 @@ describe('Callouts', () => {
     fireEvent.change(newPart, { target: { value: 'Crown' } })
     fireEvent.submit(newPart)
     await waitFor(() => expect(addPart).toHaveBeenCalledWith('i1', { label: 'Crown' }))
+  })
+
+  it('+ Add part is offered on images only: not on a note nor on a UI screenshot', () => {
+    setup({ item: makeItem({ ...item, kind: 'note', note_text: 'A tall jar' }), analysis: { ...analysis, parts: [], content_type: 'text' } })
+    expect(within(card('Whole item')).queryByRole('button', { name: '+ Add part' })).toBeNull()
+    expect(within(card('Whole item')).getByRole('button', { name: '+ Add dimension' })).toBeTruthy()
+    cleanup()
+    setup({ analysis: { ...analysis, content_type: 'ui' } })
+    expect(within(card('Whole item')).queryByRole('button', { name: '+ Add part' })).toBeNull()
+    cleanup()
+    setup({ item: makeItem({ ...item, kind: 'video' }) })
+    expect(within(card('Whole item')).getByRole('button', { name: '+ Add part' })).toBeTruthy()
   })
 
   it('locked: nothing that changes the item is enabled', () => {

@@ -816,6 +816,22 @@ button.onboarding-step:hover {
 .item-toolbar [aria-pressed='true'] {
   color: var(--bad);
 }
+.item-toolbar .is-reanalyse:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.item-toolbar-error {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 6px 0 0;
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--paper);
+  font: 500 12px var(--f-body);
+}
 .frames-strip {
   position: absolute;
   display: flex;
