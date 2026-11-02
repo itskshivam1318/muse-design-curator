@@ -7,10 +7,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app import demo
+from app.analysis import service
 from app.api import deps
 from app.board import profile_hook
 from app.db.models import BoardItem
 from app.db.repos import attributes as attrs_repo
+from app.db.repos import explore as explore_repo
 from app.storage import files
 from tests.integration.api.test_explore import explore, source
 from tests.integration.api.test_visualize import first_option, run
@@ -191,6 +193,23 @@ def test_part_create_rename_remove(client: TestClient, item: tuple[str, str]) ->
     assert "dial" not in keys
 
 
+def test_add_part_by_name_alone(client: TestClient, item: tuple[str, str]) -> None:
+    """What the Whole item card's "+ Add part" sends ({label}): fine on an image, refused on a
+    UI screenshot (no segmentation for UI) and on a note (it needs a text range)."""
+    board, item_id = item
+    assert client.post(f"/api/items/{item_id}/parts", json={"label": "Lid"}).status_code == 201
+    with db() as s:
+        s.get(BoardItem, item_id).content_type = "ui"  # type: ignore[union-attr]
+        s.commit()
+    r = client.post(f"/api/items/{item_id}/parts", json={"label": "Header"})
+    assert r.status_code == 422 and r.json()["error"]["code"] == "REGION_REQUIRED"
+    boxed = {"label": "Header", "region": {"kind": "box", "box": [0, 0, 1, 0.2]}}
+    assert client.post(f"/api/items/{item_id}/parts", json=boxed).status_code == 201
+    note = client.post(f"/api/boards/{board}/notes", json={"text": "A tall jar", "x": 0, "y": 0})
+    r = client.post(f"/api/items/{note.json()['id']}/parts", json={"label": "Jar"})
+    assert r.status_code == 400
+
+
 def test_dimension_create_update_remove(client: TestClient, item: tuple[str, str]) -> None:
     _board, item_id = item
     r = client.post(
@@ -213,8 +232,18 @@ def test_dimension_create_update_remove(client: TestClient, item: tuple[str, str
     assert client.delete(f"/api/items/{item_id}/dimensions/warmth").status_code == 204
     keys = [d["key"] for d in client.get(f"/api/items/{item_id}/analysis").json()["dimensions"]]
     assert "warmth" not in keys and "hue" in keys
-    bad = client.post(f"/api/items/{item_id}/dimensions", json={"label": "X", "type": "abstract"})
-    assert bad.status_code == 400  # an abstract dimension needs a prompt
+
+
+def test_whole_item_add_dimension_by_name_alone(client: TestClient, item: tuple[str, str]) -> None:
+    """Exactly what the Whole item card's "+ Add dimension" sends: a label, no prompt."""
+    _board, item_id = item
+    r = client.post(
+        f"/api/items/{item_id}/dimensions",
+        json={"label": "Mood board fit", "type": "abstract", "part": None},
+    )
+    assert r.status_code == 201, r.json()
+    assert r.json()["type"] == "abstract"
+    assert r.json()["prompt"] == "What is the Mood board fit of this item?"
 
 
 def test_patch_item_sets_content_type_and_reanalyses(
@@ -240,6 +269,47 @@ def test_extract_route_returns_the_new_item(client: TestClient, item: tuple[str,
     assert client.post(f"/api/items/{item_id}/parts/nope/extract").status_code == 404
 
 
+def test_analyse_route_twice_costs_one_slot_and_one_job(
+    client: TestClient, item: tuple[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board, item_id = item
+    queued: list[str] = []
+    monkeypatch.setattr(service.jobs, "enqueue", lambda name, **kw: queued.append(kw["item_id"]))
+    before = demo_used(board)
+    assert client.post(f"/api/items/{item_id}/analyse").status_code == 202
+    again = client.post(f"/api/items/{item_id}/analyse")
+    assert again.status_code == 409 and again.json()["error"]["code"] == "PARSE_IN_PROGRESS"
+    assert demo_used(board) == before + 1
+    assert queued == [item_id]
+
+
+@pytest.mark.parametrize(
+    ("status", "code", "content_type"),
+    [
+        ("failed", "DAILY_LIMIT", "image"),  # over the limit at upload
+        ("failed", "PARSE_ERROR", "image"),
+        ("pending_lens", None, None),  # waiting for a lens (the old flow)
+        ("completed", None, None),  # a legacy item: analysed by a lens, never by the analyser
+    ],
+)
+def test_reanalyse_from_any_resting_status(
+    client: TestClient, item: tuple[str, str], status: str, code: str | None,
+    content_type: str | None,
+) -> None:  # fmt: skip
+    """Exactly what the toolbar's Re-analyse sends: POST /analyse with no body."""
+    _board, item_id = item
+    with db() as s:
+        row = s.get(BoardItem, item_id)
+        assert row is not None
+        row.parse_status, row.parse_error_code, row.content_type = status, code, content_type
+        s.commit()
+    r = client.post(f"/api/items/{item_id}/analyse")
+    assert r.status_code == 202, r.json()
+    body = client.get(f"/api/items/{item_id}/analysis").json()
+    assert body["parse_status"] == "completed" and body["content_type"] == "image"
+    assert body["dimensions"]
+
+
 def test_renderers_route(client: TestClient, item: tuple[str, str]) -> None:
     _board, item_id = item
     r = client.get(f"/api/items/{item_id}/dimensions/body_colour/renderers")
@@ -252,6 +322,25 @@ def test_renderers_route(client: TestClient, item: tuple[str, str]) -> None:
     abstract = client.get(f"/api/items/{item_id}/dimensions/subject/renderers").json()
     assert abstract[0]["detail"] == "Muse Image · whole image, no mask"
     assert client.get(f"/api/items/{item_id}/dimensions/nope/renderers").status_code == 404
+
+
+def test_renderers_of_a_legacy_exploration_without_a_dimension_row(
+    client: TestClient, item: tuple[str, str]
+) -> None:
+    """An exploration made under a lens whose key the item no longer has as a row: treated as
+    an abstract dimension, not a 404."""
+    board, item_id = item
+    with db() as s:
+        explore_repo.get_or_create(s, board, item_id, "old_markers")
+        s.commit()
+    r = client.get(f"/api/items/{item_id}/dimensions/old_markers/renderers")
+    assert r.status_code == 200, r.json()
+    assert r.json()[0]["detail"] == "Muse Image · whole image, no mask"
+    with db() as s:  # a dimension the person removed stays gone, exploration or not
+        explore_repo.get_or_create(s, board, item_id, "subject")
+        s.commit()
+    assert client.delete(f"/api/items/{item_id}/dimensions/subject").status_code == 204
+    assert client.get(f"/api/items/{item_id}/dimensions/subject/renderers").status_code == 404
 
 
 def add_row(session: Session, item_id: str, key: str, **kw: Any) -> None:

@@ -217,8 +217,14 @@ def test_note_creation_enqueues_analyse(client: TestClient) -> None:
     assert r.status_code == 201
     assert seen == [r.json()["id"]]
     seen.clear()
+    # still queued (the stub never ran it): the queued job reads the new text, no second job
     r2 = client.patch(f"/api/items/{r.json()['id']}", json={"note_text": "cold and loud"})
-    assert r2.status_code == 200 and seen == [r.json()["id"]]
+    assert r2.status_code == 200 and seen == []
+    with deps._factory()() as s:
+        s.get(BoardItem, r.json()["id"]).parse_status = "completed"  # type: ignore[union-attr]
+        s.commit()
+    r3 = client.patch(f"/api/items/{r.json()['id']}", json={"note_text": "cold and still"})
+    assert r3.status_code == 200 and seen == [r.json()["id"]]
 
 
 def test_note_is_analysed_into_text_parts(client: TestClient) -> None:

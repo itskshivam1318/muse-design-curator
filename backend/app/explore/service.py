@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app import events
 from app.analysis import limits
 from app.analysis.context import board_context
-from app.analysis.spec import dimension_type, spec_for
+from app.analysis.spec import dimension_type, spec_for, spec_for_key
 from app.config import get_settings
 from app.db.models import BoardItem, Exploration, ExploreOption, ItemAttribute, ItemPart
 from app.db.repos import attributes as attrs_repo
@@ -170,14 +170,18 @@ def explore(
         raise AppError(404, "ITEM_NOT_FOUND", "Item not found")
     rows = dimensions(session, item.id)
     row = next((r for r in rows if r.key == key), None)
-    if row is None:
+    found = _find(session, item.id, key)
+    # a legacy exploration (made under a lens) whose key has no row on the item: abstract
+    legacy = found is not None and not any(
+        r.key == key for r in attrs_repo.for_item(session, item.id)
+    )
+    if row is None and not legacy:
         raise AppError(400, "DIMENSION_NOT_ON_ITEM", f"{key} is not a dimension of this item")
     lens = current_lens(session, item.board_id)
-    spec = spec_for(row, lens)
+    spec = spec_for(row, lens) if row is not None else spec_for_key(key, lens)
     if spec.kind == "shape":
         raise AppError(400, "KIND_NOT_EXPLORABLE", "Shape attributes cannot be explored")
 
-    found = _find(session, item.id, key)
     existing = explore_repo.options(session, found.id) if found else []
     parent = None
     if parent_option_id is not None:
@@ -187,7 +191,7 @@ def explore(
 
     attributes = [record_of(r) for r in rows if is_held(r)]
     held = {a.key for a in attributes}
-    current: Value = row.value_json
+    current: Value = row.value_json if row is not None else None
     board = boards_repo.get(session, item.board_id)
     context = with_notes(session, item.board_id, board_context(session, item.board_id))
     steer = _text(steer) or None
@@ -201,8 +205,8 @@ def explore(
             if parent else None
         ),
         steer=steer, mode=mode,
-        dimension_prompt=row.prompt if dimension_type(row) == "abstract" else None,
-        part_label=_part_label(session, row) if dimension_type(row) == "physical" else None,
+        dimension_prompt=row.prompt if row and dimension_type(row) == "abstract" else None,
+        part_label=_part_label(session, row) if row and dimension_type(row) == "physical" else None,
     )  # fmt: skip
     images: list[bytes]
     if item.kind == "note":  # a text item: the options are read from its words

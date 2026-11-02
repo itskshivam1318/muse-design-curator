@@ -30,6 +30,16 @@ def spec_for(row: ItemAttribute, lens: LensSpec | None = None) -> AttributeSpec:
     return TextSpec(key=row.key, label=row.label, category=row.category)
 
 
+def spec_for_key(key: str, lens: LensSpec | None = None) -> AttributeSpec:
+    """The spec of a key the item has no row for (a legacy exploration): the lens's, else free
+    text read as an abstract dimension."""
+    if lens is not None:
+        for attr in lens.attributes:
+            if attr.key == key:
+                return attr
+    return TextSpec(key=key, label=key.replace("_", " ").capitalize(), category="abstract")
+
+
 def spec_from_dimension(d: DimensionOut) -> AttributeSpec:
     common: dict[str, Any] = {"key": d.key, "label": d.label, "category": d.type, "part": d.part}
     match d.kind:

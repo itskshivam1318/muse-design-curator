@@ -143,12 +143,15 @@ def test_dimension_lifecycle_and_value_edit(client: TestClient) -> None:
     assert actions == ["edited", "edited", "edited", "disabled", "edited"]
 
 
-def test_add_dimension_abstract_needs_prompt(client: TestClient) -> None:
+def test_add_dimension_abstract_by_name_gets_the_default_prompt(client: TestClient) -> None:
     with deps._factory()() as s:
         item = make_item(client, s)
-        with pytest.raises(AppError) as e:
-            label.add_dimension(s, item.id, "Mood", "abstract", None, None)
-        assert e.value.status == 400
+        row = label.add_dimension(s, item.id, "Mood", "abstract", None, None)
+        assert row.prompt == "What is the Mood of this item?"
+        blank = label.add_dimension(s, item.id, "Era", "abstract", None, "  ")
+        assert blank.prompt == "What is the Era of this item?"
+        own = label.add_dimension(s, item.id, "Warmth", "abstract", None, "How warm?")
+        assert own.prompt == "How warm?"
         with pytest.raises(AppError):  # physical without a part
             label.add_dimension(s, item.id, "Mood", "physical", None, None)
         with pytest.raises(AppError) as e2:  # physical on a part that does not exist

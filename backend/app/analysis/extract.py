@@ -10,10 +10,9 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 from sqlalchemy.orm import Session
 
-from app import events
+from app import events, jobs
 from app.analysis import limits
 from app.analysis.locate import locate
-from app.analysis.service import request_analyse
 from app.api.schemas import item_to_dict
 from app.db.models import BoardItem
 from app.db.repos import items as items_repo
@@ -136,7 +135,7 @@ def _note_child(session: Session, source: BoardItem, part_key: str, span: list[i
     return create_item(
         session, source.board_id, ItemMeta(origin="generated", x=x, y=y),
         kind="note", note_text=text, w=NOTE_W, h=NOTE_H, rights_status=_rights(source),
-        parse_status="completed", parent_item_id=source.id, extracted_part=part_key,
+        parent_item_id=source.id, extracted_part=part_key,
     )  # fmt: skip
 
 
@@ -155,7 +154,8 @@ def extract(session: Session, item_id: str, part_key: str) -> BoardItem:
     after_commit(
         session, partial(events.publish, child.board_id, "item.added", item_to_dict(child))
     )
-    request_analyse(session, child.id, count=False)
+    # a new item, pending like an upload: queued once, free (the extract took the slot)
+    after_commit(session, partial(jobs.enqueue, "analyse_item", item_id=child.id))
     return child
 
 

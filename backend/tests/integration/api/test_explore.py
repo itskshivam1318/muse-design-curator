@@ -277,6 +277,24 @@ def test_explore_unknown_key_is_400_dimension_not_on_item(client: TestClient, wo
     assert r.status_code == 400 and error(r) == "DIMENSION_NOT_ON_ITEM"
 
 
+def test_more_on_a_legacy_exploration_without_a_dimension_row(  # type: ignore[no-untyped-def]
+    client: TestClient, world, monkeypatch
+) -> None:
+    """The key was explored under a lens and the item no longer has its row: More still works,
+    reading the key through the lens (or as free text)."""
+    second = [opt(n) for n in ("Arabic", "Hidden", "Batons", "Diamonds", "Lumed", "Stars")]
+    f = fake(monkeypatch, SIX, second)
+    item = source(world)
+    assert explore(client, item).status_code == 200
+    s = world["session"]
+    s.execute(delete(ItemAttribute).where(ItemAttribute.item_id == item,
+                                          ItemAttribute.key == "markers"))  # fmt: skip
+    s.commit()
+    r = explore(client, item)
+    assert r.status_code == 200, r.json()
+    assert len(r.json()["options"]) == 12 and len(f.prompts) == 2
+
+
 def test_unknown_item_404(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
     r = explore(client, "itm_missing")
     assert r.status_code == 404 and error(r) == "ITEM_NOT_FOUND"

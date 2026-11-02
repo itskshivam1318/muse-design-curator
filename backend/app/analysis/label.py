@@ -71,15 +71,23 @@ def _event(session: Session, item_id: str, key: str, action: str, before: Any, a
     )  # fmt: skip
 
 
+def default_prompt(label: str) -> str:
+    """The question an abstract dimension asks when the person gave only its name."""
+    return f"What is the {label} of this item?"
+
+
 # ---- parts ----
 
 
 def add_part(session: Session, item_id: str, label: str, region: Region | None) -> ItemPart:
-    """Add (or bring back) a part. No region on an image: it is located from the label later."""
+    """Add (or bring back) a part. No region on an image: it is located from the label later.
+    A UI screenshot's part needs its box (no segmentation for UI), a note's its text range."""
     item = _require_item(session, item_id)
     key = _snake(label)
     if region is None and item.kind == "note":
         raise AppError(400, "VALIDATION_ERROR", "A part of a note needs a text range")
+    if region is None and item.content_type == "ui":
+        raise AppError(422, "REGION_REQUIRED", "A part of a UI screenshot needs its box")
     if region is not None and (region.kind == "text_range") != (item.kind == "note"):
         raise AppError(
             422, "REGION_KIND_MISMATCH", f"A {region.kind} region does not fit this item"
@@ -160,9 +168,12 @@ def add_dimension(
     session: Session, item_id: str, label: str, type: DimType, part: str | None,
     prompt: str | None, kind: AttrKind = "text",
 ) -> ItemAttribute:  # fmt: skip
-    """Add (or bring back) a dimension of this item. Its value is empty until someone sets it."""
+    """Add (or bring back) a dimension of this item. Its value is empty until someone sets it.
+    An abstract dimension added by name alone asks the default question about its label."""
     _require_item(session, item_id)
     key = _snake(label)
+    if type == "abstract" and not (prompt and prompt.strip()):
+        prompt = default_prompt(label)
     if part is not None:
         _live_part(session, item_id, part)
     d = _dimension(key, label, type, part, prompt, kind)
@@ -238,6 +249,6 @@ def set_content_type(session: Session, item_id: str, content_type: str) -> Board
 
 
 __all__ = [
-    "add_dimension", "add_part", "remove_dimension", "remove_part", "rename_part",
+    "add_dimension", "add_part", "default_prompt", "remove_dimension", "remove_part", "rename_part",
     "set_content_type", "update_dimension",
 ]  # fmt: skip

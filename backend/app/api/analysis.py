@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 
 from app.analysis import context, extract, label, locate, service
 from app.analysis.api_schemas import (
@@ -25,7 +26,7 @@ from app.analysis.types import Region
 from app.api.boards import require_board
 from app.api.deps import SessionDep
 from app.api.schemas import item_to_dict
-from app.db.models import BoardItem, ItemAttribute
+from app.db.models import BoardItem, Exploration, ItemAttribute
 from app.db.repos import attributes as attrs_repo
 from app.errors import AppError
 from app.extraction.service import _require_item
@@ -107,9 +108,26 @@ def remove_dimension(item_id: str, key: str, session: SessionDep) -> None:
 
 @router.get("/items/{item_id}/dimensions/{key}/renderers")
 def get_renderers(item_id: str, key: str, session: SessionDep) -> list[dict[str, Any]]:
+    """The renderers for one dimension. A legacy exploration whose key has no dimension row on
+    the item (explored under a lens) is rendered as an abstract dimension."""
     item = _require_item(session, item_id)
-    row = _live_dimension(session, item, key)
+    row: ItemAttribute | None
+    if _has_row(session, item, key) or not _explored(session, item, key):
+        row = _live_dimension(session, item, key)
+    else:
+        row = None
     return [asdict(r) for r in renderers_for(session, item, row)]
+
+
+def _has_row(session: SessionDep, item: BoardItem, key: str) -> bool:
+    return any(r.key == key for r in attrs_repo.for_item(session, item.id))
+
+
+def _explored(session: SessionDep, item: BoardItem, key: str) -> bool:
+    found = session.scalar(
+        select(Exploration.id).where(Exploration.item_id == item.id, Exploration.key == key)
+    )
+    return found is not None
 
 
 @router.get("/boards/{board_id}/context")

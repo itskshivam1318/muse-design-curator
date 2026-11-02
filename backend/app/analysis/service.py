@@ -195,18 +195,22 @@ def _run(session: Session, item_id: str, board_id: str) -> Analysis:
 
 
 def queue_analyse(session: Session, item_id: str, *, count: bool = True) -> bool:
-    """Queue an analysis unless one is running. False when the item is processing.
+    """Queue an analysis unless one is queued or running. False when the item is pending or
+    processing: no second job and no second slot (a running job re-queues itself when the
+    item changed while it read it).
 
     `count` takes a slot of the board's daily analyse allowance (429 when it is used up); the
     system's own re-queues (note saves, extracted parts) pass False."""
     item = session.get(BoardItem, item_id)
     if item is None:
         return False
+    if item.parse_status in ("pending", "processing"):
+        return False
     if count:
         limits.check_and_count(item.board_id, "analyse")
     res = session.execute(
         update(BoardItem)
-        .where(BoardItem.id == item_id, BoardItem.parse_status.in_((*RETRYABLE, "pending")))
+        .where(BoardItem.id == item_id, BoardItem.parse_status.in_(RETRYABLE))
         .values(parse_status="pending")
     )  # fmt: skip
     if not res.rowcount:  # type: ignore[attr-defined]
