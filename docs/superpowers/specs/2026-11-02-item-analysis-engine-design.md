@@ -49,7 +49,7 @@ corrects; corrections stick.
 7. **Kept results are ordinary board items**, visible full size, with their own parts and flowers.
 8. **Board context that grows**: the person's words plus a "What Muse has learned" section that updates
    as items are added.
-9. **Re-analyse existing boards** with the new engine without losing anything the person made.
+9. **Existing boards keep working** without re-analysis (§7).
 
 ## 3. Non-goals (this project)
 
@@ -190,16 +190,17 @@ the shape is kept tool-ready: each function's request/result schema is defined o
 Same interaction. Text: callouts sit beside the note, regions are highlighted ranges, rendered petals show
 the rewritten passage inside the full text with the change marked. UI: like images, with boxes.
 
-## 7. Re-analysing existing boards
+## 7. Existing boards
 
-- Every existing board is re-analysed with the new engine. **Trigger (author's call, pending user
-  confirmation):** an old board shows an "Update analysis" banner; re-analysis runs when someone presses
-  it, in the background with progress shown, counting against the cost guard. No automatic re-analysis of
-  every board on deploy (avoids a cost spike and boards changing under live testers).
+- **No board re-analysis** (user decision, supersedes the earlier "re-analyse them"). No bulk job, no
+  banner. Existing items keep their current attributes, read into the new model as dimensions: an
+  attribute with a part becomes physical on that part; one without becomes abstract.
+- New items get the new engine. Any single item can still be re-run by hand through `analyse(item)`.
 - **Nothing the person made is lost**: kept takes, notes, decisions, and values entered by hand stay.
-- Old dimensions are matched to new ones by label and part; matched explorations and history move to the
-  new dimension. Unmatched old dimensions are kept as "old dimension, not found on this item"; their
-  explorations stay viewable, read-only. Never deleted.
+- Existing explorations stay attached to the same dimension key and keep working in the flower UI.
+- When an item is re-run by hand, its old dimensions are matched to the new ones by label and part, and
+  matched explorations move across. Unmatched old dimensions stay as "old dimension, not found on this
+  item", with their explorations read-only. Nothing is deleted.
 - Board `lens_id` / lens JSONs stop driving analysis. Lens files may remain as hints in the board context
   (builder's call), but no lens may force a dimension onto an item.
 
