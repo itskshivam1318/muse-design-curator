@@ -11,11 +11,10 @@ import {
   patchAttribute,
 } from '../api'
 import { CreditLine } from '../canvas/CreditCaption'
-import { selection } from '../canvas/selection'
 import { humanize, itemTitle } from '../format'
 import { itemVerdict } from '../explore/verdict'
 import { useAttributes, useExplorations, useItems, useProfile } from '../queries'
-import { COLOR_TABLE, colorHex, formatValue, isBoardSignal, numberBounds, scaleOf, vocabularyOf } from '../vary/logic'
+import { COLOR_TABLE, colorHex, formatValue, isBoardSignal, numberBounds, scaleOf, vocabularyOf } from '../attrValues'
 import { Swatch } from './AttrBits'
 import type { DrawerPanelProps } from './drawerRegistry'
 import { PanelHead } from './PanelHead'
@@ -194,15 +193,6 @@ function AttributeRow({
             Confirm
           </button>
         )}
-        <button
-          type="button"
-          className="btn-quiet small"
-          aria-label={`Vary ${spec.label}`}
-          disabled={!rec.enabled}
-          onClick={() => selection.openDrawer('vary', itemId, { targetKey: spec.key })}
-        >
-          Vary this
-        </button>
         <History itemId={itemId} attrKey={spec.key} />
       </div>
     </li>

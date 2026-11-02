@@ -1,8 +1,8 @@
-"""Explore one attribute of an item into named text options, stored per (item, attribute).
+"""Explore one of an item's own dimensions into named text options, stored per (item, key).
 
 Each call asks the reasoning provider for a batch, cleans it (junk dropped, names deduped
-case-insensitively across the exploration, keeps limited to the lens keys) and stores it as the
-exploration's next batch. Nothing is written until the model has answered.
+case-insensitively across the exploration, keeps limited to the item's own dimensions) and
+stores it as the exploration's next batch. Nothing is written until the model has answered.
 """
 
 from functools import partial
@@ -12,13 +12,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import events
+from app.analysis import limits
+from app.analysis.context import board_context
+from app.analysis.spec import dimension_type, spec_for, spec_for_key
 from app.config import get_settings
-from app.db.models import BoardItem, Exploration, ExploreOption
+from app.db.models import BoardItem, Exploration, ExploreOption, ItemAttribute, ItemPart
+from app.db.repos import attributes as attrs_repo
 from app.db.repos import boards as boards_repo
 from app.db.repos import explore as explore_repo
 from app.db.session import after_commit
 from app.domain.attributes import (
-    AttributeRecord,
     Value,
     _coerce_bool,
     canonical_token,
@@ -31,7 +34,7 @@ from app.extraction.service import _image_for, _require_item, current_lens
 from app.notes.service import with_notes
 from app.providers import get_reasoning
 from app.providers.reliability import ModelError
-from app.runs.orchestrator import source_records
+from app.runs.orchestrator import record_of
 
 Mode = Literal["initial", "more", "further"]
 DISTANCES = ("near", "bold", "wild")
@@ -64,13 +67,6 @@ def coerce_option_value(spec: AttributeSpec, raw: str, *, current: Value) -> Val
     if spec.kind == "color":
         return " ".join(raw.lower().split()) or None
     return validate_value(raw, spec)  # number within min/max, ordinal on the scale
-
-
-def _missing(spec: AttributeSpec) -> AttributeRecord:
-    return AttributeRecord(
-        key=spec.key, label=spec.label, category=spec.category, kind=spec.kind, part=spec.part,
-        value=None, confidence=0.0, status="missing", source="model",
-    )  # fmt: skip
 
 
 def _text(raw: Any) -> str:
@@ -119,6 +115,27 @@ def _clean(
     return out
 
 
+def dimensions(session: Session, item_id: str) -> list[ItemAttribute]:
+    """The item's own dimensions, the ones the user removed left out (stale ones kept)."""
+    return [r for r in attrs_repo.for_item(session, item_id) if not r.removed]
+
+
+def is_held(row: ItemAttribute) -> bool:
+    """A dimension still found on the item: not removed and not stale."""
+    return not row.removed and row.status != "stale"
+
+
+def _part_label(session: Session, row: ItemAttribute) -> str | None:
+    if not row.part:
+        return None
+    part = session.scalar(
+        select(ItemPart).where(
+            ItemPart.item_id == row.item_id, ItemPart.key == row.part, ItemPart.removed.is_(False)
+        )
+    )
+    return part.label if part is not None else row.part.replace("_", " ")
+
+
 def _find(session: Session, item_id: str, key: str) -> Exploration | None:
     return session.scalar(
         select(Exploration).where(Exploration.item_id == item_id, Exploration.key == key)
@@ -151,18 +168,20 @@ def explore(
     item = _require_item(session, item_id)
     if item.staged:
         raise AppError(404, "ITEM_NOT_FOUND", "Item not found")
-    if item.kind == "note":
-        raise AppError(400, "NOT_AN_IMAGE", "A note has no image to explore")
+    rows = dimensions(session, item.id)
+    row = next((r for r in rows if r.key == key), None)
+    found = _find(session, item.id, key)
+    # a legacy exploration (made under a lens) whose key has no row on the item: abstract
+    legacy = found is not None and not any(
+        r.key == key for r in attrs_repo.for_item(session, item.id)
+    )
+    if row is None and not legacy:
+        raise AppError(400, "DIMENSION_NOT_ON_ITEM", f"{key} is not a dimension of this item")
     lens = current_lens(session, item.board_id)
-    if lens is None:
-        raise AppError(409, "LENS_REQUIRED", "The board needs a lens before exploring")
-    spec = next((a for a in lens.attributes if a.key == key), None)
-    if spec is None:
-        raise AppError(400, "ATTRIBUTE_NOT_IN_LENS", f"{key} is not an attribute of this lens")
+    spec = spec_for(row, lens) if row is not None else spec_for_key(key, lens)
     if spec.kind == "shape":
         raise AppError(400, "KIND_NOT_EXPLORABLE", "Shape attributes cannot be explored")
 
-    found = _find(session, item.id, key)
     existing = explore_repo.options(session, found.id) if found else []
     parent = None
     if parent_option_id is not None:
@@ -170,14 +189,15 @@ def explore(
         if parent is None:
             raise AppError(404, "OPTION_NOT_FOUND", "Option not found in this exploration")
 
-    have = {r.key: r for r in source_records(session, item.id)}
-    attributes = [have.get(a.key) or _missing(a) for a in lens.attributes]
-    current = have[key].value if key in have else None
+    attributes = [record_of(r) for r in rows if is_held(r)]
+    held = {a.key for a in attributes}
+    current: Value = row.value_json if row is not None else None
     board = boards_repo.get(session, item.board_id)
+    context = with_notes(session, item.board_id, board_context(session, item.board_id))
     steer = _text(steer) or None
     prompt = build_explore_prompt(
         spec=spec, current=current, attributes=attributes,
-        board_title=board.title if board else "", board_context=with_notes(session, item.board_id, board.context if board else ""),
+        board_title=board.title if board else "", board_context=context,
         existing_names=[o.name for o in existing],
         parent=(
             {"name": parent.name, "description": parent.description,
@@ -185,22 +205,30 @@ def explore(
             if parent else None
         ),
         steer=steer, mode=mode,
+        dimension_prompt=row.prompt if row and dimension_type(row) == "abstract" else None,
+        part_label=_part_label(session, row) if row and dimension_type(row) == "physical" else None,
     )  # fmt: skip
-    image, _sha = _image_for(session, item)
+    images: list[bytes]
+    if item.kind == "note":  # a text item: the options are read from its words
+        images = []
+        prompt += f"\n\nThere is no image: the item is this text.\n<<<TEXT\n{item.note_text or ''}\nTEXT>>>"
+    else:
+        images = [_image_for(session, item)[0]]
+    limits.check_and_count(item.board_id, "analyse")
     try:
-        raw = get_reasoning(get_settings()).explore_options([image], prompt)
+        raw = get_reasoning(get_settings()).explore_options(images, prompt)
     except ModelError as exc:
         raise AppError(502, exc.code, f"The model could not explore: {exc.message}") from exc
 
     seen = {o.name.lower() for o in existing}
-    rows = _clean(raw, spec, current, {a.key for a in lens.attributes}, seen)
-    if not rows:
+    cleaned = _clean(raw, spec, current, held, seen)
+    if not cleaned:
         raise AppError(502, "EXPLORE_EMPTY", "The model returned no usable new options")
 
     e = found or explore_repo.get_or_create(session, item.board_id, item.id, key)
     batch = explore_repo.next_batch(session, e.id)
     explore_repo.add_options(session, e.id, [
-        {**r, "batch": batch, "steer": steer, "parent_option_id": parent_option_id} for r in rows
+        {**r, "batch": batch, "steer": steer, "parent_option_id": parent_option_id} for r in cleaned
     ])  # fmt: skip
     publish_later(session, e)
     return e, visible(session, e.id)

@@ -18,7 +18,7 @@ def test_create_note_defaults(session: Session) -> None:
     b = boards_repo.create(session, "B")
     n = create_note(session, b.id, "warm and quiet", 10, 20)
     assert (n.kind, n.origin, n.rights_status, n.parse_status) == (
-        "note", "note", "user_supplied", "completed",
+        "note", "note", "user_supplied", "pending",
     )  # fmt: skip
     assert (n.w, n.h, n.x, n.y, n.note_text) == (220, 150, 10, 20, "warm and quiet")
 
@@ -40,6 +40,7 @@ def test_update_note_text(session: Session) -> None:
 def test_parse_item_skips_notes(session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     b = boards_repo.create(session, "B")
     n = create_note(session, b.id, "a", 0, 0)
+    n.parse_status = "completed"
     session.commit()
 
     def boom(*_a: object, **_k: object) -> None:

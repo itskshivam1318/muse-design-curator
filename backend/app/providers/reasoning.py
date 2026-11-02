@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import io
 import json
 import re
 from typing import Any, Protocol
 
 import httpx2
 import openai
+from PIL import Image
 
 from app.explore.schema import CHECK_SCHEMA, OPTIONS_SCHEMA
 from app.providers.meta_client import check_model_id, data_url
@@ -296,6 +298,82 @@ GENERIC_LENS: dict[str, Any] = {
 }  # fmt: skip
 
 
+def _mock_dim(key: str, label: str, kind: str, part: str | None, **extra: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "key": key, "label": label, "type": "physical" if part else "abstract", "part": part,
+        "prompt": None if part else f"What is the {label.lower()} of this item?",
+        "kind": kind, "value": None, "confidence": 0.8,
+        "vocabulary": [], "scale": [], "min": None, "max": None, "unit": None,
+    }  # fmt: skip
+    return {**base, **extra}
+
+
+def _mock_item_analysis(images: list[bytes], prompt: str) -> dict[str, Any]:
+    """A canned, deterministic item analysis (the `item_analysis` schema)."""
+    if not images:
+        start, end = prompt.find("<<<TEXT\n"), prompt.rfind("\nTEXT>>>")
+        text_len = len(prompt[start + 8 : end]) if 0 <= start < end else 0
+        return {
+            "content_type": "text",
+            "summary": "A short note.",
+            "parts": [{"key": "opening", "label": "Opening", "region_kind": "text_range",
+                       "region": [0, max(1, min(text_len, 40))]}],
+            "dimensions": [
+                _mock_dim("tone", "Tone", "enum", None, value="warm", vocabulary=["warm", "cool"]),
+                _mock_dim("length", "Length", "enum", None, value="short",
+                          vocabulary=["short", "long"]),
+            ],
+        }  # fmt: skip
+    with Image.open(io.BytesIO(images[0])) as im:
+        wide = im.width / max(1, im.height) >= 1.6
+    if "set content_type to 'ui'" in prompt:
+        wide = True
+    elif "set content_type to 'image'" in prompt:
+        wide = False
+    if wide:
+        return {
+            "content_type": "ui",
+            "summary": "A software screen.",
+            "parts": [
+                {"key": "header", "label": "Header", "region_kind": "box",
+                 "region": [0.0, 0.0, 1.0, 0.15]},
+                {"key": "primary_button", "label": "Primary button", "region_kind": "box",
+                 "region": [0.35, 0.8, 0.65, 0.9]},
+            ],
+            "dimensions": [
+                _mock_dim("header_colour", "Header colour", "color", "header", value="#222222"),
+                _mock_dim("button_style", "Button style", "enum", "primary_button", value="solid",
+                          vocabulary=["solid", "outline"]),
+                _mock_dim("subject", "Subject", "text", None, value="a screen"),
+                _mock_dim("medium", "Medium", "enum", None, value="digital",
+                          vocabulary=["digital", "print"]),
+            ],
+        }  # fmt: skip
+    return {
+        "content_type": "image",
+        "summary": "An image.",
+        "parts": [
+            {"key": "body", "label": "Body", "region_kind": "mask", "region": None},
+            {"key": "detail", "label": "Detail", "region_kind": "mask", "region": None},
+        ],
+        "dimensions": [
+            _mock_dim("body_colour", "Body colour", "color", "body", value="#8899aa"),
+            _mock_dim("detail_style", "Detail style", "enum", "detail", value="plain",
+                      vocabulary=["plain", "ornate"]),
+            _mock_dim("subject", "Subject", "text", None, value="an object"),
+            _mock_dim("medium", "Medium", "enum", None, value="photo",
+                      vocabulary=["photo", "illustration"]),
+        ],
+    }  # fmt: skip
+
+
+def _mock_rewrite(prompt: str) -> dict[str, Any]:
+    """A deterministic rewrite (the `passage_rewrite` schema): the passage in upper case."""
+    start, end = prompt.find("<<<PASSAGE\n"), prompt.rfind("\nPASSAGE>>>")
+    passage = prompt[start + 11 : end] if 0 <= start < end else ""
+    return {"text": passage.upper()}
+
+
 class MockReasoningProvider:
     """Deterministic output derived from SHA-256 of inputs and schema.
 
@@ -357,6 +435,10 @@ class MockReasoningProvider:
         self, images: list[bytes], schema: dict[str, Any], prompt: str
     ) -> dict[str, Any]:
         _limit(images, MAX_STRUCTURED_IMAGES)
+        if schema.get("title") == "item_analysis":
+            return _mock_item_analysis(images, prompt)
+        if schema.get("title") == "passage_rewrite":
+            return _mock_rewrite(prompt)
         return self._make(images, schema, prompt)
 
     def _make(self, images: list[bytes], schema: dict[str, Any], prompt: str) -> dict[str, Any]:

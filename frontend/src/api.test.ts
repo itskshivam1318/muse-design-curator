@@ -61,3 +61,68 @@ describe('round 2 calls', () => {
     expect(api.keys.nodes('b')).toEqual(['nodes', 'b'])
   })
 })
+
+describe('analysis calls', () => {
+  const fetchMock = vi.fn()
+  beforeEach(() => {
+    fetchMock.mockReset()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
+  const lastCall = () => {
+    const [url, init] = fetchMock.mock.calls.at(-1)!
+    return {
+      path: String(url).replace(/^.*\/api/, ''),
+      method: init?.method ?? 'GET',
+      body: init?.body ? JSON.parse(init.body) : undefined,
+    }
+  }
+
+  it('getAnalysis reads the item analysis', async () => {
+    const view = { content_type: 'ui', parse_status: 'completed', parts: [], dimensions: [] }
+    fetchMock.mockResolvedValue(json(view))
+    expect(await api.getAnalysis('i 1')).toEqual(view)
+    expect(lastCall()).toEqual({ path: '/items/i%201/analysis', method: 'GET', body: undefined })
+  })
+
+  it('analyseItem posts with no body; the daily limit rejects with its message', async () => {
+    fetchMock.mockResolvedValueOnce(json({ parse_status: 'pending' }, 202))
+    await api.analyseItem('i1')
+    expect(lastCall()).toEqual({ path: '/items/i1/analyse', method: 'POST', body: undefined })
+    const message = 'Daily limit reached for this board, try tomorrow.'
+    fetchMock.mockResolvedValueOnce(json({ error: { code: 'DAILY_LIMIT', message, details: { retry_after_s: 60 } } }, 429))
+    await expect(api.analyseItem('i1')).rejects.toMatchObject({ status: 429, code: 'DAILY_LIMIT', message })
+  })
+
+  it('extractPart posts to the part extract path', async () => {
+    fetchMock.mockResolvedValue(json({ id: 'new' }))
+    await api.extractPart('i1', 'hero')
+    expect(lastCall()).toEqual({ path: '/items/i1/parts/hero/extract', method: 'POST', body: undefined })
+  })
+
+  it('visualizeOption sends renderer_id, and nothing when given nothing', async () => {
+    fetchMock.mockImplementation(async () => json({}))
+    await api.visualizeOption('o1', { renderer_id: 'r1', at: { x: 1, y: 2 } })
+    expect(lastCall()).toEqual({ path: '/options/o1/visualize', method: 'POST', body: { x: 1, y: 2, renderer_id: 'r1' } })
+    await api.visualizeOption('o1')
+    expect(lastCall().body).toBeUndefined()
+  })
+
+  it('acceptOffer posts the offer identity', async () => {
+    fetchMock.mockResolvedValue(json({ your_words: '', learned: [], offers: [] }))
+    await api.acceptOffer('b1', { label: 'Mood', dim_type: 'abstract', kind: 'enum', part: null })
+    expect(lastCall()).toEqual({
+      path: '/boards/b1/offers/accept',
+      method: 'POST',
+      body: { label: 'Mood', dim_type: 'abstract', kind: 'enum', part: null },
+    })
+  })
+
+  it('a 429 surfaces the server message', async () => {
+    const message = 'Daily limit reached for this board, try tomorrow.'
+    fetchMock.mockResolvedValue(json({ error: { code: 'DAILY_LIMIT', message } }, 429))
+    await expect(api.analyseItem('i1')).rejects.toMatchObject({ status: 429, code: 'DAILY_LIMIT', message })
+  })
+})

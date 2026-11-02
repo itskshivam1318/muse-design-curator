@@ -473,16 +473,33 @@
 .rail-btn {
   position: relative;
 }
-.rail-dot {
-  position: absolute;
-  top: 7px;
-  right: 7px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--warn);
-  box-shadow: 0 0 0 2px var(--paper);
-}
 .board-stage:focus {
   outline: none;
+}
+
+.board-learned {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+  font-size: 13px;
+}
+.board-learned-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted, inherit);
+}
+.board-learned-list {
+  margin: 0;
+  padding-left: 18px;
+}
+.board-offer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+.board-offer > span {
+  flex: 1 1 100%;
 }

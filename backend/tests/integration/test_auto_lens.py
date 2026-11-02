@@ -52,7 +52,7 @@ def board_with(
 
 def test_auto_board_with_three_watch_items_gets_watch_lens(session: Session) -> None:
     queued: list[str] = []
-    jobs.register("parse_item", lambda item_id: queued.append(item_id))
+    jobs.register("analyse_item", lambda item_id: queued.append(item_id))
     bid, items = board_with(session, [WATCH, [0.95, 0.05], [0.9, 0.1]])
     with events.subscribe(bid) as sub:
         profile_mod.recompute(session, bid)

@@ -14,6 +14,8 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from app import events, jobs
+from app.analysis import limits
+from app.analysis.service import analyse
 from app.api.schemas import item_to_dict
 from app.config import get_settings
 from app.db.models import Board, BoardItem
@@ -22,7 +24,7 @@ from app.db.session import after_commit
 from app.errors import AppError
 from app.explore.check import check_target_only
 from app.explore.visualize import CLAIM_TTL_S, IMAGE_GAP, STACK_GAP, _iso, _stamped
-from app.extraction.service import _image_for, _require_item, parse_item
+from app.extraction.service import _image_for, _require_item
 from app.ingest.common import ItemMeta, create_item, default_size
 from app.ingest.images import decode_image
 from app.providers import get_image_provider
@@ -55,8 +57,10 @@ def _note(session: Session, note_id: str) -> BoardItem:
 
 def request_note_visualize(session: Session, note_id: str) -> None:
     """Claim the note and queue the job. 409 while it is already visualizing, unless that
-    claim is older than CLAIM_TTL_S (its job died with the process)."""
+    claim is older than CLAIM_TTL_S (its job died with the process). Takes one render slot of
+    the board's daily allowance (429 when it is used up); a refused request gives it back."""
     note = _note(session, note_id)
+    limits.check_and_count(note.board_id, "render")
     stale = _iso(datetime.now(UTC) - timedelta(seconds=CLAIM_TTL_S))
     since = BoardItem.generation_json[CLAIM_KEY].as_string()
     claimed = session.execute(
@@ -65,6 +69,7 @@ def request_note_visualize(session: Session, note_id: str) -> None:
         .values(generation_json={CLAIM_KEY: _iso(datetime.now(UTC))})
     )
     if not claimed.rowcount:  # type: ignore[attr-defined]
+        limits.refund(note.board_id, "render")
         raise AppError(409, "NOTE_VISUALIZING", "This note is already being visualized")
     after_commit(
         session, partial(events.publish, note.board_id, "note.visualizing", {"note_id": note_id})
@@ -119,7 +124,7 @@ def _settle(session: Session, note_id: str, error: str | None, item_id: str | No
 def _check(session: Session, item_id: str, note_text: str) -> dict[str, Any]:
     """Parse the new item, then check it against the note; a failure is stored as {"error"}."""
     try:
-        parse_item(session, item_id)  # commits; a model failure marks the item failed
+        analyse(session, item_id)  # commits; a model failure marks the item failed
     except AppError as exc:
         return {"error": exc.code}
     session.expire_all()

@@ -5,8 +5,6 @@ interface Props {
   onNodes: () => void
   /** Plugins are on: show Nodes. */
   plugins: boolean
-  /** Explore is on: show Axis. */
-  explore: boolean
   /** The Nodes menu is open (for aria-expanded). */
   nodesOpen?: boolean
 }
@@ -14,16 +12,15 @@ interface Props {
 const TOOLS: { tool: Tool; label: string; key: string }[] = [
   { tool: 'select', label: 'Select', key: 'Escape' },
   { tool: 'note', label: 'Note', key: 'N' },
-  { tool: 'axis', label: 'Axis', key: 'A' },
 ]
 
 /** Floating centre-bottom: the board tools, then Nodes (a menu of the board's added plugins). */
-export function BottomToolbar({ onNodes, plugins, explore, nodesOpen = false }: Props) {
+export function BottomToolbar({ onNodes, plugins, nodesOpen = false }: Props) {
   const active = useTool()
   const { locked } = useDemo()
   return (
     <div className="bottom-toolbar" role="toolbar" aria-label="Tools">
-      {TOOLS.filter((t) => explore || t.tool !== 'axis').map((t) => (
+      {TOOLS.map((t) => (
         <button
           key={t.tool}
           type="button"

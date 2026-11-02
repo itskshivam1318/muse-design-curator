@@ -4,19 +4,14 @@ import { setBoard as setTelemetryBoard } from '../telemetry'
 import {
   ApiError,
   type Board,
-  confirmLens,
   type Item,
-  itemImageUrl,
   keys,
-  type LensSpec,
   patchBoard,
   type Point,
   type UploadOrigin,
 } from '../api'
 import { useItemActions } from '../canvas/actions'
 import { Canvas, type CanvasHandle } from '../canvas/Canvas'
-import type { Bounds } from '../canvas/geometry'
-import { usePrefersReducedMotion } from '../canvas/palette'
 import { handlePaste, readClipboard } from '../canvas/paste'
 import { selection, selectionStore } from '../canvas/selection'
 import { useAddFlow } from '../canvas/useAddFlow'
@@ -26,41 +21,32 @@ import { AddActions } from '../panels/AddMenu'
 import { BoardSignals } from '../panels/BoardSignals'
 import { ContextBar, type ContextBarHandle } from '../panels/ContextBar'
 import { DemoBadge } from '../panels/DemoBadge'
-import { LensReview } from '../panels/LensReview'
 import { Onboarding } from '../panels/Onboarding'
 import { hasDrawerPanel } from '../panels/drawerRegistry'
-import { KeepFlight } from '../panels/KeepFlight'
-import { MaybeStrip } from '../panels/MaybeStrip'
 import '../panels/registerPanels'
 import { UploadStatus } from '../panels/UploadStatus'
-import { countedItems, useBoard, useBoardLens, useItems, useProfile } from '../queries'
+import { useBoard, useItems, useProfile } from '../queries'
 import { Link } from '../Link'
 import { BoardShell } from '../shell/BoardShell'
-import { closeRail, noteLensProposal, openRail, railStore, setTool } from '../shell/tools'
+import { closeRail, openRail, railStore, setTool } from '../shell/tools'
 import { sendNoteToNode } from '../plugins/nodeDrop'
 import { insideOverlay, isTyping, itemShortcut } from './shortcutGuard'
-import { runStore } from '../vary/runStore'
 
 export function BoardPage({ boardId }: { boardId: string }) {
   const qc = useQueryClient()
   const board = useBoard(boardId)
   const items = useItems(boardId)
   const profile = useProfile(boardId)
-  const lens = useBoardLens(boardId)
   const actions = useItemActions(boardId)
   const add = useAddFlow(boardId)
   const canvas = useRef<CanvasHandle>(null)
   const contextBar = useRef<ContextBarHandle>(null)
-  const [dismissedLens, setDismissedLens] = useState<string | null>(null)
   const [spaceDown, setSpaceDown] = useState(false)
   const [live, setLive] = useState<'connecting' | 'open' | 'reconnecting'>('connecting')
-  const reduced = usePrefersReducedMotion()
-  const { locked, exploreEnabled, pluginsEnabled } = useDemo()
-  const [flight, setFlight] = useState<{ id: string; src: string; from: Bounds; to: Bounds } | null>(null)
+  const { locked, pluginsEnabled } = useDemo()
 
   useEffect(() => {
     selection.reset()
-    runStore.clear()
     setTool('select')
     closeRail()
     setTelemetryBoard(boardId)
@@ -71,22 +57,6 @@ export function BoardPage({ boardId }: { boardId: string }) {
     }
   }, [boardId, qc])
 
-  // Keep: the candidate flies from the popover onto the canvas next to its source, then is selected
-  const onKept = useCallback(
-    (item: Item, from: DOMRect | null) => {
-      selection.select([item.id])
-      const to = canvas.current?.clientRectOf(item)
-      if (reduced || !from || !to) return
-      setFlight({
-        id: item.id,
-        src: itemImageUrl(item, 'thumb'),
-        from: { x: from.left, y: from.top, width: from.width, height: from.height },
-        to,
-      })
-    },
-    [reduced],
-  )
-
   const center = useCallback((): Point => canvas.current?.center() ?? { x: 0, y: 0 }, [])
   const { addFiles, addLink } = add
   const uploadAt = useCallback(
@@ -95,7 +65,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
   )
 
   const openPanel = useCallback(
-    (kind: 'explore' | 'vary' | 'inspect' | 'compare', itemId: string, params?: Record<string, unknown>) => {
+    (kind: 'inspect' | 'compare', itemId: string, params?: Record<string, unknown>) => {
       if (hasDrawerPanel(kind)) selection.openDrawer(kind, itemId, params)
     },
     [],
@@ -139,11 +109,10 @@ export function BoardPage({ boardId }: { boardId: string }) {
         case 'f':
           canvas.current?.fit()
           break
-        case 'v':
         case 'i':
         case 'x': {
           // image shortcuts: a selected note is left out
-          const act = itemShortcut(e.key, chosen, { explore: exploreEnabled, locked })
+          const act = itemShortcut(e.key, chosen, { locked })
           if (act?.kind === 'panel') openPanel(act.panel, act.itemId)
           else if (act?.kind === 'notThis') actions.toggleNotThis(act.items)
           break
@@ -156,10 +125,9 @@ export function BoardPage({ boardId }: { boardId: string }) {
           }
           break
         case 'escape':
-          // innermost first: candidate popover, then the drawer, then a rail panel, then the selection
+          // innermost first: the drawer, then a rail panel, then the selection
           // (the tool goes back to Select in BoardShell's own handler)
-          if (runStore.get().openCandidate) runStore.open(null)
-          else if (selectionStore.get().drawer) selection.closeDrawer()
+          if (selectionStore.get().drawer) selection.closeDrawer()
           else if (railStore.get().open) closeRail()
           else selection.clear()
           break
@@ -177,23 +145,13 @@ export function BoardPage({ boardId }: { boardId: string }) {
       window.removeEventListener('keyup', onUp)
       window.removeEventListener('blur', onBlur)
     }
-  }, [actions, itemsData, openPanel, locked, exploreEnabled])
+  }, [actions, itemsData, openPanel, locked])
 
   const saveBoard = async (patch: Partial<Pick<Board, 'title' | 'context' | 'domain'>>) => {
     const next = await patchBoard(boardId, patch)
     qc.setQueryData(keys.board(boardId), next)
     if ('domain' in patch) void qc.invalidateQueries({ queryKey: keys.lens(boardId) })
   }
-
-  const onConfirmLens = async (spec?: LensSpec) => {
-    const row = await confirmLens(boardId, spec)
-    qc.setQueryData(keys.lens(boardId), row)
-    void qc.invalidateQueries({ queryKey: keys.board(boardId) })
-  }
-
-  // a lens proposal waits in Library: open it there once, or flag Library if another panel is open
-  const proposedId = lens.data?.status === 'proposed' && lens.data.id !== dismissedLens ? lens.data.id : null
-  useEffect(() => noteLensProposal(proposedId !== null), [proposedId])
 
   if (board.isError) {
     const notFound = board.error instanceof ApiError && board.error.status === 404
@@ -207,16 +165,10 @@ export function BoardPage({ boardId }: { boardId: string }) {
   }
 
   const list = items.data ?? []
-  const proposed = lens.data && lens.data.status === 'proposed' && lens.data.id !== dismissedLens ? lens.data : null
 
   const focusItem = (item: Item) => {
     selection.select([item.id])
     canvas.current?.centerOn(item)
-  }
-  const findExamples = (item: Item) => {
-    selection.select([item.id])
-    canvas.current?.centerOn(item)
-    openPanel('vary', item.id)
   }
 
   return (
@@ -226,9 +178,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
         boardId={boardId}
         items={list}
         plugins={pluginsEnabled}
-        explore={exploreEnabled}
         onFocusItem={focusItem}
-        onFindExamples={findExamples}
         header={
           <>
             <Link href="/" className="back-link" aria-label="All boards">
@@ -270,27 +220,17 @@ export function BoardPage({ boardId }: { boardId: string }) {
               disabled={locked}
             />
             <BoardSignals boardId={boardId} />
-            {proposed && (
-              <LensReview
-                key={proposed.id}
-                lens={proposed}
-                onConfirm={onConfirmLens}
-                onDismiss={() => setDismissedLens(proposed.id)}
-                locked={locked}
-              />
-            )}
           </>
         }
         overlays={
           <>
             {items.isSuccess && (
               <Onboarding
-                itemCount={countedItems(list).length}
+                items={list}
                 onFocusContext={() => contextBar.current?.focus()}
                 onOpenAdd={() => openRail('library')}
               />
             )}
-            <MaybeStrip boardId={boardId} streamOpen={live === 'open'} onKept={onKept} />
             <div className="float stage-status">
               <UploadStatus jobs={add.jobs} onDismiss={add.dismiss} onCancel={add.cancel} />
               {actions.error && (
@@ -310,7 +250,6 @@ export function BoardPage({ boardId }: { boardId: string }) {
           </>
         }
       />
-      {flight && <KeepFlight key={flight.id} src={flight.src} from={flight.from} to={flight.to} onDone={() => setFlight(null)} />}
     </main>
   )
 }

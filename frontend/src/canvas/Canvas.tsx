@@ -11,17 +11,22 @@ import {
   useRef,
   useState,
 } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Layer, Line, Rect, Stage } from 'react-konva'
-import { isGenerated, type Item, type Point, type UploadOrigin } from '../api'
+import { type Exploration, exploreItem, isGenerated, type Item, keys, type PartView, type Point, type Region, type UploadOrigin } from '../api'
 import { useDemo } from '../demo'
+import { withExploration } from '../explore/logic'
 import { itemVerdict } from '../explore/verdict'
+import { Callouts } from '../map/Callouts'
+import { setCollapsed } from '../map/collapse'
+import { FlowerLayer } from '../map/Flower'
+import { useMap } from '../map/useMap'
+import { RegionOverlay } from '../map/RegionOverlay'
 import { useNodeDrop } from '../plugins/nodeDrop'
 import { NodeLayer } from '../plugins/NodeLayer'
-import { useBoardLens, useExplorations, visibleItems } from '../queries'
+import { useAnalysis, useBoardLens, useExplorations, useRegion, visibleItems } from '../queries'
 import { setTool, useTool } from '../shell/tools'
 import type { ItemActions } from './actions'
-import { drawnAxes, keptFollowers, rowBounds } from './axis'
-import { AxisLayer } from './AxisLayer'
 import { handleDrop } from './drop'
 import { FramesStrip } from './FramesStrip'
 import {
@@ -41,7 +46,6 @@ import type { Move } from './history'
 import { ItemDecorations, type ItemHandlers, ItemNode, NoteVisualizing } from './ItemNode'
 import { CreditCaption } from './CreditCaption'
 import { creditTargets } from './credit'
-import { AxisPicker, ItemChips } from './ItemChips'
 import { ItemToolbar } from './ItemToolbar'
 import { itemBounds, lineagePoints, statusLabel } from './nodeProps'
 import { NoteBar } from './NoteBar'
@@ -65,7 +69,7 @@ interface Props {
   items: Item[]
   actions: ItemActions
   onFiles: (files: File[], at: Point, origin: UploadOrigin) => void
-  onOpenPanel: (kind: 'explore' | 'vary' | 'inspect' | 'compare', itemId: string, params?: Record<string, unknown>) => void
+  onOpenPanel: (kind: 'inspect' | 'compare', itemId: string, params?: Record<string, unknown>) => void
   spaceDown: boolean
   ref?: Ref<CanvasHandle>
   /** Public demo, not unlocked: no file drops, role changes, removal, frame choice or note edits. */
@@ -111,6 +115,8 @@ export function Canvas({
   onSendToNode,
 }: Props) {
   const { exploreEnabled } = useDemo()
+  const qc = useQueryClient()
+  const [hoveredPart, setHoveredPart] = useState<{ itemId: string; part: string } | null>(null)
   // staged takes wait in their option's stage; notes are drawn at the size their text needs
   const visible = useMemo(() => visibleItems(allItems).map(sizedNote), [allItems])
   const tool = useTool()
@@ -134,13 +140,8 @@ export function Canvas({
   const explorations = useExplorations(boardId).data
   const lensAttrs = useBoardLens(boardId).data?.spec.attributes
   const labels = useMemo(() => new Map((lensAttrs ?? []).map((a) => [a.key, a.label])), [lensAttrs])
-  // explore off: no axes (the server lists no explorations either)
-  const shownExplorations = useMemo(() => (exploreEnabled ? (explorations ?? []) : []), [exploreEnabled, explorations])
-  // a kept take is drawn as its axis card, not loose: it moves with its source
-  const axisInfo = useMemo(() => drawnAxes(visible, shownExplorations, labels), [visible, shownExplorations, labels])
-  // the items drawn loose on the stage (a kept take shown as a card is still a board item: it is
-  // selected, listed and acted on like any other, its toolbar and chips at its card)
-  const items = useMemo(() => visible.filter((i) => !axisInfo.hidden.has(i.id)), [visible, axisInfo])
+  // every board item is drawn where it is, kept results included (flowers only use free space)
+  const items = visible
   const dragStart = useRef<Map<string, Point> | null>(null)
   const [marquee, setMarquee] = useState<{ a: Point; b: Point; additive: boolean } | null>(null)
   const [dropActive, setDropActive] = useState(false)
@@ -149,6 +150,12 @@ export function Canvas({
   const palette = useCanvasPalette()
   const reduced = usePrefersReducedMotion()
   const fitted = useRef(false)
+  // the exploration map: every flower laid out, those in the viewport drawn
+  const viewport = useMemo(
+    () => ({ x: -view.x / view.scale, y: -view.y / view.scale, width: size.width / view.scale, height: size.height / view.scale }),
+    [view, size],
+  )
+  const map = useMap(boardId, visible, viewport)
   const nodeDrop = useNodeDrop(boardId, readOnly)
 
   const byId = useMemo(() => new Map(visible.map((i) => [i.id, i])), [visible])
@@ -156,11 +163,7 @@ export function Canvas({
     (i: Item): Item => (overrides[i.id] ? { ...i, ...overrides[i.id] } : i),
     [overrides],
   )
-  /** Where an item is on the canvas: its axis card for a kept take shown as one, else its own bounds. */
-  const boundsOf = useCallback(
-    (i: Item): Bounds => axisInfo.cards.get(i.id) ?? itemBounds(positioned(i)),
-    [axisInfo, positioned],
-  )
+  const boundsOf = useCallback((i: Item): Bounds => itemBounds(positioned(i)), [positioned])
   const listed = useMemo(
     () => [...visible].sort((a, b) => a.z - b.z || a.created_at.localeCompare(b.created_at)),
     [visible],
@@ -176,9 +179,8 @@ export function Canvas({
 
   const fit = useCallback(() => {
     if (size.width === 0) return
-    const axes = axisInfo.axes.flatMap((a) => a.rows.map(rowBounds))
-    setView(fitView([...items.map(itemBounds), ...axes], size, fitInsets(size.width)))
-  }, [items, axisInfo, size])
+    setView(fitView(items.map(itemBounds), size, fitInsets(size.width)))
+  }, [items, size])
 
   // fit when the board's items first arrive, and when an empty board gets its first batch
   useEffect(() => {
@@ -226,9 +228,9 @@ export function Canvas({
     const stage = stageRef.current
     wheel(e.evt, stage?.getPointerPosition() ?? { x: size.width / 2, y: size.height / 2 })
   }
-  // over the axis cards (HTML above the stage) the wheel still pans and zooms the canvas
+  // over the flowers and callouts (HTML above the stage) the wheel still pans and zooms the canvas
   const onOverlayWheel = (e: ReactWheelEvent) => {
-    if (!container || (e.target as HTMLElement).closest('.axis-popover')) return
+    if (!container || (e.target as HTMLElement).closest('.petal-card')) return
     const r = container.getBoundingClientRect()
     wheel(e, { x: e.clientX - r.left, y: e.clientY - r.top })
   }
@@ -313,10 +315,8 @@ export function Canvas({
       e.cancelBubble = true
       const picked = selected.includes(item.id) ? selected : [item.id]
       if (!selected.includes(item.id)) selection.select([item.id])
-      // a source carries the kept takes on its axes along, in the same move (one undo entry)
-      const ids = [...picked, ...keptFollowers(axisInfo.axes, new Set(picked), byId)]
       dragStart.current = new Map(
-        ids.flatMap((id) => {
+        picked.flatMap((id) => {
           const it = byId.get(id)
           return it ? [[id, { x: it.x, y: it.y }] as const] : []
         }),
@@ -442,8 +442,8 @@ export function Canvas({
     if (!parent || fromNote(child) || !(selected.includes(child.id) || selected.includes(parent.id))) return []
     return [{ id: child.id, points: lineagePoints(boundsOf(parent), boundsOf(child)) }]
   })
-  // the axes follow a dragged source (and its kept takes) while the drag is under way
-  const axisItems = visible.map(positioned)
+  // plugin nodes follow a dragged input while the drag is under way
+  const drawnItems = visible.map(positioned)
   // ---- notes: the editor and the bar ----
   const editedNote = editing?.id ? byId.get(editing.id) : undefined
   const editorAt: { x: number; y: number; text: string } | null = editing
@@ -472,6 +472,49 @@ export function Canvas({
     (n): n is Item => !!n && n.kind === 'note' && n.id !== editing?.id,
   )
   const onlyNotes = selectedItems.length > 0 && selectedItems.every((i) => i.kind === 'note')
+  // ---- the selected item's part callouts and the hovered part's region ----
+  // not on a link
+  const calloutItem =
+    soleSelected &&
+    soleSelected.kind !== 'link' &&
+    !dragging &&
+    !marquee &&
+    soleSelected.id !== editing?.id
+      ? soleSelected
+      : undefined
+  const analysis = useAnalysis(calloutItem?.id ?? null).data
+  // a note still being read (or that could not be) shows nothing until it has parts or dimensions
+  const showCallouts =
+    !!analysis && (analysis.parse_status === 'completed' || analysis.parts.length > 0 || analysis.dimensions.length > 0)
+  const hoveredPartView =
+    calloutItem && hoveredPart?.itemId === calloutItem.id ? analysis?.parts.find((p) => p.key === hoveredPart.part) : undefined
+  const regionQuery = useRegion(calloutItem?.id ?? '', hoveredPartView?.key ?? '', !!hoveredPartView)
+  const hoveredRegion = regionOf(hoveredPartView, regionQuery.data, regionQuery.isPending)
+  const noteHighlight =
+    calloutItem?.kind === 'note' && hoveredRegion?.region.kind === 'text_range' && hoveredRegion.region.range?.length === 2
+      ? (hoveredRegion.region.range as [number, number])
+      : null
+  // the callouts keep clear of the other items and of every flower
+  const calloutObstacles = calloutItem
+    ? [...items.filter((i) => i.id !== calloutItem.id).map((i) => itemBounds(positioned(i))), ...[...map.layouts.values()].map((l) => l.bounds)]
+    : []
+  // a dimension clicked on a callout: open its flower when it has one, else ask for options first (notes, no media)
+  const openDimension = async (item: Item, key: string) => {
+    const live = explorations?.find((e) => e.item_id === item.id && e.key === key)
+    if (live) {
+      setCollapsed(boardId, live.id, false)
+      // out of sight: bring it into view
+      const l = map.layouts.get(live.id)
+      const v = viewport
+      if (l && !(l.bounds.x >= v.x && l.bounds.y >= v.y && l.bounds.x + l.bounds.width <= v.x + v.width && l.bounds.y + l.bounds.height <= v.y + v.height)) {
+        setView((cur) => centeredView(cur, l.bounds, size))
+      }
+      return
+    }
+    const e = await exploreItem(item.id, { key, mode: 'initial' })
+    qc.setQueryData<Exploration[]>(keys.explorations(boardId), (old) => withExploration(old, e))
+    setCollapsed(boardId, e.id, false)
+  }
   const addNoteAtCenter = () => {
     const c = toCanvasPoint({ x: size.width / 2, y: size.height / 2 }, viewRef.current)
     setTool('select')
@@ -497,7 +540,9 @@ export function Canvas({
     >
       <p id="canvas-help" className="sr-only">
         Space and drag or two-finger scroll to pan; control and scroll or pinch to zoom. F fits the board to the screen. With
-        items selected: V {exploreEnabled ? 'explore' : 'vary'}, I inspect (or double-click), X mark not this, Delete remove, Command Z undo a move or a dismissed option. Explore axes run to the right of their source: each option is a card; open one to visualize, keep or regenerate it. With an image selected, its attribute chips below it explore that attribute.
+        items selected: I inspect (or double-click), X mark not this, Delete remove, Command Z undo a move or a dismissed option. A
+        selected item shows its parts as callouts around it: hover one to see its region, click a dimension to open its flower:
+        its options sit around a hub as petals; open one to render, keep or drop it. The hub's minus button collapses a flower.
       </p>
       {size.width > 0 && (
         <Stage
@@ -549,6 +594,7 @@ export function Canvas({
                 palette={palette}
                 handlers={handlers}
                 hidden={i.id === editing?.id}
+                highlight={i.id === calloutItem?.id ? noteHighlight : null}
               />
             ))}
             {ordered
@@ -596,18 +642,11 @@ export function Canvas({
         </Stage>
       )}
 
-      {shownExplorations.length > 0 && (
-        <AxisLayer
-          items={axisItems}
-          explorations={shownExplorations}
-          selectedId={soleSelected?.id ?? null}
-          view={view}
-          locked={readOnly}
-          onWheel={onOverlayWheel}
-        />
+      {exploreEnabled && (
+        <FlowerLayer boardId={boardId} items={visible} view={view} map={map} locked={readOnly} onWheel={onOverlayWheel} />
       )}
-      <NodeLayer boardId={boardId} items={axisItems} view={view} size={size} readOnly={readOnly} onWheel={onOverlayWheel} />
-      {hoveredItem && hoveredItem.kind !== 'link' && hoveredItem.parse_status !== 'completed' && (
+      <NodeLayer boardId={boardId} items={drawnItems} view={view} size={size} readOnly={readOnly} onWheel={onOverlayWheel} />
+      {hoveredItem && hoveredItem.kind !== 'link' && hoveredItem.kind !== 'note' && hoveredItem.parse_status !== 'completed' && (
         <StatusTip item={positioned(hoveredItem)} view={view} />
       )}
       {!dragging &&
@@ -624,31 +663,30 @@ export function Canvas({
         <ItemToolbar
           items={selectedItems}
           screen={toScreenBounds(selBounds, view)}
-          onExplore={() => selectedItems[0] && onOpenPanel(exploreEnabled ? 'explore' : 'vary', selectedItems[0].id)}
           onInspect={() => selectedItems[0] && onOpenPanel('inspect', selectedItems[0].id)}
           onCompare={() =>
             selectedItems[0] && onOpenPanel('compare', selectedItems[0].id, { itemIds: selectedItems.map((i) => i.id) })
           }
           onNotThis={() => actions.toggleNotThis(selectedItems)}
           onRemove={() => actions.remove(selected)}
+          onReanalyse={actions.reanalyse}
           readOnly={readOnly}
-          explore={exploreEnabled}
         />
       )}
-      {exploreEnabled && soleSelected && !dragging && !marquee && tool !== 'axis' && (
-        <ItemChips
-          key={soleSelected.id}
-          item={soleSelected}
-          screen={toScreenBounds(boundsOf(soleSelected), view)}
+      {calloutItem && hoveredRegion && (
+        <RegionOverlay item={calloutItem} region={hoveredRegion.region} loading={hoveredRegion.loading} view={view} />
+      )}
+      {calloutItem && analysis && showCallouts && (
+        <Callouts
+          key={`callouts-${calloutItem.id}`}
+          item={calloutItem}
+          analysis={analysis}
+          view={view}
+          obstacles={calloutObstacles}
           locked={readOnly}
-        />
-      )}
-      {exploreEnabled && tool === 'axis' && soleSelected?.kind === 'image' && !dragging && !readOnly && (
-        <AxisPicker
-          key={soleSelected.id}
-          item={soleSelected}
-          screen={toScreenBounds(boundsOf(soleSelected), view)}
-          onDone={() => setTool('select')}
+          onOpenDimension={exploreEnabled ? (key) => openDimension(calloutItem, key) : undefined}
+          onHoverPart={(part) => setHoveredPart(part ? { itemId: calloutItem.id, part } : null)}
+          onWheel={onOverlayWheel}
         />
       )}
       {stripItem && !dragging && (
@@ -669,7 +707,7 @@ export function Canvas({
       )}
       {barNote && !dragging && !marquee && (
         <NoteBar
-          key={barNote.id}
+          key={`note-bar-${barNote.id}`}
           boardId={boardId}
           note={barNote}
           screen={toScreenBounds(itemBounds(positioned(barNote)), view)}
@@ -677,6 +715,7 @@ export function Canvas({
           onVisualize={() => actions.visualizeNote(barNote.id)}
           onEdit={() => setEditing({ id: barNote.id })}
           onDelete={() => actions.deleteNote(barNote)}
+          onReanalyse={actions.reanalyse}
           onSendToNode={onSendToNode}
           onEnter={() => {
             overNoteBar.current = true
@@ -737,4 +776,18 @@ function ItemList({ items, selected }: { items: Item[]; selected: readonly strin
       ))}
     </ul>
   )
+}
+
+/**
+ * What to draw for a hovered part: its region once known; until then the stored region (a box or a
+ * passage is already exact) or, for a mask being found, a loading outline of its bbox. A mask that
+ * could not be found falls back to an outline of its bbox (or of the whole item).
+ */
+function regionOf(part: PartView | undefined, fetched: Region | undefined, pending: boolean): { region: Region; loading: boolean } | null {
+  if (!part) return null
+  if (fetched) return { region: fetched, loading: false }
+  const r = part.region ?? undefined
+  if (part.region_kind === 'box') return r ? { region: { kind: 'box', box: r }, loading: false } : null
+  if (part.region_kind === 'text_range') return r ? { region: { kind: 'text_range', range: r }, loading: false } : null
+  return { region: { kind: 'mask', box: r }, loading: pending }
 }

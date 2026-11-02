@@ -5,7 +5,7 @@ import type { Item } from '../api'
 import { selection } from '../canvas/selection'
 import { makeItem } from '../test/fixtures'
 import { BoardShell } from './BoardShell'
-import { closeRail, noteLensProposal, openRail, setTool, toolStore } from './tools'
+import { closeRail, openRail, setTool, toolStore } from './tools'
 
 beforeEach(() => {
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ demo_mode: false }), { status: 200 }))
@@ -24,10 +24,9 @@ const items: Item[] = [
   makeItem({ id: 'i3', original_filename: 'staged-take.png', staged: true }),
 ]
 
-function setup(over: { plugins?: boolean; explore?: boolean } = {}) {
+function setup(over: { plugins?: boolean } = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const onFocusItem = vi.fn()
-  const onFindExamples = vi.fn()
   render(
     <QueryClientProvider client={qc}>
       <BoardShell
@@ -45,13 +44,11 @@ function setup(over: { plugins?: boolean; explore?: boolean } = {}) {
           </>
         }
         onFocusItem={onFocusItem}
-        onFindExamples={onFindExamples}
         plugins={over.plugins ?? true}
-        explore={over.explore ?? true}
       />
     </QueryClientProvider>,
   )
-  return { onFocusItem, onFindExamples }
+  return { onFocusItem }
 }
 
 const rail = () => within(screen.getByRole('navigation', { name: 'Panels' }))
@@ -74,8 +71,8 @@ describe('BoardShell', () => {
     expect(screen.queryByRole('button', { name: 'Nodes' })).toBeNull()
   })
 
-  it('hides the Axis tool when explore is off', () => {
-    setup({ explore: false })
+  it('has no Axis tool', () => {
+    setup()
     expect(screen.queryByRole('button', { name: 'Axis' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Note' })).toBeTruthy()
   })
@@ -108,12 +105,12 @@ describe('BoardShell', () => {
     expect(screen.queryByRole('dialog', { name: 'Vocabulary' })).toBeNull()
   })
 
-  it('Search lists images and opens Find real examples for the chosen one', () => {
-    const { onFindExamples } = setup()
+  it('Search no longer offers Find real examples', () => {
+    setup()
     fireEvent.click(rail().getByRole('button', { name: 'Search' }))
     const panel = screen.getByRole('dialog', { name: 'Search' })
-    fireEvent.click(within(panel).getByRole('button', { name: 'dial-macro.png' }))
-    expect(onFindExamples).toHaveBeenCalledWith(items[1])
+    expect(panel.textContent).not.toMatch(/real examples/i)
+    expect(within(panel).queryByRole('list')).toBeNull()
   })
 
   it('Plugins opens the plugins panel slot', () => {
@@ -130,7 +127,7 @@ describe('BoardShell', () => {
     fireEvent.keyDown(document.body, { key: 'Escape' })
     expect(toolStore.get()).toBe('select')
     fireEvent.keyDown(document.body, { key: 'a' })
-    expect(toolStore.get()).toBe('axis')
+    expect(toolStore.get()).toBe('select')
   })
 
   it('n while typing in a textarea does not change the tool', () => {
@@ -195,15 +192,5 @@ describe('BoardShell', () => {
     act(() => openRail('library', 'auto'))
     expect(screen.getByRole('dialog', { name: 'Library' })).toBeTruthy()
     expect(document.activeElement).toBe(ta)
-  })
-
-  it('a lens proposal while another panel is open puts a dot on Library', () => {
-    setup()
-    fireEvent.click(rail().getByRole('button', { name: 'Search' }))
-    act(() => noteLensProposal(true))
-    const lib = rail().getByRole('button', { name: 'Library, new lens to review' })
-    expect(lib.querySelector('.rail-dot')).toBeTruthy()
-    fireEvent.click(lib)
-    expect(rail().getByRole('button', { name: 'Library' }).querySelector('.rail-dot')).toBeNull()
   })
 })

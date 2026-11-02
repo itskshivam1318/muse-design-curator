@@ -15,23 +15,16 @@ import re
 import threading
 import time
 from collections import deque
-from datetime import UTC, datetime, timedelta
-from typing import Any
 
 from fastapi import Request
-from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
-from app.db.models import VariationRun
-from app.domain.variation import VariationRequest
 from app.errors import AppError
 
 COOKIE = "dle_demo"
 COOKIE_TTL_S = 12 * 3600
 UNLOCK_MAX_FAILURES, UNLOCK_WINDOW_S = 5, 600
 HOUR_S, DAY_S = 3600, 86400
-REPLAY_WINDOW = timedelta(hours=24)
 LOCKED_MESSAGE = "This is a read-only demo. Enter the passcode to add references."
 
 # Writes that stay open while locked (method, path). PATCH /api/items/{id} is checked again in
@@ -199,69 +192,9 @@ def passcode_matches(given: str, expected: str) -> bool:
     return hmac.compare_digest(given.encode(), expected.encode())
 
 
-# ---- Vary runs ----
-
-
-def check_run_limits(ip: str, settings: Settings | None = None) -> None:
-    st = settings or get_settings()
-    retry = windows.retry_after(f"run:{ip}", HOUR_S, st.DEMO_RUNS_PER_IP_PER_HOUR)
-    if retry is not None:
-        raise _limited(
-            f"Demo limit reached: {st.DEMO_RUNS_PER_IP_PER_HOUR} Vary runs per hour.", retry
-        )
-    retry = windows.retry_after("run:*", DAY_S, st.DEMO_RUNS_PER_DAY)
-    if retry is not None:
-        raise _limited(
-            f"The demo's daily limit of {st.DEMO_RUNS_PER_DAY} Vary runs is used up.", retry
-        )
-
-
-def record_run(ip: str) -> None:
-    windows.add(f"run:{ip}")
-    windows.add("run:*")
+# ---- retired Vary runs ----
 
 
 def refund_run(ip: str) -> None:
     """An interrupted run does not count against the visitor's hourly limit."""
     windows.remove_last(f"run:{ip}")
-
-
-def _canonical(
-    target_key: str, mode: str, values: Any, nudge: Any, protected: Any
-) -> tuple[Any, ...]:
-    nudge_t = (nudge or {}).get("direction"), (nudge or {}).get("steps")
-    return (
-        target_key,
-        mode,
-        tuple(sorted(map(str, values or []))),
-        nudge_t,
-        tuple(sorted(protected or [])),
-    )
-
-
-def replayable_run(session: Session, board_id: str, req: VariationRequest) -> VariationRun | None:
-    """A completed run of the same request on the same board and source in the last 24 h."""
-    want = _canonical(
-        req.target_key, req.mode, req.target_values,
-        req.nudge.model_dump() if req.nudge else None, req.protected_keys,
-    )  # fmt: skip
-    cutoff = datetime.fromtimestamp(now(), UTC) - REPLAY_WINDOW
-    q = (
-        select(VariationRun)
-        .where(
-            VariationRun.board_id == board_id,
-            VariationRun.source_item_id == req.source_item_id,
-            VariationRun.status == "completed",
-        )
-        .order_by(VariationRun.created_at.desc())
-    )
-    for run in session.scalars(q):
-        if datetime.fromisoformat(run.created_at) < cutoff:
-            break
-        have = _canonical(
-            run.target_key, run.mode, run.target_values_json, run.nudge_json,
-            run.protected_keys_json,
-        )  # fmt: skip
-        if have == want:
-            return run
-    return None

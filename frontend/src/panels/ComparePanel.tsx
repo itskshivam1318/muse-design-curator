@@ -1,9 +1,7 @@
 import { useQueries } from '@tanstack/react-query'
-import { useState } from 'react'
 import { getAttributes, itemImageUrl, keys } from '../api'
-import { selection } from '../canvas/selection'
 import { useItems } from '../queries'
-import { compareDiff, numberBounds, valueToWire } from '../vary/logic'
+import { compareDiff, numberBounds } from '../attrValues'
 import { ValueText } from './AttrBits'
 import { itemTitle } from '../format'
 import type { DrawerPanelProps } from './drawerRegistry'
@@ -20,9 +18,6 @@ export function ComparePanel({ boardId, itemId, params, onClose }: DrawerPanelPr
   const failed = results.find((r) => r.isError)
   const lens = results.find((r) => r.data?.lens)?.data?.lens
   const rows = loading ? [] : compareDiff(ids.map((id, i) => ({ itemId: id, attributes: results[i].data?.attributes ?? [] })))
-  const [picked, setPicked] = useState(ids[0])
-  const source = ids.includes(picked) ? picked : ids[0]
-  const sourceCol = Math.max(0, ids.indexOf(source))
 
   return (
     <div className="panel compare-panel">
@@ -31,21 +26,6 @@ export function ComparePanel({ boardId, itemId, params, onClose }: DrawerPanelPr
         {loading && <p className="muted">Loading attributes…</p>}
         {failed && <p className="error">Could not load attributes: {failed.error?.message}</p>}
         {!loading && rows.length === 0 && !failed && <p className="muted">These items agree on every known attribute.</p>}
-        {ids.length > 1 && (
-          <label className="small">
-            Vary from{' '}
-            <select aria-label="Vary source" value={source} onChange={(e) => setPicked(e.target.value)}>
-              {ids.map((id) => {
-                const it = items.find((i) => i.id === id)
-                return (
-                  <option key={id} value={id}>
-                    {it ? itemTitle(it) : id}
-                  </option>
-                )
-              })}
-            </select>
-          </label>
-        )}
         {rows.length > 0 && (
           <table className="compare">
             <thead>
@@ -70,22 +50,6 @@ export function ComparePanel({ boardId, itemId, params, onClose }: DrawerPanelPr
                     {r.values.map((v, i) => (
                       <td key={ids[i]}>
                         <ValueText kind={r.kind} value={v} unit={unit} />
-                        {i !== sourceCol && v !== null && v !== r.values[sourceCol] && (
-                          <button
-                            type="button"
-                            className="link-btn small"
-                            aria-label={`Vary toward this: ${r.label}`}
-                            onClick={() =>
-                              selection.openDrawer('vary', source, {
-                                targetKey: r.key,
-                                mode: 'prefer',
-                                values: [valueToWire(v)],
-                              })
-                            }
-                          >
-                            Vary toward this
-                          </button>
-                        )}
                       </td>
                     ))}
                   </tr>

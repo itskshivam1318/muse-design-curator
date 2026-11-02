@@ -15,6 +15,7 @@ from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app import events, jobs
+from app.analysis.spec import spec_for
 from app.board import profile_hook
 from app.config import get_settings
 from app.db.models import BoardItem, ItemAttribute
@@ -126,6 +127,8 @@ def _part_mask(
     """
     height, width = size
     row = masks_repo.get(session, sha, prompt)
+    if row is not None and row.mask_path and not files.abs_path(row.mask_path).is_file():
+        row = None  # the cached mask file is gone: segment again (the row is overwritten)
     if row is None:
         res = seg.localize(image, sha, prompt)
         if not res.found or not res.instances:
@@ -407,20 +410,13 @@ def _finish(
 
 
 def request_parse(session: Session, item_id: str) -> bool:
-    """Queue a (re-)parse unless one is running. False when the item is processing."""
-    res = session.execute(
-        update(BoardItem)
-        .where(
-            BoardItem.id == item_id,
-            BoardItem.kind != "note",
-            BoardItem.parse_status.in_((*RETRYABLE, "pending")),
-        )
-        .values(parse_status="pending")
-    )  # fmt: skip
-    if not res.rowcount:  # type: ignore[attr-defined]
-        return False
-    after_commit(session, partial(jobs.enqueue, "parse_item", item_id=item_id))
-    return True
+    """Queue a (re-)analysis unless one is running. False when the item is processing.
+
+    Parsing against a lens is retired for new work: this now runs the item analysis.
+    """
+    from app.analysis.service import queue_analyse
+
+    return queue_analyse(session, item_id)
 
 
 def parse_item_job(item_id: str) -> None:
@@ -448,10 +444,13 @@ def edit_attribute(
 ) -> ItemAttribute:
     item = _require_item(session, item_id)
     lens = current_lens(session, item.board_id)
-    spec = next((a for a in lens.attributes if a.key == key), None) if lens else None
-    if spec is None:
-        raise AppError(404, "UNKNOWN_ATTRIBUTE", f"{key!r} is not an attribute of this lens")
     row = next((r for r in attrs_repo.for_item(session, item_id) if r.key == key), None)
+    if row is not None and not row.removed:
+        spec: AttributeSpec | None = spec_for(row, lens)  # a per-item dimension carries its spec
+    else:
+        spec = next((a for a in lens.attributes if a.key == key), None) if lens else None
+    if spec is None:
+        raise AppError(404, "UNKNOWN_ATTRIBUTE", f"{key!r} is not an attribute of this item")
     before = _summary(row)
     if action in ("disable", "enable"):
         if value is not _UNSET:

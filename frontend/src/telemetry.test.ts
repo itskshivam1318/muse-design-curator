@@ -69,6 +69,7 @@ describe('ui activity', () => {
     setBoard('brd_1')
     track('drawer.open', { itemId: 'i1', detail: { kind: 'inspect' } })
     track('drawer.close', { itemId: 'i1', detail: { kind: 'inspect' } })
+    track('drawer.open', { itemId: 'i1', detail: { kind: 'vary' } }) // retired panels say nothing
     track('candidate.open', { detail: { candidate: 'c1' } })
     track('vary.run', { itemId: 'i1', runId: 'r1', detail: { target: 'dial_color' } })
     track('candidate.keep', { runId: 'r1' })
@@ -78,9 +79,6 @@ describe('ui activity', () => {
     track('something.new')
     expect(uiActivity.get().map((e) => e.text)).toEqual([
       'Opened Inspect.',
-      'Started Find real examples for dial color.',
-      'Kept a real example.',
-      'Rejected a real example.',
       'Removed 2 items.',
       'Marked 1 item as not this.',
     ])

@@ -73,6 +73,26 @@ describe('applyEvent', () => {
     expect(qc.getQueryData<Item[]>(keys.items('b'))).toHaveLength(0)
   })
 
+  it('item.analysed refreshes the analysis, its regions and renderers, and the board context', () => {
+    const qc = qcWith([])
+    const seeded = [
+      keys.analysis('i1'), keys.region('i1', 'dial'), keys.renderers('i1', 'mood'), keys.boardContext('b'),
+      keys.analysis('i2'), keys.region('i2', 'dial'),
+    ] // prettier-ignore
+    for (const k of seeded) qc.setQueryData(k, {})
+    applyEvent(qc, 'b', 'item.analysed', { item_id: 'i1' })
+    const stale = (k: readonly unknown[]) => qc.getQueryState(k)?.isInvalidated
+    expect(seeded.slice(0, 4).map(stale)).toEqual([true, true, true, true])
+    expect(seeded.slice(4).map(stale)).toEqual([false, false]) // another item's stay
+  })
+
+  it('item.failed refreshes the analysis (its parse status)', () => {
+    const qc = qcWith([makeItem({ id: 'i1', board_id: 'b' })])
+    qc.setQueryData(keys.analysis('i1'), {})
+    applyEvent(qc, 'b', 'item.failed', { item_id: 'i1', error_code: 'DAILY_LIMIT' })
+    expect(qc.getQueryState(keys.analysis('i1'))?.isInvalidated).toBe(true)
+  })
+
   it('lens.proposed invalidates the board lens', async () => {
     const qc = qcWith([])
     qc.setQueryData(keys.lens('b'), null)

@@ -40,12 +40,25 @@ def test_patch_note_text_on_image_is_400(client: TestClient, world: Any) -> None
     assert r.status_code == 400 and error(r) == "NOT_A_NOTE"
 
 
-def test_explore_on_a_note_is_400(client: TestClient, world: Any) -> None:
+def test_explore_on_a_note_reads_its_text(
+    client: TestClient, world: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A note is explored like any item: no image, its text in the prompt."""
+    f = fake(monkeypatch, SIX)
     n = client.post(
-        f"/api/boards/{world['watch']}/notes", json={"text": "a", "x": 0, "y": 0}
+        f"/api/boards/{world['watch']}/notes",
+        json={"text": "strap in waxed canvas", "x": 0, "y": 0},
     ).json()
+    r = client.post(
+        f"/api/items/{n['id']}/dimensions",
+        json={"label": "Markers", "type": "abstract", "prompt": "Which markers?"},
+    )
+    assert r.status_code == 201, r.json()
     r = explore(client, n["id"])
-    assert r.status_code == 400 and error(r) == "NOT_AN_IMAGE"
+    assert r.status_code == 200, r.json()
+    assert len(r.json()["options"]) == 6
+    assert f.images == [[]]
+    assert "<<<TEXT\nstrap in waxed canvas\nTEXT>>>" in f.prompts[0]
 
 
 def test_explore_prompt_includes_notes(

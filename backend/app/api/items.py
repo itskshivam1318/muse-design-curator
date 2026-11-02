@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 
 from app import demo, events, jobs
+from app.analysis import limits
+from app.analysis.label import set_content_type
 from app.api.boards import require_board
 from app.api.deps import SessionDep
 from app.api.extension import require_extension_token
@@ -39,6 +41,20 @@ def _ingest_file(session: Session, board_id: str, data: bytes, meta: ItemMeta) -
     raise AppError(415, "UNSUPPORTED_MEDIA_TYPE", "Unsupported file type")
 
 
+def _meter(res: IngestResult) -> IngestResult:
+    """Take one analyse slot for a new item that will be analysed. Over the board's daily limit
+    the item is still kept, but marked failed (DAILY_LIMIT) so it is not queued; retry works
+    tomorrow."""
+    i = res.item
+    if res.deduped or i.kind == "link" or i.parse_status != "pending":
+        return res
+    try:
+        limits.check_and_count(i.board_id, "analyse")
+    except AppError:
+        i.parse_status, i.parse_error_code = "failed", "DAILY_LIMIT"
+    return res
+
+
 def _announce(session: Session, results: list[IngestResult]) -> None:
     """After commit: emit item.added and enqueue parsing for new, non-link, non-failed items."""
     for r in results:
@@ -47,7 +63,7 @@ def _announce(session: Session, results: list[IngestResult]) -> None:
         i = r.item
         events.publish(i.board_id, "item.added", item_to_dict(i))
         if i.kind != "link" and i.parse_status == "pending":
-            jobs.enqueue("parse_item", item_id=i.id)
+            jobs.enqueue("analyse_item", item_id=i.id)
 
 
 def _origin_for_upload(request: Request) -> str:
@@ -83,6 +99,7 @@ async def _files_ingest(
                      "error": {"code": e.code, "message": e.message}}
                 )  # fmt: skip
                 continue
+            _meter(res)
             done.append(res)
             out.append(
                 {
@@ -143,7 +160,7 @@ async def add_items(board_id: str, request: Request, session: SessionDep) -> Any
             raise AppError(400, "VALIDATION_ERROR", "Invalid request body") from e
         if parsed.capture is not None:  # only extension captures need the pairing token
             require_extension_token(request, session)
-        res = await run_in_threadpool(_json_ingest, session, board_id, parsed)
+        res = _meter(await run_in_threadpool(_json_ingest, session, board_id, parsed))
         done = [res]
         body, status = {"item": item_to_dict(res.item), "deduped": res.deduped}, 201
     after_commit(session, lambda: _announce(session, done))
@@ -166,6 +183,9 @@ def patch_item(
     fields = body.model_dump(exclude_none=True)
     if fields.keys() - POSITION_FIELDS:
         demo.require_unlocked(request)  # role and chosen frame are edits; moving is open
+    content_type = fields.pop("content_type", None)
+    if content_type is not None:
+        set_content_type(session, item_id, content_type)
     text = fields.pop("note_text", None)
     if text is not None:
         set_note_text(session, item_id, text)

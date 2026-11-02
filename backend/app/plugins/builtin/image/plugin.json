@@ -46,5 +46,8 @@
     "images"
   ],
   "model": "image.edit",
-  "secondary": "Prompt"
+  "secondary": "Prompt",
+  "renders": [
+    "image"
+  ]
 }

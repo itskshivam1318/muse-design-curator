@@ -7,7 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app import demo
+from app.analysis import service as _analysis  # noqa: F401  (registers the analyse_item job)
 from app.api import (
+    analysis,
     attributes,
     boards,
     decisions,
@@ -42,6 +44,7 @@ def cors_origins() -> list[str]:
 def _recover_visualizing() -> None:
     """Options left `visualizing` by a previous process go back to rest and its plugin runs are
     marked interrupted (their jobs are gone)."""
+    from app.analysis.service import recover_stuck_analyses
     from app.api import deps
     from app.explore.visualize import recover_stuck
     from app.notes.visualize import recover_stuck_notes
@@ -55,6 +58,8 @@ def _recover_visualizing() -> None:
                 log.info("freed %d notes left visualizing", n)
             if n := recover_stuck_runs(session):
                 log.info("marked %d plugin runs interrupted", n)
+            if n := recover_stuck_analyses(session):
+                log.info("re-queued %d analyses left pending or processing", n)
             session.commit()
     except Exception:
         log.exception("could not reset options left visualizing")
@@ -95,6 +100,7 @@ app.add_middleware(
 )
 register_error_handlers(app)
 app.include_router(boards.router)
+app.include_router(analysis.router)
 app.include_router(extension.router)
 app.include_router(items.router)
 app.include_router(media.router)

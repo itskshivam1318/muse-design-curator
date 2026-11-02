@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { type Item, keys } from '../api'
-import { selection, selectionStore } from '../canvas/selection'
+import { selection } from '../canvas/selection'
 import { makeAttrs } from '../test/attrs'
 import { makeItem, makeProfile } from '../test/fixtures'
 
@@ -91,7 +91,6 @@ describe('InspectPanel', () => {
     const controls = row.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, select, button[role="radio"]')
     expect(controls.length).toBeGreaterThan(0)
     for (const c of controls) expect(c.matches(':disabled')).toBe(true)
-    expect((screen.getByRole('button', { name: 'Vary Legibility' }) as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('groups rows by category with status chips and board signal marks', () => {
@@ -121,7 +120,7 @@ describe('InspectPanel', () => {
     expect(await screen.findAllByText('edited by you')).toBeTruthy()
   })
 
-  it('confirm, disable and Vary this', async () => {
+  it('confirm and disable; no Vary this', async () => {
     const qc = setup()
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Dial colour' }))
     await waitFor(() => expect(patchAttribute).toHaveBeenCalledWith('i1', 'dial_color', { action: 'confirm' }))
@@ -130,8 +129,7 @@ describe('InspectPanel', () => {
     await act(async () => {})
     expect(qc.getQueryData<{ attributes: { key: string; enabled: boolean }[] }>(keys.attributes('i1'))!
       .attributes.find((a) => a.key === 'dial_color')!.enabled).toBe(false)
-    fireEvent.click(screen.getByRole('button', { name: 'Vary Legibility' }))
-    expect(selectionStore.get().drawer).toEqual({ kind: 'vary', itemId: 'i1', params: { targetKey: 'legibility' } })
+    expect(screen.queryByRole('button', { name: 'Vary Legibility' })).toBeNull()
   })
 })
 

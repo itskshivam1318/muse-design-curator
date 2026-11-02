@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     IMAGE_PROVIDER: str = "muse-image"
     IMAGE_MODEL: str = "muse-image-1.0"
     EXPLORE_ENABLED: bool = True
+    # per-board daily caps on model work (see app/analysis/limits.py)
+    ANALYSE_PER_BOARD_PER_DAY: int = 300
+    RENDER_PER_BOARD_PER_DAY: int = 60
     PLUGINS_ENABLED: bool = True
     PLUGINS_DIR: str = "data/plugins"
     PLUGIN_TIMEOUT_S: int = 30
@@ -61,8 +64,6 @@ class Settings(BaseSettings):
     DEMO_MODE: bool = False
     DEMO_PASSCODE: str | None = None
     DEMO_SECRET: str | None = None
-    DEMO_RUNS_PER_IP_PER_HOUR: int = 10
-    DEMO_RUNS_PER_DAY: int = 150
     # Deepening shortlisted live items (full indexing: a Spark call plus SAM per part) is paid
     # background work; in DEMO_MODE it is off unless this is set
     DEMO_DEEPEN: bool = False

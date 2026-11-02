@@ -330,7 +330,7 @@ def _release_pending(session: Session, board_id: str) -> None:
         if item.parse_status == "pending_lens":
             item.parse_status = "pending"
             session.flush()
-            after_commit(session, partial(jobs.enqueue, "parse_item", item_id=item.id))
+            after_commit(session, partial(jobs.enqueue, "analyse_item", item_id=item.id))
 
 
 def confirm_lens(session: Session, board_id: str, spec: LensSpec | None) -> Lens:

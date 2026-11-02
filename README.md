@@ -1,14 +1,13 @@
 # Design Language Engine
 
-A design-reference board that learns what a set of references has in common and finds licensed
-alternatives that change exactly one thing. You drop images, videos and links onto an infinite
+A design-reference board that learns what a set of references has in common and lets you explore
+one dimension of an item at a time. You drop images, videos, links and notes onto an infinite
 canvas; Muse Spark (Meta Model API) reads each item through a domain *lens* (watch, fashion,
 interior, UI, or a lens it proposes for anything else), SAM 3.1 locates the parts the lens names,
 and the board shows its consistent signals, tensions and "not this" counter-signals. Select an
-item, say what to vary ("dial colour, anything different", "legibility: one step more") and what to
-keep, and the engine retrieves candidates from an open-licence corpus, checks every one against
-the request with evidence, and streams the ones that pass into a Maybe strip with their credits.
-It never generates or edits images.
+item to see its callouts, click a dimension to grow a flower of options, and render one (see
+"Explore → Visualize" below). The earlier Vary flow (retrieve licensed alternatives that change one
+thing) is retired.
 
 - `backend/` FastAPI engine (Python 3.12, uv, SQLite + NumPy, no vector database)
 - `frontend/` Vite + React + react-konva canvas app
@@ -60,29 +59,41 @@ schema-constrained JSON 8.4 s, SAM image 2.2 s, SAM video 2.7 s, `/embeddings` 4
 ## The calm board
 
 The board is a quiet canvas: a rail on the left (Library, Plugins, and the other panels), a small
-floating toolbar at the bottom, and nothing else until you ask. **Notes**: press `N` and click to
-write a sentence on the board; hover it for **Visualize**, which turns the sentence into an image
-(captioned `generated · <model>`) beside it. **The axis** is text first: pick an attribute with the
-Axis tool (`A`) and the options appear as plain text cards along a line. Open one to Visualize,
-Regenerate (take 2, 3, ...) and Keep; only a kept card shows its picture, and Un-keep turns it back
-into text. **Plugins** are nodes you add from the rail and place from the toolbar's Nodes menu; see
+floating toolbar at the bottom, and nothing else until you ask. **Select an item** and its parts
+appear as callouts around it (a mask for a photo's parts, a box for a screen's, a passage for a
+note's), each with its dimensions, plus a "Whole item" card; hover a callout to see its region.
+**Click a dimension** and a flower grows beside the item: its options as note petals around a hub,
+nothing generated. Open a petal to render it with the renderer it names (Muse Image inside the
+part's mask or box, or Muse Spark rewriting only that passage); the result is checked, and **Keep**
+puts it on the board as an ordinary item with its own callouts, so the loop starts again from
+there. **Extract** cuts a part out as a linked item. **Notes**: press `N` and click to write on the
+board. **Plugins** are nodes you add from the rail and place from the toolbar's Nodes menu; see
 [Plugins](#plugins) and [docs/plugins.md](docs/plugins.md).
 
 ## Explore → Visualize
 
-Select an item, press `A` (the Axis tool), and pick an attribute of the board's lens.
-Explore asks the reasoning model for a handful of options for that attribute ("in the dimension"),
-shown as text cards on the axis beside the item. More, Further, a steer line and Branch widen
-or deepen the set; Dismiss removes one. **Visualize** edits the source photo into the option with the
-image provider, adds the result as a new item captioned `generated · <model>`, and checks it: did the
-target change, and which other attributes stayed (the verdict, also shown under "Generated from" in
-Inspect). "Find real examples" starts a Vary run for options that map to a known value.
+Select an item and its **callouts** show what Muse read: one card per part with its physical
+dimensions, and a "Whole item" card with the abstract ones. **Click a dimension** to explore it:
+the reasoning model proposes a handful of options and a **flower** grows beside the item, the
+options as **note petals** around a hub; nothing is generated yet. More like this widens the set
+and Dismiss trims it; the hub collapses the flower to a badge on its callout. Open a petal
+and its card has one **render** button named by the renderer that will run: "Generate image · Muse
+Image inside the part's mask or box" (or the whole image for an abstract dimension), "Rewrite
+passage · Muse Spark" for a note, a board plugin, or "Connect a renderer" when nothing renders the
+item. The result is checked (did the target change, which other dimensions stayed) and shown on the
+card; **Keep** puts it on the board as an ordinary item with its own callouts, so the loop starts
+again from there. **Extract** on a part cuts it out as a new, linked item; **Re-analyse** on the
+item toolbar reads an item again. Each board has a daily allowance: analyses (uploads, Re-analyse,
+explore, extract) and renders (petals, note Visualize) are counted separately and refused with
+"Daily limit reached for this board, try tomorrow." once used up.
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `IMAGE_PROVIDER` | `muse-image` | Image-edit provider; `mock` is offline and deterministic (model id `mock-image`). |
 | `IMAGE_MODEL` | `muse-image-1.0` | Model id sent to the image provider. |
-| `EXPLORE_ENABLED` | `1` | Set `0` to hide Explore; `V` then opens the older Vary panel. |
+| `ANALYSE_PER_BOARD_PER_DAY` | `300` | Analyses one board may run per day. |
+| `RENDER_PER_BOARD_PER_DAY` | `60` | Renders one board may run per day. |
+| `EXPLORE_ENABLED` | `1` | Set `0` to turn exploring off: callouts still show, a dimension opens no flower. |
 
 Muse Image is restricted from India under Meta's Geographic Use Policy §2.2. It is used here for
 development only; set IMAGE_PROVIDER to another provider for the demo.
@@ -114,7 +125,7 @@ Keys live only in `.env` (git-ignored) and are read server-side; the frontend an
 
 Every corpus item carries provenance (`source`, `source_id`, `landing_url`, `creator_name`,
 `license_code`, `license_url`, `attribution_text`, `fetched_at`) and its credit is shown on every
-candidate and, on the canvas, under every licensed image you hover or select (and in its Inspect
+corpus item and, on the canvas, under every licensed image you hover or select (and in its Inspect
 panel). Items whose licence is not on the allow-list are never downloaded or sent to a model.
 
 | Source | Licence | Used for |
@@ -152,8 +163,7 @@ State of the committed demo (2026-10-27): the Commons queries ran (watch 378, fa
 79, ui 140 manifest lines), Smithsonian, AIC (HTTP 403), Met and Rijksmuseum failed from the build
 machine and were skipped, and live indexing was stopped early: watch 80, fashion 40, ui 24 and
 interior 2 items are indexed. The interior board therefore holds just those 2 items; its indexed
-pool is empty, so its Vary runs rely on live search (below) until `make index DOMAIN=interior`
-supplies more.
+pool is nearly empty until `make index DOMAIN=interior` supplies more.
 `backend/scripts/seed.py --no-index` seeds from what is already indexed.
 
 ## Importing real photos
@@ -202,19 +212,11 @@ The extension talks to `http://localhost:8000` only (its host permission); it is
    counts as unknown, and unknown never matches.
 4. **Board profile**: per-attribute distributions → signals (≥3 known, ≥60 % agree), tensions (two
    values ≥30 % each) and counter-signals from "not this" items; updates stream over SSE.
-5. **Live search**: while the pool loads, one Spark call writes a few short queries and the engine
-   searches the licensed sources (Commons, Openverse and the open-access museums) for up to
-   `LIVE_TIMEOUT_S`; allow-listed results are downloaded through the same SSRF guard as links and
-   *quick-indexed* (embedding and palette, no attributes) into the corpus, so they compete with
-   indexed items. A source that refuses or times out cools down; the corpus alone still answers.
-6. **Retrieval**: pool from the domain's indexed corpus, excluding source, invalid provenance,
-   unusable, duplicates (dHash), items already on the board, and anything breaking the request; ranked
-   by `rank-2026.10-c` (target .35, preservation .35, relevance .20, diversity .10; `validated: false`).
-7. **Validation**: each shortlisted candidate is checked (provenance, duplicate, the target change,
-   every protected attribute) by per-kind comparators; uncertain checks go to one batched Spark
-   verify. A candidate is *validated* only if every check passes with evidence; ≤6 are returned.
-8. **Feedback**: Keep places the candidate on the canvas with a lineage link to its source; Reject
-   records a reason and can add it as a "not this" counter-example.
+5. **Explore and render**: a clicked dimension gets options from the reasoning model; a petal
+   renders one (image edit, note rewrite or a plugin), the result is checked against the target and
+   the other dimensions, and Keep puts it on the board as an ordinary item.
+6. **Retired Vary** (retrieval from the licensed corpus, evidence checks, Maybe strip): its
+   `/runs` and decision routes answer `410 VARY_RETIRED`; its tables and orchestrator stay for history.
 
 ## Testing
 
@@ -248,7 +250,7 @@ in `frontend/` once.
 - **Thresholds are uncalibrated.** Ranking weights (`validated: false`), signal/tension cut-offs and
   colour/shape tolerances are first guesses, not tuned against labelled data.
 - **`shape` kind is experimental** and off by default (`SHAPE_KIND_ENABLED=0`).
-- **In-process jobs.** Parsing and variation runs run on a thread pool inside the API process: a
+- **In-process jobs.** Parsing, analysis and render jobs run on a thread pool inside the API process: a
   restart drops in-flight work (retry from the UI), and the API must run as a single process.
 - **Auto domain needs a clear vote.** An Auto board (no domain set) gets the curated lens by itself
   once at least 3 items are embedded, the vote is not mixed (runner-up under 40%) and the winning
@@ -262,18 +264,15 @@ in `frontend/` once.
 
 For a public instance, set `DEMO_MODE=1`. Visitors can then look but not add:
 
-- **Open to everyone:** every read (boards, items, images, profile, live updates, runs, lenses),
-  moving items, **Vary** (rate-limited, below) and Keep / Reject on candidates.
+- **Open to everyone:** every read (boards, items, images, profile, live updates, lenses) and
+  moving items.
 - **Needs the passcode:** creating or editing boards, uploads, links and extension captures,
-  removing items, Not this, choosing a video frame, re-parsing, lens propose / confirm / edit,
-  attribute edits and extension pairing. Locked requests get `403 DEMO_LOCKED`, and the app shows a
+  removing items, Not this, choosing a video frame, re-parsing, attribute edits and extension pairing. Locked requests get `403 DEMO_LOCKED`, and the app shows a
   "Demo — read-only" chip with an **Unlock** button. A correct passcode sets an HttpOnly, SameSite=Lax
   cookie (Secure over https), signed with `DEMO_SECRET` and valid 12 hours. Five wrong tries from one
   address in 10 minutes lock that address out for the rest of the window (`429`).
-- **Vary limits:** `DEMO_RUNS_PER_IP_PER_HOUR` (default 10) per client address and
-  `DEMO_RUNS_PER_DAY` (default 150) across everyone, as sliding windows: `429 DEMO_RATE_LIMITED` says
-  when to retry. Repeating an identical request on the same board and source within 24 hours returns
-  the finished run instead of starting a new one, with no new model calls and no count against the limits.
+- **Limits:** the per-IP Vary run limits no longer exist. Analyses and renders are bounded per board
+  per day (`ANALYSE_PER_BOARD_PER_DAY`, `RENDER_PER_BOARD_PER_DAY`, see Explore → Visualize).
 
 | Variable | Set as | Value |
 |---|---|---|
@@ -282,7 +281,6 @@ For a public instance, set `DEMO_MODE=1`. Visitors can then look but not add:
 | `DEMO_SECRET` | secret | random, e.g. `python3 -c "import secrets; print(secrets.token_hex(32))"` |
 | `DEMO_TRUST_PROXY` | variable | `1` on a Space: the client address comes from `X-Forwarded-For`; leave `0` when nothing proxies the app (the connection address is used and the header ignored) |
 | `DEMO_PROXY_HOPS` | variable | `1` on a Space: how many entries from the right of `X-Forwarded-For` the client address is (those are appended by trusted proxies; leftmost entries are client-supplied and never used) |
-| `DEMO_DEEPEN` | variable | `0` (default): runs never queue background deepening of live items; `1` allows it (paid Spark and SAM calls, see Cost) |
 
 The API refuses to start with `DEMO_MODE=1` and no `DEMO_PASSCODE` or `DEMO_SECRET`.
 
@@ -290,19 +288,11 @@ The API refuses to start with `DEMO_MODE=1` and no `DEMO_PASSCODE` or `DEMO_SECR
 run locally and cost nothing):
 
 - every unlocked upload or link: one Spark extraction plus one SAM call per lens part;
-- every Vary run that is not a replay:
-  - **query writing**: one small Spark call that turns the request into live searches (only when
-    live search is on);
-  - **SAM localisation**: one call per lens part the checks need, for the source and each
-    shortlisted candidate (at most 16), unless that mask is already cached. Live items found at run
-    time are quick-indexed (embedding and palette only), so their parts are always new;
-  - **verify batches**: one Spark verify call per up to 8 shortlisted candidates (at most 2);
-  - **deepen** (off in `DEMO_MODE` unless `DEMO_DEEPEN=1`): up to 16 shortlisted live items per run
-    are fully indexed in the background, each one Spark extraction plus one SAM call per part.
+- every analysis (Re-analyse, explore, extract): one Spark call, plus SAM calls for parts;
+- every render (a petal, note Visualize): one Muse Image or Spark call plus its check.
 
-Uploads are limited to people with the passcode, and the Vary limits above bound how many runs
-anonymous visitors can start; with `DEMO_DEEPEN` left off, a run's spend ends when the run does. Meta
-applies no spending cap of its own, so usage beyond the hackathon credit is charged to the card on file.
+Uploads are limited to people with the passcode, and the per-board daily allowances bound analyses
+and renders. Meta applies no spending cap of its own, so usage beyond the hackathon credit is charged to the card on file.
 
 ## Deploy
 

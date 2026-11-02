@@ -2,18 +2,23 @@
 
 from typing import Any
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 from sqlalchemy import select
 
 from app import demo, events
 from app.db.ids import now_iso
-from app.db.models import BoardItem, ExploreOption
+from app.db.models import BoardItem, Exploration, ExploreOption, ItemPart
+from app.db.repos import attributes as attrs_repo
 from app.db.repos import boards as boards_repo
 from app.db.repos import items as items_repo
 from app.db.repos import lenses as lenses_repo
 from app.explore import check, visualize
+from app.notes import service as notes_service
 from app.providers.reliability import ModelError
+from app.storage import files
 from tests.integration.api.test_explore import board_list, error, explore, source
 
 
@@ -62,7 +67,8 @@ def test_visualize_creates_generated_item_with_lineage(client: TestClient, world
     assert item.parent_item_id == src.id and item.board_id == world["watch"]
     assert item.kind == "image" and item.storage_path and item.thumb_path and item.sha256
     assert item.generation_json == {
-        "model": "mock-image", "prompt": opt["edit_prompt"], "option_id": opt["id"]
+        "model": "mock-image", "prompt": opt["edit_prompt"], "option_id": opt["id"],
+        "renderer": "muse_image",
     }  # fmt: skip
     assert item.staged is True  # a take: hidden until kept
     assert (item.x, item.y) == (src.x, src.y)  # the note is not drawn: the source's spot
@@ -198,12 +204,12 @@ def test_check_target_answer_stored(client: TestClient, world, monkeypatch) -> N
 
 
 def test_parse_failure_keeps_item_with_check_error(client: TestClient, world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    from app.extraction import service as extraction
+    from app.analysis import service as analysis
 
     def down(*_a: Any, **_k: Any) -> Any:
         raise ModelError("MODEL_TIMEOUT", message="slow")
 
-    monkeypatch.setattr(extraction, "model_extract", down)
+    monkeypatch.setattr(analysis, "run_analyser", down)
     opt = first_option(client, world)
     run(client, opt["id"])
     (item,) = generated(world, opt["id"])
@@ -379,9 +385,9 @@ def test_claim_is_stamped_and_cleared(client: TestClient, world, monkeypatch) ->
     seen: list[str | None] = []
     real = visualize.visualize
 
-    def spy(session: Any, option_id: str) -> None:
+    def spy(session: Any, option_id: str, renderer_id: str | None = None) -> None:
         seen.append(session.get(ExploreOption, option_id).visualize_claimed_at)
-        real(session, option_id)
+        real(session, option_id, renderer_id)
 
     monkeypatch.setattr(visualize, "visualize", spy)
     opt = first_option(client, world)
@@ -419,3 +425,201 @@ def test_startup_marks_unchecked_items_interrupted(client: TestClient, world) ->
     a, b = generated(world, opt["id"])
     assert a.check_json == {"error": "INTERRUPTED"}
     assert b.check_json == kept
+
+
+# ---- renderers (Task 10) ------------------------------------------------------------------
+
+
+def _as_physical(world: dict[str, Any], region_kind: str, **part: Any) -> str:
+    """Make the source's `markers` dimension physical, on a `dial` part; returns the source."""
+    s = world["session"]
+    src = source(world)
+    row = next(r for r in attrs_repo.for_item(s, src) if r.key == "markers")
+    row.dim_type, row.part = "physical", "dial"
+    s.add(ItemPart(item_id=src, key="dial", label="Dial", region_kind=region_kind, source="ai",
+                   **part))  # fmt: skip
+    s.commit()
+    return src
+
+
+def _pixels(item: BoardItem) -> np.ndarray:
+    assert item.storage_path is not None
+    with Image.open(files.abs_path(item.storage_path)) as im:
+        return np.asarray(im.convert("RGB")).astype(int)
+
+
+def _outside(shape: tuple[int, ...], box: list[float]) -> np.ndarray:
+    """True for every pixel outside the box (the pixels the box covers, rounded outward)."""
+    h, w = shape[:2]
+    ys, xs = np.mgrid[0:h, 0:w]
+    x0, y0 = int(box[0] * w), int(box[1] * h)
+    x1, y1 = int(np.ceil(box[2] * w)), int(np.ceil(box[3] * h))
+    return (xs < x0) | (xs >= x1) | (ys < y0) | (ys >= y1)
+
+
+def test_physical_box_dimension_changes_only_inside_the_box(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    box = [0.25, 0.25, 0.6, 0.6]
+    src_id = _as_physical(world, "box", region_json=box)
+    opt = first_option(client, world)
+    assert run(client, opt["id"]).status_code == 202
+    (take,) = generated(world, opt["id"])
+    src = items_repo.get(world["session"], src_id)
+    assert src is not None
+    before, after = _pixels(src), _pixels(take)
+    assert before.shape == after.shape
+    outside = _outside(before.shape, box)
+    assert np.array_equal(after[outside], before[outside])  # every pixel outside the box
+    assert not np.array_equal(after[~outside], before[~outside])
+    assert take.generation_json["renderer"] == "muse_image"
+
+
+def test_physical_mask_dimension_changes_only_inside_the_mask(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    rel = "masks/test-dial.png"
+    mask = np.zeros((100, 100), dtype=np.uint8)
+    mask[20:50, 30:60] = 255
+    path = files.abs_path(rel)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(mask).save(path)
+    src_id = _as_physical(world, "mask", mask_path=rel, region_json=[0.3, 0.2, 0.6, 0.5])
+    opt = first_option(client, world)
+    assert run(client, opt["id"]).status_code == 202
+    (take,) = generated(world, opt["id"])
+    src = items_repo.get(world["session"], src_id)
+    assert src is not None
+    before, after = _pixels(src), _pixels(take)
+    h, w = before.shape[:2]
+    outside = np.asarray(Image.fromarray(mask).resize((w, h), Image.Resampling.NEAREST)) == 0
+    assert np.array_equal(after[outside], before[outside])  # every pixel outside the mask
+    assert not np.array_equal(after[~outside], before[~outside])
+
+
+def test_abstract_dimension_edits_the_whole_image(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    r = explore(client, source(world), key="overall_style")  # a dimension with no part
+    assert r.status_code == 200, r.json()
+    opt = r.json()["options"][0]
+    assert run(client, opt["id"]).status_code == 202
+    (take,) = generated(world, opt["id"])
+    src = items_repo.get(world["session"], source(world))
+    assert src is not None
+    before, after = _pixels(src), _pixels(take)
+    corner = (slice(0, 10), slice(0, 10))
+    assert not np.array_equal(after[corner], before[corner])
+
+
+def test_visualize_over_limit_leaves_option_open(client: TestClient, world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("RENDER_PER_BOARD_PER_DAY", "1")
+    r = explore(client, source(world))
+    first, second = r.json()["options"][:2]
+    assert run(client, first["id"]).status_code == 202
+    r = run(client, second["id"])
+    assert r.status_code == 429 and error(r) == "DAILY_LIMIT"
+    o = option_row(world, second["id"])
+    assert o.status == "open" and o.visualize_claimed_at is None
+    assert generated(world, second["id"]) == []
+
+
+def test_unknown_renderer_is_400_and_refunded(client: TestClient, world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("RENDER_PER_BOARD_PER_DAY", "1")
+    opt = first_option(client, world)
+    r = client.post(f"/api/options/{opt['id']}/visualize", json={"renderer_id": "spark_rewrite"})
+    assert r.status_code == 400 and error(r) == "RENDERER_NOT_FOUND"
+    assert option_row(world, opt["id"]).status == "open"
+    r = client.post(f"/api/options/{opt['id']}/visualize", json={"renderer_id": "muse_image"})
+    assert r.status_code == 202  # the refused request cost nothing
+
+
+def _note_option(world: dict[str, Any], text: str, physical: bool) -> tuple[BoardItem, str]:
+    """A note on the watch board (analysed by the mock: a `tone` dimension and an `opening`
+    part), `tone` on `opening` (chars 5..9) when physical, and one open option for it."""
+    s = world["session"]
+    note = notes_service.create_note(s, world["watch"], text, 5000, 5000)
+    s.commit()
+    s.expire_all()
+    opening = s.scalar(select(ItemPart).where(ItemPart.item_id == note.id))  # the mock's part
+    assert opening is not None and opening.key == "opening"
+    opening.region_json = [5, 9]
+    rows = {r.key: r for r in attrs_repo.for_item(s, note.id)}
+    tone = rows["tone"]
+    if physical:
+        tone.dim_type, tone.part = "physical", "opening"
+    e = Exploration(board_id=world["watch"], item_id=note.id, key="tone")
+    s.add(e)
+    s.flush()
+    o = ExploreOption(exploration_id=e.id, name="Louder", value_json="loud",
+                      edit_prompt="Make it louder.", status="open")  # fmt: skip
+    s.add(o)
+    s.commit()
+    return note, o.id
+
+
+def test_text_rewrite_is_a_staged_note_beside_the_source(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    note, oid = _note_option(world, "Aaa. Bbb. Ccc.", physical=True)
+    assert run(client, oid).status_code == 202
+    (take,) = generated(world, oid)
+    assert take.kind == "note" and take.staged is True
+    assert take.parent_item_id == note.id and take.explore_option_id == oid
+    assert take.note_text == "Aaa. BBB. Ccc."
+    assert take.generation_json["changed_range"] == [5, 9]
+    assert take.generation_json["renderer"] == "spark_rewrite"
+    assert take.x >= note.x + note.w  # a free slot beside it, not on it
+    assert "target" in take.check_json
+    assert option_row(world, oid).status == "visualized"
+
+
+def test_abstract_text_dimension_rewrites_the_whole_note(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    _note, oid = _note_option(world, "quiet words", physical=False)
+    assert run(client, oid).status_code == 202
+    (take,) = generated(world, oid)
+    assert take.note_text == "QUIET WORDS"
+    assert take.generation_json["changed_range"] == [0, 11]
+
+
+def test_seeded_part_dimension_is_physical_and_masked(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    """`markers` names the lens part `watch_dial` with no part row: it is still physical,
+    located (mock SAM: the centre 60%) and composited back inside that mask only."""
+    opt = first_option(client, world)
+    assert run(client, opt["id"]).status_code == 202
+    (take,) = generated(world, opt["id"])
+    src = items_repo.get(world["session"], source(world))
+    assert src is not None
+    before, after = _pixels(src), _pixels(take)
+    corner = (slice(0, 5), slice(0, 5))
+    assert np.array_equal(after[corner], before[corner])
+    assert not np.array_equal(after, before)
+
+
+def _refused(world: dict[str, Any], oid: str, code: str) -> None:
+    o = option_row(world, oid)
+    assert o.status == "open" and o.last_error == code and o.visualize_claimed_at is None
+    assert generated(world, oid) == []
+
+
+def test_unusable_region_is_refused_and_refunded(client: TestClient, world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("RENDER_PER_BOARD_PER_DAY", "1")
+    _as_physical(world, "text_range", region_json=[0, 4])  # a text range on an image
+    opt = first_option(client, world)
+    assert run(client, opt["id"]).status_code == 202
+    _refused(world, opt["id"], "REGION_EMPTY")
+    assert run(client, opt["id"]).status_code == 202  # the refused render cost nothing
+
+
+def test_missing_mask_file_is_located_again(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    src = _as_physical(world, "mask", mask_path="masks/gone.png", region_json=[0.1, 0.1, 0.5, 0.5])
+    opt = first_option(client, world)
+    assert run(client, opt["id"]).status_code == 202
+    assert option_row(world, opt["id"]).last_error is None
+    assert len(generated(world, opt["id"])) == 1
+    s = world["session"]
+    s.expire_all()
+    part = s.scalar(select(ItemPart).where(ItemPart.item_id == src, ItemPart.key == "dial"))
+    assert part.mask_path != "masks/gone.png" and files.abs_path(part.mask_path).is_file()
+
+
+def test_physical_text_dimension_without_a_range_is_refused(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    note, oid = _note_option(world, "Aaa. Bbb. Ccc.", physical=True)
+    s = world["session"]
+    part = s.scalar(select(ItemPart).where(ItemPart.item_id == note.id))
+    part.region_json = None
+    s.commit()
+    assert run(client, oid).status_code == 202
+    _refused(world, oid, "REGION_EMPTY")

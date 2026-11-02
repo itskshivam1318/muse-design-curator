@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import events, jobs
+from app.analysis.spec import spec_for
 from app.api.schemas import item_to_dict
 from app.db.models import BoardItem, ItemAttribute, PluginNode, PluginRun
 from app.db.repos import attributes as attrs_repo
@@ -121,7 +122,7 @@ _UNFIT = object()
 
 def _fit(value: Any, kind: str, spec: AttributeSpec | None) -> Any:
     """`value` as stored under an existing row of `kind`, or _UNFIT. enum/ordinal values must be
-    one of the lens's options when the lens defines them."""
+    one of the row's spec options (its own, else the lens's) when it defines them."""
     if kind == "number":
         if not isinstance(value, int | float) or isinstance(value, bool):
             return _UNFIT
@@ -157,7 +158,6 @@ def _write_attributes(
     touched: set[str] = set()
     skipped: list[dict[str, str]] = []
     lens = current_lens(session, run.board_id)
-    specs = {a.key: a for a in lens.attributes} if lens else {}
     for a in attrs:
         item_id, key = a["item_id"], a["key"]
         row = session.scalar(
@@ -168,7 +168,7 @@ def _write_attributes(
             continue
         value = _scalar(a["value"])
         if row is not None:
-            value = _fit(value, row.kind, specs.get(key))
+            value = _fit(value, row.kind, spec_for(row, lens))
             if value is _UNFIT:
                 reason = f"value does not fit {row.kind} {row.label!r}"
                 skipped.append({"item_id": item_id, "key": key, "reason": reason})
@@ -221,7 +221,7 @@ def apply_output(
         y += item.h + STACK_GAP
         added = item_to_dict(item)
         after_commit(session, partial(events.publish, item.board_id, "item.added", added))
-        after_commit(session, partial(jobs.enqueue, "parse_item", item_id=item.id))
+        after_commit(session, partial(jobs.enqueue, "analyse_item", item_id=item.id))
     for note in out.get("notes", []):
         item = create_note(session, node.board_id, note["text"], x, y)
         created.append(item.id)

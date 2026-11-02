@@ -22,14 +22,12 @@ interface Props {
   /** Floating things over the stage (onboarding, upload status, the maybe strip…). */
   overlays?: ReactNode
   onFocusItem: (item: Item) => void
-  onFindExamples: (item: Item) => void
-  /** Server flags: plugins on shows the Plugins rail icon and Nodes; explore on shows Axis. */
+  /** Server flag: plugins on shows the Plugins rail icon and Nodes. */
   plugins: boolean
-  explore: boolean
 }
 
 /** The calm board: header, slim left rail with slide-outs, the canvas stage, tools and the agent card. */
-export function BoardShell({ boardId, items, header, canvas, library, overlays, onFocusItem, onFindExamples, plugins, explore }: Props) {
+export function BoardShell({ boardId, items, header, canvas, library, overlays, onFocusItem, plugins }: Props) {
   const railState = useRail()
   const rail = railState.open === 'plugins' && !plugins ? null : railState.open
   const [nodesOpen, setNodesOpen] = useState(false)
@@ -41,16 +39,16 @@ export function BoardShell({ boardId, items, header, canvas, library, overlays, 
     stage.current?.focus()
   }
 
-  // tool shortcuts: n note, a axis, Escape select (never while typing)
+  // tool shortcuts: n note, Escape select (never while typing)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!toolShortcutAllowed(e)) return
-      const t = toolForKey(e.key, { explore })
+      const t = toolForKey(e.key)
       if (t) setTool(t)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [explore])
+  }, [])
 
   const closeRail = () => {
     const was = railStore.get().open
@@ -66,7 +64,6 @@ export function BoardShell({ boardId, items, header, canvas, library, overlays, 
           open={rail}
           onOpen={(id) => (id ? openRail(id) : closeRailState())}
           plugins={plugins}
-          lensWaiting={railState.lensWaiting}
         />
         <section className="board-stage" aria-label="Canvas" tabIndex={-1} ref={stage}>
           {canvas}
@@ -78,14 +75,13 @@ export function BoardShell({ boardId, items, header, canvas, library, overlays, 
               items={items}
               onClose={closeRail}
               onFocusItem={focusItem}
-              onFindExamples={onFindExamples}
               library={library}
               autoFocus={railState.reason === 'user'}
             />
           )}
           <div className="bottom-dock">
             {showNodes && <NodesMenu boardId={boardId} onClose={() => setNodesOpen(false)} />}
-            <BottomToolbar onNodes={() => setNodesOpen((o) => !o)} plugins={plugins} explore={explore} nodesOpen={showNodes} />
+            <BottomToolbar onNodes={() => setNodesOpen((o) => !o)} plugins={plugins} nodesOpen={showNodes} />
           </div>
           <AgentCard boardId={boardId} />
         </section>

@@ -3,6 +3,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import object_session
 
+from app.analysis.types import ContentType
 from app.db.models import Board, BoardItem, CorpusItem
 
 ItemRole = Literal["reference", "counter_example"]
@@ -29,6 +30,7 @@ class ItemPatch(BaseModel):
     role: ItemRole | None = None
     chosen_frame_id: str | None = None
     note_text: str | None = Field(default=None, max_length=2000)
+    content_type: ContentType | None = None
 
 
 class Capture(BaseModel):
@@ -85,4 +87,5 @@ def item_to_dict(i: BoardItem) -> dict[str, Any]:
         "licence": licence_of(i), "explore_option_id": i.explore_option_id,
         "generation": i.generation_json, "check": i.check_json,
         "note_text": i.note_text, "staged": bool(i.staged),
+        "content_type": i.content_type, "extracted_part": i.extracted_part,
     }  # fmt: skip

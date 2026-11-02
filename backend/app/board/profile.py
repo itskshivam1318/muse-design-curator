@@ -4,6 +4,7 @@ import logging
 import threading
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from functools import partial
 from typing import Any
 
@@ -13,6 +14,7 @@ from sklearn.cluster import KMeans
 from sqlalchemy.orm import Session
 
 from app import events
+from app.analysis.spec import spec_for
 from app.board.votes import ambiguous_candidates, domain_votes
 from app.db.repos import attributes as attrs_repo
 from app.db.repos import items as items_repo
@@ -250,41 +252,90 @@ def _discrete_tokens(kind: str, a: Any) -> str | None:
     return None
 
 
+@dataclass
+class _Group:
+    """One board dimension: every reliable item dimension sharing a label (any case)."""
+
+    key: str
+    label: str
+    kind: str
+    spec: Any
+    rows: list[tuple[str, Any]]
+
+
+def _modal(values: Sequence[str]) -> str:
+    return min(Counter(values).items(), key=lambda kv: (-kv[1], kv[0]))[0]
+
+
+def _group_by_label(
+    items: Sequence[Any], attrs_by_item: Mapping[str, Sequence[Any]], lens: LensSpec | None
+) -> list[_Group]:
+    """Reliable, current dimensions of `items` grouped by label, case-insensitively. A group
+    holds only rows of its most common kind and is named by its most common key and label.
+
+    On a lens board, groups backed by the lens (rows read through a lens attribute) come first,
+    in lens order, named by that key; the other groups follow by label and take a suffixed key
+    on a clash."""
+    found: dict[str, list[tuple[str, Any, Any]]] = defaultdict(list)
+    for it in items:
+        for a in attrs_by_item.get(it.id, ()):
+            if a.removed or a.status == "stale" or not _reliable(a):
+                continue
+            spec = spec_for(a, lens)
+            found[" ".join(spec.label.lower().split())].append((it.id, a, spec))
+    lens_order = {a.key: n for n, a in enumerate(lens.attributes)} if lens else {}
+    ranked = []
+    for name, members in found.items():
+        kind = _modal([a.kind for _, a, _ in members])  # the row's kind: legacy rows lack a spec
+        same = [(iid, a, spec) for iid, a, spec in members if a.kind == kind]
+        # lens-backed: a legacy row whose spec is the lens attribute (no spec of its own)
+        in_lens = [spec.key for _, a, spec in same if not a.spec_json and spec.key in lens_order]
+        key = _modal(in_lens or [spec.key for _, _, spec in same])
+        spec = next(spec for _, _, spec in same if spec.key == key)
+        rows = [(iid, a) for iid, a, _ in same]
+        rank = (0, lens_order[key], "") if in_lens else (1, 0, name)
+        ranked.append((rank, _Group(key=key, label=spec.label, kind=kind, spec=spec, rows=rows)))
+    groups: list[_Group] = []
+    taken: set[str] = set()
+    for _rank, g in sorted(ranked, key=lambda r: r[0]):
+        name, n = g.key, 1
+        while name in taken:  # a lens group or an earlier label already holds this key
+            n += 1
+            name = f"{g.key}_{n}"
+        taken.add(name)
+        g.key = name
+        groups.append(g)
+    return groups
+
+
 def compute_profile(
     items: Sequence[Any],
     attrs_by_item: Mapping[str, Sequence[Any]],
     lens: LensSpec | None,
     votes: Mapping[str, float],
 ) -> BoardProfile:
-    """Pure aggregation of reliable, enabled attribute values. No DB access."""
+    """Pure aggregation of reliable, enabled dimension values, grouped by label across items
+    (a lens only supplies specs to legacy rows). No DB access."""
     items = [
         i for i in items if getattr(i, "kind", None) != "note" and not getattr(i, "staged", False)
     ]
     refs = [i for i in items if i.role == REFERENCE]
     counters = [i for i in items if i.role == COUNTER]
-    specs = {a.key: a for a in lens.attributes} if lens else {}
+    groups = _group_by_label(items, attrs_by_item, lens)
 
     def collect(group: Sequence[Any]) -> dict[str, list[tuple[str, Any]]]:
-        by_key: dict[str, list[tuple[str, Any]]] = defaultdict(list)
-        for it in group:
-            for a in attrs_by_item.get(it.id, ()):
-                if _reliable(a) and (not specs or a.key in specs):
-                    by_key[a.key].append((it.id, a))
-        return by_key
+        ids = {it.id for it in group}
+        return {g.key: [(iid, a) for iid, a in g.rows if iid in ids] for g in groups}
 
     ref_rows, ctr_rows = collect(refs), collect(counters)
-    order = list(specs) if specs else sorted(set(ref_rows) | set(ctr_rows))
+    by_key = {g.key: g for g in groups}
+    order = [g.key for g in groups]
 
     attributes: dict[str, AttributeProfile] = {}
     for key in order:
+        g = by_key[key]
         rows = ref_rows.get(key, [])
-        spec = specs.get(key)
-        first = rows[0][1] if rows else None
-        kind = spec.kind if spec else (first.kind if first else None)
-        label = spec.label if spec else (getattr(first, "label", key) if first else key)
-        if kind is None:
-            continue
-        p = _profile_attribute(key, label, kind, spec, rows)
+        p = _profile_attribute(key, g.label, g.kind, g.spec, rows)
         if p is not None and p.n_known:
             attributes[key] = p
 
@@ -330,9 +381,9 @@ def compute_profile(
 
     counter_signals: list[CounterSignal] = []
     for key in order:
-        spec = specs.get(key)
+        g = by_key[key]
         for rows_c in [ctr_rows.get(key, [])]:
-            kind = spec.kind if spec else (rows_c[0][1].kind if rows_c else "")
+            kind = g.kind
             ctr = Counter(t for _, a in rows_c if (t := _discrete_tokens(kind, a)) is not None)
             ref = Counter(
                 t for _, a in ref_rows.get(key, []) if (t := _discrete_tokens(kind, a)) is not None
@@ -344,7 +395,7 @@ def compute_profile(
                     counter_signals.append(
                         CounterSignal(
                             key=key,
-                            label=spec.label if spec else key,
+                            label=g.label,
                             value=value,
                             counter_count=n,
                             reference_count=ref.get(value, 0),

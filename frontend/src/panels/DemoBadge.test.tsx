@@ -86,10 +86,10 @@ describe('locked controls', () => {
     expect(screen.queryByLabelText('Link to a page or image')).toBeNull()
   })
 
-  it('toolbar keeps Vary and Inspect but disables Not this and Remove', () => {
+  it('toolbar keeps Inspect but disables Not this and Remove', () => {
     const noop = () => {}
     render(
-      <ItemToolbar items={[makeItem()]} screen={{ x: 0, y: 100, width: 100, height: 100 }} onExplore={noop}
+      <ItemToolbar items={[makeItem()]} screen={{ x: 0, y: 100, width: 100, height: 100 }}
         onInspect={noop} onCompare={noop} onNotThis={noop} onRemove={noop} readOnly />,
     )
     const disabled = (name: string) => (screen.getByRole('button', { name }) as HTMLButtonElement).disabled

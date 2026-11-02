@@ -49,6 +49,76 @@ export interface Item {
   note_text: string | null
   /** A staged item is a take or plugin result not yet kept on the board. */
   staged: boolean
+  /** What the item is (set by analysis or the person); null until known. */
+  content_type: ContentType | null
+  /** The part key this item was extracted from its parent as; null otherwise. */
+  extracted_part: string | null
+}
+
+export type ContentType = 'image' | 'ui' | 'text'
+export type RegionKind = 'mask' | 'box' | 'text_range'
+
+/** Where a part lives: a box [x0, y0, x1, y1] as fractions, a text range [start, end], or a mask image (with its bbox). */
+export interface Region {
+  kind: RegionKind
+  box?: number[]
+  range?: number[]
+  mask_url?: string
+}
+
+export interface PartView {
+  key: string
+  label: string
+  region_kind: RegionKind
+  /** The stored region: box [x0,y0,x1,y1] in 0..1, text_range [start,end], null for an un-located mask. */
+  region: number[] | null
+  mask_url: string | null
+  source: string
+}
+
+export interface DimensionView {
+  key: string
+  label: string
+  type: 'physical' | 'abstract'
+  part: string | null
+  prompt: string | null
+  kind: AttrKind
+  value: string | number | boolean | null
+  confidence: number | null
+  source: string
+  /** "stale" when the value predates an edit to the item. */
+  status: string
+}
+
+export interface AnalysisView {
+  content_type: ContentType | null
+  parse_status: ParseStatus
+  parts: PartView[]
+  dimensions: DimensionView[]
+}
+
+export interface RendererInfo {
+  id: string
+  title: string
+  detail: string
+  builtin: boolean
+}
+
+export interface Offer {
+  label: string
+  dim_type: 'physical' | 'abstract'
+  kind: AttrKind
+  part: string | null
+  count: number
+  total: number
+}
+
+export type OfferBody = Pick<Offer, 'label' | 'dim_type' | 'kind' | 'part'>
+
+export interface BoardContextView {
+  your_words: string
+  learned: string[]
+  offers: Offer[]
 }
 
 /** Generated means origin, never a non-null `generation` (a note holds its visualize claim there). */
@@ -331,136 +401,6 @@ export interface AttributeEvent {
   created_at: string
 }
 
-export type VaryMode = 'explore' | 'prefer' | 'avoid' | 'nudge'
-
-export interface VariationRequest {
-  source_item_id: string
-  target_key: string
-  mode: VaryMode
-  target_values: string[]
-  protected_keys: string[]
-  nudge: { direction: 'more' | 'less'; steps: 1 | 2 } | null
-}
-
-export type CandidateState = 'retrieved' | 'excluded' | 'validating' | 'validated' | 'uncertain' | 'rejected'
-export type Verdict = 'pass' | 'fail' | 'uncertain'
-
-export interface CandidateCheck {
-  check: string
-  attribute_key: string | null
-  verdict: Verdict
-  reason: string
-  evidence: { source?: string; values?: Record<string, unknown> } | null
-}
-
-export interface DecisionRow {
-  id: string
-  decision: 'keep' | 'reject'
-  reason_code: string | null
-  note: string | null
-  item_id: string | null
-  created_at: string
-}
-
-export interface CandidateView {
-  id: string
-  corpus_item_id: string
-  image_url: string
-  width: number | null
-  height: number | null
-  provenance: { credit: string | null; landing_url: string | null; license_code: string | null; creator_name: string | null }
-  /** Where this run found it: the pre-indexed library, or a live licensed-source search. */
-  origin: 'corpus' | 'live'
-  /** The source adapter id (e.g. 'commons'). */
-  source?: string
-  state: CandidateState
-  rank: number | null
-  scores: Record<string, number> | null
-  checks: CandidateCheck[]
-  observed_target_value: AttrValue
-  decision: DecisionRow | null
-  decisions: DecisionRow[]
-}
-
-export interface ShortfallLine {
-  code: string
-  count: number
-  message: string
-}
-
-/** `skipped`: the source is cooling down after refusing us or timing out, so it was not asked. */
-export type LiveSourceStatus = 'ok' | 'failed' | 'timeout' | 'skipped'
-
-/** Live search progress: which sources answered, and how many candidates they found so far. */
-export interface LiveProgress {
-  sources: Record<string, LiveSourceStatus>
-  /** The source ids being searched (before they report). */
-  searching?: string[]
-  downloaded?: number
-  found: number
-  queries?: string[]
-}
-
-export interface LiveSummary {
-  queries: string[]
-  found: number
-  kept: number
-  sources: Record<string, LiveSourceStatus>
-  failed?: { source: string; error_code: string | null }[]
-}
-
-export interface RunSummary {
-  pool_size: number
-  excluded: Record<string, number>
-  validated: number
-  uncertain: number
-  rejected: number
-  returned: number
-  shortfall?: ShortfallLine[]
-  live?: LiveSummary
-}
-
-export type RunStatus = 'queued' | 'retrieving' | 'validating' | 'completed' | 'failed'
-
-export interface RunInfo {
-  id: string
-  board_id: string
-  source_item_id: string
-  lens_id: string
-  target_key: string
-  mode: VaryMode
-  target_values: string[]
-  nudge: { direction: 'more' | 'less'; steps: 1 | 2 } | null
-  protected_keys: string[]
-  status: RunStatus
-  error_code: string | null
-  created_at: string
-  completed_at: string | null
-}
-
-export interface RunResponse {
-  run: RunInfo
-  progress: { stage: string; validated_n?: number; shortlist_n?: number; live?: LiveProgress } | null
-  summary: RunSummary | null
-  results: CandidateView[]
-  needs_review: CandidateView[]
-  rejected: CandidateView[]
-  excluded_counts: Record<string, number>
-}
-
-export interface DecisionBody {
-  decision: 'keep' | 'reject'
-  reason_code?: string
-  note?: string
-  mark_not_this?: boolean
-}
-
-export interface DecisionResponse {
-  decision: DecisionRow
-  history: DecisionRow[]
-  item: Item | null
-}
-
 export interface Frame {
   id: string
   t_ms: number
@@ -518,6 +458,10 @@ export const keys = {
   packs: () => ['plugin-packs'] as const,
   boardPlugins: (id: string) => ['boardPlugins', id] as const,
   nodes: (id: string) => ['nodes', id] as const,
+  analysis: (itemId: string) => ['analysis', itemId] as const,
+  region: (itemId: string, partKey: string) => ['region', itemId, partKey] as const,
+  renderers: (itemId: string, key: string) => ['renderers', itemId, key] as const,
+  boardContext: (boardId: string) => ['boardContext', boardId] as const,
   attributeHistory: (itemId: string, key: string) => ['attributeHistory', itemId, key] as const,
 }
 
@@ -578,7 +522,7 @@ export const addLink = (boardId: string, url: string, at?: Point) =>
 
 export const patchItem = (
   id: string,
-  body: Partial<Pick<Item, 'x' | 'y' | 'w' | 'h' | 'z' | 'role' | 'note_text'>> & { chosen_frame_id?: string },
+  body: Partial<Pick<Item, 'x' | 'y' | 'w' | 'h' | 'z' | 'role' | 'note_text' | 'content_type'>> & { chosen_frame_id?: string },
 ) => request<Item>(`/items/${enc(id)}`, { method: 'PATCH', json: body })
 export const deleteItem = (id: string) => request<void>(`/items/${enc(id)}`, { method: 'DELETE' })
 export const listFrames = (itemId: string) =>
@@ -587,13 +531,6 @@ export const listFrames = (itemId: string) =>
 /** The board's current lens, or its newest proposal; null when it has none yet. */
 export const getBoardLens = (boardId: string) =>
   request<{ lens: LensRow | null }>(`/boards/${enc(boardId)}/lens`).then((r) => r.lens)
-export const getLens = (lensId: string) => request<LensRow>(`/lenses/${enc(lensId)}`)
-/** Confirm the proposal as-is (no body) or save an edited spec. */
-export const confirmLens = (boardId: string, spec?: LensSpec) =>
-  request<LensRow>(`/boards/${enc(boardId)}/lens`, {
-    method: 'PUT',
-    ...(spec ? { json: spec } : {}),
-  })
 export const getDemoStatus = () => request<DemoStatus>('/demo/status')
 /** Sets the HttpOnly unlock cookie on success; 401 for a wrong passcode, 429 after too many. */
 export const unlockDemo = (passcode: string) =>
@@ -610,8 +547,13 @@ export const patchOption = (
   body: { status?: 'dismissed' | 'open'; x?: number; y?: number },
 ) => request<ExploreOption>(`/options/${enc(optionId)}`, { method: 'PATCH', json: body })
 /** `at` is where the canvas draws the option's note; the server saves it and places the image beside it. */
-export const visualizeOption = (optionId: string, at?: Point) =>
-  request<void>(`/options/${enc(optionId)}/visualize`, { method: 'POST', ...(at ? { json: at } : {}) })
+export const visualizeOption = (optionId: string, opts: { at?: Point; renderer_id?: string } = {}) => {
+  const json = { ...(opts.at ?? {}), ...(opts.renderer_id ? { renderer_id: opts.renderer_id } : {}) }
+  return request<void>(`/options/${enc(optionId)}/visualize`, {
+    method: 'POST',
+    ...(Object.keys(json).length ? { json } : {}),
+  })
+}
 
 export const keepTake = (optionId: string, itemId: string, at?: Point) =>
   request<ExploreOption>(`/options/${enc(optionId)}/keep`, {
@@ -662,22 +604,6 @@ export const patchAttribute = (
 export const getAttributeHistory = (itemId: string, key: string) =>
   request<{ events: AttributeEvent[] }>(`/items/${enc(itemId)}/attributes/${enc(key)}/history`).then((r) => r.events)
 
-/** Start a variation run. One Idempotency-Key per Run click, so a retried request never runs twice. */
-export const createRun = (boardId: string, body: VariationRequest, idempotencyKey: string) =>
-  request<{ run_id: string }>(`/boards/${enc(boardId)}/runs`, {
-    method: 'POST',
-    json: body,
-    headers: { 'Idempotency-Key': idempotencyKey },
-  })
-export const getRun = (runId: string) => request<RunResponse>(`/runs/${enc(runId)}`)
-export const postDecision = (runId: string, candidateId: string, body: DecisionBody, idempotencyKey: string) =>
-  request<DecisionResponse>(`/runs/${enc(runId)}/candidates/${enc(candidateId)}/decisions`, {
-    method: 'POST',
-    json: body,
-    headers: { 'Idempotency-Key': idempotencyKey },
-  })
-export const corpusImageUrl = (corpusId: string) => `${BASE}/corpus/${enc(corpusId)}/image`
-
 /** Short cache-busting token: the thumbnail path changes when a video's chosen frame changes. */
 function version(item: Item): string {
   return (item.thumb_path ?? item.storage_path ?? '').replace(/[^a-z0-9]/gi, '').slice(-12)
@@ -723,3 +649,41 @@ export function uploadFiles(
   })
   return { promise, abort: () => xhr.abort() }
 }
+
+const item = (itemId: string) => `/items/${enc(itemId)}`
+
+export const getAnalysis = (itemId: string) => request<AnalysisView>(`${item(itemId)}/analysis`)
+export const analyseItem = (itemId: string) => request<void>(`${item(itemId)}/analyse`, { method: 'POST' })
+export const getRegion = (itemId: string, partKey: string) =>
+  request<Region>(`${item(itemId)}/parts/${enc(partKey)}/region`)
+export const addPart = (itemId: string, body: { label: string; region?: Region }) =>
+  request<PartView>(`${item(itemId)}/parts`, { method: 'POST', json: body })
+export const renamePart = (itemId: string, partKey: string, label: string) =>
+  request<PartView>(`${item(itemId)}/parts/${enc(partKey)}`, { method: 'PATCH', json: { label } })
+export const removePart = (itemId: string, partKey: string) =>
+  request<void>(`${item(itemId)}/parts/${enc(partKey)}`, { method: 'DELETE' })
+export const addDimension = (
+  itemId: string,
+  body: { label: string; type: DimensionView['type']; part?: string | null; prompt?: string; kind?: AttrKind },
+) => request<DimensionView>(`${item(itemId)}/dimensions`, { method: 'POST', json: body })
+export const updateDimension = (
+  itemId: string,
+  key: string,
+  body: Partial<Pick<DimensionView, 'label' | 'prompt' | 'kind' | 'value'>>,
+) => request<DimensionView>(`${item(itemId)}/dimensions/${enc(key)}`, { method: 'PATCH', json: body })
+export const removeDimension = (itemId: string, key: string) =>
+  request<void>(`${item(itemId)}/dimensions/${enc(key)}`, { method: 'DELETE' })
+export const setContentType = (itemId: string, contentType: ContentType) =>
+  patchItem(itemId, { content_type: contentType })
+/** Cut a part out of its item as a new item. */
+export const extractPart = (itemId: string, partKey: string) =>
+  request<Item>(`${item(itemId)}/parts/${enc(partKey)}/extract`, { method: 'POST' })
+export const getRenderers = (itemId: string, key: string) =>
+  request<RendererInfo[]>(`${item(itemId)}/dimensions/${enc(key)}/renderers`)
+
+export const getBoardContext = (boardId: string) =>
+  request<BoardContextView>(`/boards/${enc(boardId)}/context`)
+export const acceptOffer = (boardId: string, body: OfferBody) =>
+  request<BoardContextView>(`/boards/${enc(boardId)}/offers/accept`, { method: 'POST', json: body })
+export const declineOffer = (boardId: string, body: OfferBody) =>
+  request<BoardContextView>(`/boards/${enc(boardId)}/offers/decline`, { method: 'POST', json: body })

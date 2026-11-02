@@ -1,10 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import {
+  getAnalysis,
   getAttributes,
+  getBoardContext,
+  getRegion,
+  getRenderers,
   getBoard,
   getBoardLens,
   getProfile,
-  getRun,
   type Item,
   keys,
   listBoardPlugins,
@@ -25,6 +28,19 @@ export const useProfile = (id: string) =>
   useQuery({ queryKey: keys.profile(id), queryFn: () => getProfile(id) })
 export const useBoardLens = (id: string) =>
   useQuery({ queryKey: keys.lens(id), queryFn: () => getBoardLens(id) })
+export const useBoardContext = (boardId: string) =>
+  useQuery({ queryKey: keys.boardContext(boardId), queryFn: () => getBoardContext(boardId) })
+/** An item's parts and dimensions; refetched on the item.analysed event. */
+export const useAnalysis = (itemId: string | null) =>
+  useQuery({
+    queryKey: keys.analysis(itemId ?? ''),
+    queryFn: () => getAnalysis(itemId ?? ''),
+    enabled: itemId !== null,
+  })
+export const useRegion = (itemId: string, partKey: string, enabled = true) =>
+  useQuery({ queryKey: keys.region(itemId, partKey), queryFn: () => getRegion(itemId, partKey), enabled })
+export const useRenderers = (itemId: string, key: string, enabled = true) =>
+  useQuery({ queryKey: keys.renderers(itemId, key), queryFn: () => getRenderers(itemId, key), enabled })
 export const useExplorations = (boardId: string) =>
   useQuery({ queryKey: keys.explorations(boardId), queryFn: () => listExplorations(boardId) })
 export const useFrames = (itemId: string | null) =>
@@ -71,24 +87,3 @@ export function useNodes(boardId: string) {
   const { pluginsEnabled } = useDemo()
   return useQuery({ queryKey: keys.nodes(boardId), queryFn: () => listNodes(boardId), enabled: pluginsEnabled })
 }
-
-export const POLL_MS = 1500
-/** Safety net while the stream is open, in case a progress event is lost. */
-export const SAFETY_POLL_MS = 6000
-
-/**
- * A variation run. While the board's event stream is open, run.progress events invalidate this
- * query (with a slow safety poll); when it is not, poll every 1.5 s. Stop once it completes or fails.
- */
-export const useRun = (runId: string | null, streamOpen: boolean) =>
-  useQuery({
-    queryKey: keys.run(runId ?? ''),
-    queryFn: () => getRun(runId ?? ''),
-    enabled: runId !== null,
-    staleTime: 0,
-    refetchInterval: (q) => {
-      const status = q.state.data?.run.status
-      if (status === 'completed' || status === 'failed') return false
-      return streamOpen ? SAFETY_POLL_MS : POLL_MS
-    },
-  })

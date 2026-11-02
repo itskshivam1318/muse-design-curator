@@ -30,6 +30,7 @@ def attr(key: str, value: Any, kind: str = "enum", conf: float = 0.9, **kw: Any)
     d: dict[str, Any] = {
         "key": key, "kind": kind, "value_json": value, "confidence": conf,
         "status": "auto", "enabled": True, "measured_json": None, "label": key,
+        "category": "c", "part": None, "spec_json": None, "removed": False,
     }  # fmt: skip
     d.update(kw)
     return NS(**d)
@@ -175,3 +176,47 @@ def test_distant_colours_form_separate_clusters() -> None:
 def test_no_lens_and_empty_board() -> None:
     p = compute_profile([], {}, None, {})
     assert p.attributes == {} and p.centroid is None and p.signals == []
+
+
+def test_profile_groups_by_label_across_items() -> None:
+    """Items analysed without a lens carry their own keys; the same label is one dimension."""
+    items = [item(f"i{n}") for n in range(4)]
+    attrs = {
+        "i0": [attr("strap_stitching", "contrast", label="Strap stitching")],
+        "i1": [attr("strap_stitching", "contrast", label="Strap stitching")],
+        "i2": [attr("stitching_on_strap", "contrast", label="strap Stitching")],
+        "i3": [attr("strap_stitching", "tonal", label="Strap stitching"),
+               attr("mood", "calm", "text", label="Mood"),
+               attr("old", "x", label="Old", status="stale"),
+               attr("gone", "x", label="Gone", removed=True)],
+    }  # fmt: skip
+    p = compute_profile(items, attrs, None, {})
+    assert sorted(p.attributes) == ["mood", "strap_stitching"]
+    a = p.attributes["strap_stitching"]
+    assert a.label == "Strap stitching" and a.n_known == 4
+    assert a.distribution == {"contrast": 3, "tonal": 1}
+    assert [s.key for s in p.signals] == ["strap_stitching"]
+
+
+def test_lens_board_keys_and_labels_stay() -> None:
+    """A lens board's items keep lens keys; the lens label names the dimension."""
+    items = [item(f"i{n}") for n in range(3)]
+    attrs = {f"i{n}": [attr("finish", "brushed")] for n in range(3)}  # row label "finish"
+    p = run(items, attrs)
+    assert list(p.attributes) == ["finish"] and p.attributes["finish"].label == "Finish"
+
+
+def test_lens_groups_claim_keys_and_come_first_in_lens_order() -> None:
+    own = {"key": "finish", "label": "Surface", "category": "physical", "kind": "enum",
+           "part": "body", "vocabulary": ["matte"], "open_vocabulary": True}  # fmt: skip
+    items = [item(f"i{n}") for n in range(3)]
+    attrs = {
+        "i0": [attr("finish", "matte", label="Surface", spec_json=own),  # own spec, same key
+               attr("mood", "calm", "text", label="Mood"), attr("hue", "blue")],
+        "i1": [attr("finish", "brushed"), attr("hue", "blue")],
+        "i2": [attr("finish", "brushed")],
+    }  # fmt: skip
+    p = run(items, attrs)
+    assert list(p.attributes) == ["finish", "hue", "mood", "finish_2"]
+    assert p.attributes["finish"].label == "Finish" and p.attributes["finish"].n_known == 2
+    assert p.attributes["finish_2"].label == "Surface"

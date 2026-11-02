@@ -1,7 +1,21 @@
 import { expect, test } from '@playwright/test'
-import { boardItems, canvas, closeLibrary, createBoard, escapeRe, expectItemCount, openLibrary, selectItem, sitePath } from './helpers.ts'
+import {
+  boardItems,
+  callout,
+  canvas,
+  closeLibrary,
+  createBoard,
+  escapeRe,
+  expectItemCount,
+  openDimension,
+  openLibrary,
+  panToReach,
+  renderUntilOk,
+  selectItem,
+  sitePath,
+} from './helpers.ts'
 
-/** Notes and the axis on mock providers (the mock image model id is "mock-image"). */
+/** Notes, flowers and plugins on mock providers (the mock image model id is "mock-image"). */
 
 test('note: write, visualize, a generated image appears beside it', async ({ page }) => {
   const boardId = await createBoard(page, 'E2E note')
@@ -22,9 +36,9 @@ test('note: write, visualize, a generated image appears beside it', async ({ pag
   await expect.poll(async () => (await boardItems(boardId)).filter((i) => i.kind === 'note').length).toBe(1)
   await expectItemCount(page, 1)
 
-  // hover the note to reveal its bar. Notes are drawn on the canvas (no DOM element to hover), so this
-  // moves to a point inside the note's box, measured from where it was created.
-  await page.mouse.move(at.x + 40, at.y + 20)
+  // a selected note shows its bar (hovering works too, but the board's first fit can move the note
+  // out from under a fixed mouse position)
+  await selectItem(page, /^note /)
   const bar = page.getByRole('toolbar', { name: 'Note actions' })
   await expect(bar).toBeVisible()
   await bar.getByRole('button', { name: 'Visualize' }).click()
@@ -37,56 +51,37 @@ test('note: write, visualize, a generated image appears beside it', async ({ pag
   await expect(page.getByRole('note', { name: 'Generated image' })).toHaveText('generated · mock-image', { timeout: 10_000 })
 })
 
-test('axis: visualize, regenerate, keep, reload, un-keep', async ({ page }) => {
-  const boardId = await createBoard(page, 'E2E axis', 'A field watch for a 38 mm wrist.')
+test('flower: render, keep, reload, branch from the kept result', async ({ page }) => {
+  const boardId = await createBoard(page, 'E2E flower keep')
   await openLibrary(page)
-  await page
-    .getByLabel('Choose images or video to upload')
-    .setInputFiles(['watch_01.jpg', 'watch_02.jpg', 'watch_03.jpg', 'watch_04.jpg', 'watch_05.jpg'].map(sitePath))
-  await expectItemCount(page, 5)
+  await page.getByLabel('Choose images or video to upload').setInputFiles([sitePath('watch_01.jpg')])
+  await expectItemCount(page, 1)
+  await closeLibrary(page)
   await expect.poll(async () => (await boardItems(boardId)).every((i) => i.parse_status === 'completed')).toBe(true)
 
   await selectItem(page, /^image watch_01\.jpg/)
-  await page.keyboard.press('a')
-  await page.getByRole('dialog', { name: 'Pick an attribute to explore' }).getByRole('button').first().click()
-
-  const cards = page.getByTestId('axis-card')
-  await expect(cards.first()).toBeVisible({ timeout: 30_000 })
-  const optionId = (await cards.first().getAttribute('data-option-id'))!
-  const card = page.locator(`[data-testid="axis-card"][data-option-id="${optionId}"]`)
-  const name = (await card.locator('.axis-card-name').textContent())!.trim()
-
-  // a text card has no thumbnail until a take is kept
-  await expect(card.locator('.axis-thumb')).toHaveCount(0)
-
-  await card.click()
-  const pop = page.getByRole('dialog', { name })
-  await pop.getByRole('button', { name: 'Visualize', exact: true }).click()
-  await expect(pop.getByRole('img', { name: `${name} · take 1` })).toBeVisible({ timeout: 15_000 })
-
-  await pop.getByRole('button', { name: 'Regenerate' }).click()
-  await expect(pop.getByRole('img', { name: `${name} · take 2` })).toBeVisible({ timeout: 15_000 })
-
-  await pop.getByRole('button', { name: 'Keep', exact: true }).click()
-  await expect(card).toContainText('· kept')
-  await expect(card.locator('.axis-thumb')).toHaveCount(1)
-  // only the kept card shows a thumbnail; every other card is still text
-  await expect(page.locator('[data-testid="axis-card"] .axis-thumb')).toHaveCount(1)
-  await expectItemCount(page, 6)
+  const f = await openDimension(page, 'Detail style')
+  await panToReach(page, f)
+  const card = await renderUntilOk(page, f, 'Generate image', 'Muse Image · inside the Detail mask')
+  const optionId = (await f.locator('.petal.is-open').getAttribute('data-option-id'))!
+  await card.getByRole('button', { name: 'Keep', exact: true }).click()
+  await expectItemCount(page, 2)
+  const kept = () => page.locator(`[data-testid="petal"][data-option-id="${optionId}"]`)
+  await expect(kept()).toHaveAttribute('aria-label', / · kept$/)
+  // only the kept petal shows its result grown; it is on the board as an ordinary item
+  await expect(page.locator('.petal.is-kept')).toHaveCount(1)
 
   await page.reload()
-  await expectItemCount(page, 6)
-  await expect(page.locator(`[data-testid="axis-card"][data-option-id="${optionId}"]`)).toContainText('· kept')
+  await expectItemCount(page, 2)
+  await expect(kept()).toHaveAttribute('aria-label', / · kept$/)
 
-  // a kept card selects its item and opens the popover with Un-keep
-  await page.locator(`[data-testid="axis-card"][data-option-id="${optionId}"]`).click()
-  await page.getByRole('button', { name: 'Un-keep' }).click()
-  const back = page.locator(`[data-testid="axis-card"][data-option-id="${optionId}"]`)
-  await expect(back).not.toContainText('· kept')
-  await expect(back.locator('.axis-thumb')).toHaveCount(0)
-  await expect(page.locator('[data-testid="axis-card"] .axis-thumb')).toHaveCount(0)
-  await expect(back.locator('.axis-card-name')).toHaveText(name)
-  await expectItemCount(page, 5)
+  // Branch selects the kept result: its own callouts open from there
+  await kept().click()
+  await page.locator('.petal-card').getByRole('button', { name: 'Branch' }).click()
+  const keptItem = (await boardItems(boardId)).find((i) => i.parent_item_id && !i.staged)!
+  const pressed = page.getByRole('list', { name: 'Items on this board' }).locator('button[aria-pressed="true"]')
+  await expect(pressed).toContainText(keptItem.original_filename ?? keptItem.id)
+  await expect(callout(page, 'Detail')).toBeVisible()
 })
 
 test('plugin: add Palette & material, run on an image, a Palette note lands on the board', async ({ page }) => {

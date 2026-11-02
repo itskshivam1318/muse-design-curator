@@ -49,6 +49,7 @@ class Manifest(BaseModel):
     output_map: dict[str, str] | None = None
     model: ModelName | None = None
     secondary: str | None = None
+    renders: list[Kind] = Field(default_factory=list)  # item kinds it can render an option for
 
     @model_validator(mode="after")
     def _runner_fields(self) -> Self:

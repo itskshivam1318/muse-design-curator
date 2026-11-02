@@ -1,4 +1,4 @@
-"""Prompts for exploring an attribute into named design moves and for checking the result."""
+"""Prompts for exploring a dimension into named design moves and for checking the result."""
 
 from typing import Any, Literal
 
@@ -55,7 +55,19 @@ def build_explore_prompt(
     parent: dict[str, Any] | None,
     steer: str | None,
     mode: Literal["initial", "more", "further"],
+    dimension_prompt: str | None = None,
+    part_label: str | None = None,
 ) -> str:
+    """`dimension_prompt` is an abstract dimension's own description; `part_label` names the
+    part a physical dimension lives on (only that part changes)."""
+    scope = []
+    if dimension_prompt:
+        scope.append(f"What {spec.label} means for this item: {dimension_prompt}")
+    if part_label:
+        scope.append(
+            f"{spec.label} is a property of the {part_label}: only the {part_label} changes,"
+            " everything outside it stays as it is."
+        )
     parts = [
         (
             "You are a design collaborator. Look at the image and propose 6 to 10 options for how"
@@ -63,6 +75,7 @@ def build_explore_prompt(
         ),
         f"Board: {board_title}." + (f" Context: {board_context}" if board_context else ""),
         f"Current {spec.label}: {_show(current)}.",
+        *scope,
         (
             "Each option is a specific, nameable design move grounded in THIS image and this"
             ' board, something a designer could say in a few words (for example "a contrasting'

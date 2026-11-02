@@ -19,6 +19,12 @@ MAX_NOTES = 20
 MAX_CHARS = 2000
 
 
+def _request_analyse(session: Session, item_id: str) -> None:
+    from app.analysis.service import request_analyse  # imported late: it imports the notes layer
+
+    request_analyse(session, item_id, count=False)
+
+
 def create_note(
     session: Session,
     board_id: str,
@@ -35,6 +41,7 @@ def create_note(
         note_text=text, w=w if w is not None else NOTE_W, h=h if h is not None else NOTE_H,
     )  # fmt: skip
     after_commit(session, partial(events.publish, board_id, "item.added", item_to_dict(item)))
+    _request_analyse(session, item.id)
     return item
 
 
@@ -47,6 +54,7 @@ def set_note_text(session: Session, item_id: str, text: str) -> BoardItem:
         raise AppError(400, "NOT_A_NOTE", "Only a note has text to edit")
     item.note_text = text
     session.flush()
+    _request_analyse(session, item.id)
     return item
 
 

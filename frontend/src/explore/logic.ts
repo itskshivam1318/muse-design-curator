@@ -1,6 +1,5 @@
-/** Pure helpers behind the Explore panel and the option notes. No React, no network. */
-import { ApiError, type AttributeSpec, type Exploration, type ExploreOption, type VariationRequest } from '../api'
-import { vocabularyOf } from '../vary/logic'
+/** Pure helpers behind the explore axes and the option notes. No React, no network. */
+import { ApiError, type Exploration, type ExploreOption } from '../api'
 
 export interface OptionRow {
   option: ExploreOption
@@ -35,28 +34,6 @@ export function optionTree(options: ExploreOption[]): OptionRow[] {
   }
   roots.forEach((o) => walk(o, 0))
   return out
-}
-
-/**
- * Whether "Find real examples" can search for this option: it needs a value, and a closed
- * enum only matches values in its vocabulary (visualizing an option adds its value).
- */
-export function canFindReal(spec: AttributeSpec, value: ExploreOption['value']): boolean {
-  if (value === null || value === undefined) return false
-  if (spec.kind !== 'enum' || spec.open_vocabulary === true) return true
-  return vocabularyOf(spec).includes(String(value))
-}
-
-/** The variation run behind "Find real examples": prefer the option's value, keep what it keeps. */
-export function findRealRequest(itemId: string, key: string, option: ExploreOption): VariationRequest {
-  return {
-    source_item_id: itemId,
-    target_key: key,
-    mode: 'prefer',
-    target_values: [String(option.value)],
-    protected_keys: option.keeps,
-    nudge: null,
-  }
 }
 
 /** The board's explorations with `e` added or replaced (the same merge as the explore.updated event). */

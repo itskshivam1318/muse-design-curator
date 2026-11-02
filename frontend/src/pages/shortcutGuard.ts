@@ -1,7 +1,7 @@
 import type { Item } from '../api'
 
 /**
- * Board shortcuts (v, i, x, f, Delete, n, a) must not fire while focus is inside an open dialog or
+ * Board shortcuts (i, x, f, Delete, n) must not fire while focus is inside an open dialog or
  * drawer, or on a plugin node card's controls (Backspace on its Run button is not "delete items").
  */
 const OVERLAY = '[role="dialog"], [aria-modal="true"], .right-drawer, .node-card'
@@ -26,19 +26,17 @@ export function toolShortcutAllowed(e: KeyboardEvent): boolean {
 }
 
 export type ItemShortcut =
-  | { kind: 'panel'; panel: 'explore' | 'vary' | 'inspect'; itemId: string }
+  | { kind: 'panel'; panel: 'inspect'; itemId: string }
   | { kind: 'notThis'; items: Item[] }
   | null
 
 /**
- * What `v`, `i` and `x` do with the selection. They are image shortcuts: notes in the selection are
+ * What `i` and `x` do with the selection. They are image shortcuts: notes in the selection are
  * left out, and with nothing else selected the key does nothing.
  */
-export function itemShortcut(key: string, chosen: readonly Item[], flags: { explore: boolean; locked: boolean }): ItemShortcut {
+export function itemShortcut(key: string, chosen: readonly Item[], flags: { locked: boolean }): ItemShortcut {
   const targets = chosen.filter((i) => i.kind !== 'note')
   switch (key.toLowerCase()) {
-    case 'v':
-      return targets.length === 1 ? { kind: 'panel', panel: flags.explore ? 'explore' : 'vary', itemId: targets[0].id } : null
     case 'i':
       return targets.length === 1 ? { kind: 'panel', panel: 'inspect', itemId: targets[0].id } : null
     case 'x':
