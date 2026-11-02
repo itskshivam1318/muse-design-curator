@@ -113,6 +113,22 @@ Physics resolves any crowding. Persisting the auto offset on first settle is acc
 - Add button back on the board.
 - Callouts around the image, not in a line.
 
+## Builder-check answers
+
+- **Existing kept takes (owner decision):** kept takes created before this ships are moved into their ring
+  automatically, once, the first time the board loads with the new client (treated as docked). This is the one
+  allowed storage change the user didn't make by hand. After that they behave like any docked take.
+- **Docked size (my call):** a docked kept take's stored `w/h` is shrunk to the docked size (same aspect, ~168px
+  wide) so it stays an ordinary Konva board item (selectable, callouts, nested flowers, drag). Undocking grows it
+  back to a normal board size (~300px wide, its aspect) and writes `w/h`. Keep writes the docked size.
+- **Collapse (my call):** collapsing a flower hides its option cards only; docked kept takes stay visible, clustered
+  around the badge (their ring shrinks to fit the badge), and their own flowers stay as they are.
+- **Callouts (my call):** callouts are collision bodies only while shown (as in the prototype); selecting an image
+  nudges its neighbours aside. Auto hub offsets are measured from the source bounds, not the callout ring.
+- **Undo and writes (my call):** dragging a source together with everything attached is one undo entry and one
+  batched write on pointer release (item x/y, hub dx/dy, docked takes' x/y). Docked takes' x/y are written on
+  release of whatever moved them — never continuously, never from drift.
+
 ## My calls (not discussed with the owner)
 
 - **+** button placement beside the tool dock; reuses `AddActions` in a popover; Library keeps its copy.
