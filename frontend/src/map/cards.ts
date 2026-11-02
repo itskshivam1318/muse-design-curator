@@ -2,7 +2,7 @@
 import type { AnalysisView, Item } from '../api'
 import type { Bounds } from '../canvas/geometry'
 import { itemBounds } from '../canvas/nodeProps'
-import { calloutSlots } from './layout'
+import { CALLOUT_W, calloutSlots } from './layout'
 import { partAnchor } from './regions'
 
 /** The Whole item card's key among the part keys (part keys are slugs: no colon). */
@@ -35,6 +35,16 @@ export function cardOf(analysis: AnalysisView, key: string): string | null {
   return d.type === 'physical' && d.part && analysis.parts.some((p) => p.key === d.part) ? d.part : WHOLE
 }
 
+/** A card's size: the callout width, and the height its rows (and `forms` open add-forms) need. */
+export function calloutSize(item: Item, analysis: AnalysisView, card: string, forms = 0): { w: number; h: number } {
+  if (card === WHOLE) {
+    const abstract = analysis.dimensions.filter((d) => d.type === 'abstract').length
+    return { w: CALLOUT_W, h: cardHeight(abstract, canAddPart(item, analysis) ? 2 : 1, forms) }
+  }
+  const rows = analysis.dimensions.filter((d) => d.type === 'physical' && d.part === card).length
+  return { w: CALLOUT_W, h: cardHeight(rows, 1, forms) }
+}
+
 /**
  * Where each card goes around `item` (keyed by part key, and WHOLE): the same slots the callouts draw,
  * so flowers can start at their dimension's card even while it is not shown. `formsOn` counts the
@@ -47,17 +57,15 @@ export function calloutBounds(
   formsOn: (card: string) => number = () => 0,
 ): Map<string, Bounds> {
   const bounds = itemBounds(item)
-  const count = (part: string) => analysis.dimensions.filter((d) => d.type === 'physical' && d.part === part).length
-  const abstract = analysis.dimensions.filter((d) => d.type === 'abstract').length
   return calloutSlots(
     bounds,
     [
       ...analysis.parts.map((p) => ({
         key: p.key,
         anchor: partAnchor(bounds, p, item.note_text),
-        height: cardHeight(count(p.key), 1, formsOn(p.key)),
+        height: calloutSize(item, analysis, p.key, formsOn(p.key)).h,
       })),
-      { key: WHOLE, anchor: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height }, height: cardHeight(abstract, canAddPart(item, analysis) ? 2 : 1, formsOn(WHOLE)) },
+      { key: WHOLE, anchor: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height }, height: calloutSize(item, analysis, WHOLE, formsOn(WHOLE)).h },
     ],
     obstacles,
   )

@@ -162,6 +162,8 @@ export interface ExploreOption {
   kept_item_id: string | null
   /** Item ids of the staged takes generated for this option. */
   takes: string[]
+  /** The kept take was dragged out of its ring: it is an ordinary board item (absent: docked). */
+  undocked?: boolean
 }
 
 export interface Exploration {
@@ -171,6 +173,9 @@ export interface Exploration {
   key: string
   created_at?: string
   options: ExploreOption[]
+  /** The hub's stored offset from its source item's centre; null (or absent) until the hub is placed. */
+  dx?: number | null
+  dy?: number | null
 }
 
 export interface ItemLicence {
