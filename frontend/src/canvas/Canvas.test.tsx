@@ -270,6 +270,25 @@ describe('Canvas part callouts', () => {
     await waitFor(() => expect(screen.getByTestId('region-overlay').dataset.state).toBe('bbox'))
   })
 
+  it("a selected note's callouts mount once, beside its note bar", () => {
+    // the note bar and the callouts were both keyed by the note's id: React kept stray copies
+    const note = makeItem({ id: 'n1', board_id: 'b1', kind: 'note', origin: 'note', note_text: 'Olive canvas strap' })
+    const qc = client([], [note])
+    qc.setQueryData(keys.analysis('n1'), {
+      content_type: 'text',
+      parse_status: 'completed',
+      parts: [{ key: 'opening', label: 'Opening', region_kind: 'text_range', region: [0, 5], mask_url: null, source: 'ai' }],
+      dimensions: [],
+    })
+    renderBoard(qc)
+    act(() => selection.select(['n1']))
+    expect(screen.getByRole('toolbar', { name: 'Note actions' })).toBeTruthy()
+    act(() => selection.clear())
+    act(() => selection.select(['n1']))
+    expect(document.querySelectorAll('.callout-layer')).toHaveLength(1)
+    expect(screen.getAllByRole('group', { name: 'Opening' })).toHaveLength(1)
+  })
+
   it('a note waiting for analysis shows no callouts', () => {
     const note = makeItem({ id: 'n1', board_id: 'b1', kind: 'note', origin: 'note', note_text: 'Olive', parse_status: 'pending' })
     const qc = client([], [note])

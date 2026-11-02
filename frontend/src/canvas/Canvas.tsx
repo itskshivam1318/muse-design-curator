@@ -677,7 +677,7 @@ export function Canvas({
       )}
       {calloutItem && analysis && showCallouts && (
         <Callouts
-          key={calloutItem.id}
+          key={`callouts-${calloutItem.id}`}
           item={calloutItem}
           analysis={analysis}
           view={view}
@@ -706,7 +706,7 @@ export function Canvas({
       )}
       {barNote && !dragging && !marquee && (
         <NoteBar
-          key={barNote.id}
+          key={`note-bar-${barNote.id}`}
           boardId={boardId}
           note={barNote}
           screen={toScreenBounds(itemBounds(positioned(barNote)), view)}
