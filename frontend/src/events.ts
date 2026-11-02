@@ -19,6 +19,8 @@ export const EVENT_TYPES = [
   'item.failed',
   'item.updated',
   'item.removed',
+  'item.analysed',
+  'board.learned',
   'profile.updated',
   'board.updated',
   'lens.proposed',
@@ -291,6 +293,12 @@ function applyToCache(qc: QueryClient, boardId: string, type: string, d: Record<
           parse_error_code: null,
         }),
       )
+      return
+    case 'item.analysed':
+      void qc.invalidateQueries({ queryKey: keys.analysis(String(d.item_id)) })
+      return
+    case 'board.learned':
+      void qc.invalidateQueries({ queryKey: keys.boardContext(boardId) })
       return
     case 'item.failed':
       qc.setQueryData<Item[]>(keys.items(boardId), (old) =>

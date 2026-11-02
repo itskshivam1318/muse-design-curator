@@ -49,6 +49,75 @@ export interface Item {
   note_text: string | null
   /** A staged item is a take or plugin result not yet kept on the board. */
   staged: boolean
+  /** What the item is (set by analysis or the person); null until known. */
+  content_type: ContentType | null
+  /** The part key this item was extracted from its parent as; null otherwise. */
+  extracted_part: string | null
+}
+
+export type ContentType = 'image' | 'ui' | 'text'
+export type RegionKind = 'box' | 'range' | 'mask' | 'whole'
+
+/** Where a part lives: a box (x, y, w, h as fractions), a text range, or a mask image. */
+export interface Region {
+  kind: RegionKind
+  box?: number[]
+  range?: number[]
+  mask_url?: string
+}
+
+export interface PartView {
+  key: string
+  label: string
+  region_kind: RegionKind
+  region: Region | null
+  mask_url: string | null
+  source: string
+}
+
+export interface DimensionView {
+  key: string
+  label: string
+  type: 'physical' | 'abstract'
+  part: string | null
+  prompt: string | null
+  kind: string
+  value: string | number | boolean | null
+  confidence: number | null
+  source: string
+  /** "stale" when the value predates an edit to the item. */
+  status: string
+}
+
+export interface AnalysisView {
+  content_type: ContentType | null
+  parse_status: ParseStatus
+  parts: PartView[]
+  dimensions: DimensionView[]
+}
+
+export interface RendererInfo {
+  id: string
+  title: string
+  detail: string
+  builtin: boolean
+}
+
+export interface Offer {
+  label: string
+  dim_type: 'physical' | 'abstract'
+  kind: string
+  part: string | null
+  count: number
+  total: number
+}
+
+export type OfferBody = Pick<Offer, 'label' | 'dim_type' | 'kind' | 'part'>
+
+export interface BoardContextView {
+  your_words: string
+  learned: string[]
+  offers: Offer[]
 }
 
 /** Generated means origin, never a non-null `generation` (a note holds its visualize claim there). */
@@ -518,6 +587,10 @@ export const keys = {
   packs: () => ['plugin-packs'] as const,
   boardPlugins: (id: string) => ['boardPlugins', id] as const,
   nodes: (id: string) => ['nodes', id] as const,
+  analysis: (itemId: string) => ['analysis', itemId] as const,
+  region: (itemId: string, partKey: string) => ['region', itemId, partKey] as const,
+  renderers: (itemId: string, key: string) => ['renderers', itemId, key] as const,
+  boardContext: (boardId: string) => ['boardContext', boardId] as const,
   attributeHistory: (itemId: string, key: string) => ['attributeHistory', itemId, key] as const,
 }
 
@@ -578,7 +651,7 @@ export const addLink = (boardId: string, url: string, at?: Point) =>
 
 export const patchItem = (
   id: string,
-  body: Partial<Pick<Item, 'x' | 'y' | 'w' | 'h' | 'z' | 'role' | 'note_text'>> & { chosen_frame_id?: string },
+  body: Partial<Pick<Item, 'x' | 'y' | 'w' | 'h' | 'z' | 'role' | 'note_text' | 'content_type'>> & { chosen_frame_id?: string },
 ) => request<Item>(`/items/${enc(id)}`, { method: 'PATCH', json: body })
 export const deleteItem = (id: string) => request<void>(`/items/${enc(id)}`, { method: 'DELETE' })
 export const listFrames = (itemId: string) =>
@@ -610,8 +683,13 @@ export const patchOption = (
   body: { status?: 'dismissed' | 'open'; x?: number; y?: number },
 ) => request<ExploreOption>(`/options/${enc(optionId)}`, { method: 'PATCH', json: body })
 /** `at` is where the canvas draws the option's note; the server saves it and places the image beside it. */
-export const visualizeOption = (optionId: string, at?: Point) =>
-  request<void>(`/options/${enc(optionId)}/visualize`, { method: 'POST', ...(at ? { json: at } : {}) })
+export const visualizeOption = (optionId: string, opts: { at?: Point; renderer_id?: string } = {}) => {
+  const json = { ...(opts.at ?? {}), ...(opts.renderer_id ? { renderer_id: opts.renderer_id } : {}) }
+  return request<void>(`/options/${enc(optionId)}/visualize`, {
+    method: 'POST',
+    ...(Object.keys(json).length ? { json } : {}),
+  })
+}
 
 export const keepTake = (optionId: string, itemId: string, at?: Point) =>
   request<ExploreOption>(`/options/${enc(optionId)}/keep`, {
@@ -723,3 +801,41 @@ export function uploadFiles(
   })
   return { promise, abort: () => xhr.abort() }
 }
+
+const item = (itemId: string) => `/items/${enc(itemId)}`
+
+export const getAnalysis = (itemId: string) => request<AnalysisView>(`${item(itemId)}/analysis`)
+export const analyseItem = (itemId: string) => request<void>(`${item(itemId)}/analyse`, { method: 'POST' })
+export const getRegion = (itemId: string, partKey: string) =>
+  request<Region>(`${item(itemId)}/parts/${enc(partKey)}/region`)
+export const addPart = (itemId: string, body: { label: string; region?: Region }) =>
+  request<PartView>(`${item(itemId)}/parts`, { method: 'POST', json: body })
+export const renamePart = (itemId: string, partKey: string, label: string) =>
+  request<PartView>(`${item(itemId)}/parts/${enc(partKey)}`, { method: 'PATCH', json: { label } })
+export const removePart = (itemId: string, partKey: string) =>
+  request<void>(`${item(itemId)}/parts/${enc(partKey)}`, { method: 'DELETE' })
+export const addDimension = (
+  itemId: string,
+  body: { label: string; type: DimensionView['type']; part?: string | null; prompt?: string; kind?: string },
+) => request<DimensionView>(`${item(itemId)}/dimensions`, { method: 'POST', json: body })
+export const updateDimension = (
+  itemId: string,
+  key: string,
+  body: Partial<Pick<DimensionView, 'label' | 'prompt' | 'kind' | 'value'>>,
+) => request<DimensionView>(`${item(itemId)}/dimensions/${enc(key)}`, { method: 'PATCH', json: body })
+export const removeDimension = (itemId: string, key: string) =>
+  request<void>(`${item(itemId)}/dimensions/${enc(key)}`, { method: 'DELETE' })
+export const setContentType = (itemId: string, contentType: ContentType) =>
+  patchItem(itemId, { content_type: contentType })
+/** Cut a part out of its item as a new item. */
+export const extractPart = (itemId: string, partKey: string) =>
+  request<Item>(`${item(itemId)}/parts/${enc(partKey)}/extract`, { method: 'POST' })
+export const getRenderers = (itemId: string, key: string) =>
+  request<RendererInfo[]>(`${item(itemId)}/dimensions/${enc(key)}/renderers`)
+
+export const getBoardContext = (boardId: string) =>
+  request<BoardContextView>(`/boards/${enc(boardId)}/context`)
+export const acceptOffer = (boardId: string, body: OfferBody) =>
+  request<BoardContextView>(`/boards/${enc(boardId)}/offers/accept`, { method: 'POST', json: body })
+export const declineOffer = (boardId: string, body: OfferBody) =>
+  request<BoardContextView>(`/boards/${enc(boardId)}/offers/decline`, { method: 'POST', json: body })
