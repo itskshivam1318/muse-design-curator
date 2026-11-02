@@ -448,11 +448,13 @@ def _pixels(item: BoardItem) -> np.ndarray:
         return np.asarray(im.convert("RGB")).astype(int)
 
 
-def _outside(shape: tuple[int, ...], box: list[float], margin: int) -> np.ndarray:
+def _outside(shape: tuple[int, ...], box: list[float]) -> np.ndarray:
+    """True for every pixel outside the box (the pixels the box covers, rounded outward)."""
     h, w = shape[:2]
     ys, xs = np.mgrid[0:h, 0:w]
-    x0, y0, x1, y1 = box[0] * w, box[1] * h, box[2] * w, box[3] * h
-    return (xs < x0 - margin) | (xs >= x1 + margin) | (ys < y0 - margin) | (ys >= y1 + margin)
+    x0, y0 = int(box[0] * w), int(box[1] * h)
+    x1, y1 = int(np.ceil(box[2] * w)), int(np.ceil(box[3] * h))
+    return (xs < x0) | (xs >= x1) | (ys < y0) | (ys >= y1)
 
 
 def test_physical_box_dimension_changes_only_inside_the_box(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
@@ -465,8 +467,8 @@ def test_physical_box_dimension_changes_only_inside_the_box(client: TestClient, 
     assert src is not None
     before, after = _pixels(src), _pixels(take)
     assert before.shape == after.shape
-    outside = _outside(before.shape, box, 30)
-    assert np.array_equal(after[outside], before[outside])
+    outside = _outside(before.shape, box)
+    assert np.array_equal(after[outside], before[outside])  # every pixel outside the box
     assert not np.array_equal(after[~outside], before[~outside])
     assert take.generation_json["renderer"] == "muse_image"
 
@@ -485,13 +487,16 @@ def test_physical_mask_dimension_changes_only_inside_the_mask(client: TestClient
     src = items_repo.get(world["session"], src_id)
     assert src is not None
     before, after = _pixels(src), _pixels(take)
-    outside = _outside(before.shape, [0.3, 0.2, 0.6, 0.5], 30)
-    assert np.array_equal(after[outside], before[outside])
-    assert not np.array_equal(after, before)
+    h, w = before.shape[:2]
+    outside = np.asarray(Image.fromarray(mask).resize((w, h), Image.Resampling.NEAREST)) == 0
+    assert np.array_equal(after[outside], before[outside])  # every pixel outside the mask
+    assert not np.array_equal(after[~outside], before[~outside])
 
 
 def test_abstract_dimension_edits_the_whole_image(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
-    opt = first_option(client, world)  # the seeded rows are abstract
+    r = explore(client, source(world), key="overall_style")  # a dimension with no part
+    assert r.status_code == 200, r.json()
+    opt = r.json()["options"][0]
     assert run(client, opt["id"]).status_code == 202
     (take,) = generated(world, opt["id"])
     src = items_repo.get(world["session"], source(world))
@@ -567,3 +572,49 @@ def test_abstract_text_dimension_rewrites_the_whole_note(client: TestClient, wor
     (take,) = generated(world, oid)
     assert take.note_text == "QUIET WORDS"
     assert take.generation_json["changed_range"] == [0, 11]
+
+
+def test_seeded_part_dimension_is_physical_and_masked(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    """`markers` names the lens part `watch_dial` with no part row: it is still physical,
+    located (mock SAM: the centre 60%) and composited back inside that mask only."""
+    opt = first_option(client, world)
+    assert run(client, opt["id"]).status_code == 202
+    (take,) = generated(world, opt["id"])
+    src = items_repo.get(world["session"], source(world))
+    assert src is not None
+    before, after = _pixels(src), _pixels(take)
+    corner = (slice(0, 5), slice(0, 5))
+    assert np.array_equal(after[corner], before[corner])
+    assert not np.array_equal(after, before)
+
+
+def _refused(world: dict[str, Any], oid: str, code: str) -> None:
+    o = option_row(world, oid)
+    assert o.status == "open" and o.last_error == code and o.visualize_claimed_at is None
+    assert generated(world, oid) == []
+
+
+def test_unusable_region_is_refused_and_refunded(client: TestClient, world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("RENDER_PER_BOARD_PER_DAY", "1")
+    _as_physical(world, "text_range", region_json=[0, 4])  # a text range on an image
+    opt = first_option(client, world)
+    assert run(client, opt["id"]).status_code == 202
+    _refused(world, opt["id"], "REGION_EMPTY")
+    assert run(client, opt["id"]).status_code == 202  # the refused render cost nothing
+
+
+def test_missing_mask_file_is_refused(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    _as_physical(world, "mask", mask_path="masks/gone.png", region_json=[0.1, 0.1, 0.5, 0.5])
+    opt = first_option(client, world)
+    assert run(client, opt["id"]).status_code == 202
+    _refused(world, opt["id"], "REGION_FAILED")
+
+
+def test_physical_text_dimension_without_a_range_is_refused(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    note, oid = _note_option(world, "Aaa. Bbb. Ccc.", physical=True)
+    s = world["session"]
+    part = s.scalar(select(ItemPart).where(ItemPart.item_id == note.id))
+    part.region_json = None
+    s.commit()
+    assert run(client, oid).status_code == 202
+    _refused(world, oid, "REGION_EMPTY")

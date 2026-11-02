@@ -20,6 +20,7 @@ def _is_user_owned(row: ItemAttribute) -> bool:
 def record_fields(rec: AttributeRecord) -> dict[str, Any]:
     return {
         "label": rec.label, "category": rec.category, "kind": rec.kind, "part": rec.part,
+        "dim_type": "physical" if rec.part else "abstract",
         "value_json": rec.value, "confidence": rec.confidence, "status": rec.status,
         "source": rec.source, "source_detail": rec.source_detail,
         "evidence_json": rec.evidence.model_dump(mode="json"), "measured_json": rec.measured,

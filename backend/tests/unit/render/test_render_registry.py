@@ -158,8 +158,26 @@ def test_pick_a_plugin_that_cannot_edit_is_unsupported(
 def test_rewrite_changes_only_range() -> None:
     out = rewrite_passage("Aaa. Bbb. Ccc.", (5, 9), "louder")
     assert out[:5] == "Aaa. " and out.endswith(" Ccc.")
-    assert out[5:9] != "Bbb."
+    assert out == "Aaa. BBB. Ccc."
 
 
 def test_rewrite_whole_text_without_range() -> None:
-    assert rewrite_passage("quiet words", None, "louder") != "quiet words"
+    assert rewrite_passage("quiet words", None, "louder") == "QUIET WORDS"  # the mock upper-cases
+
+
+def test_shape_follows_the_part_region_kind(session: Session) -> None:
+    b = board(session)
+    img = item(session, b, "image", "image")
+    part(session, img, "label", "Label", "box")  # a box part on a photo
+    (r,) = renderers_for(session, img, dim(session, img, "label_colour", "label"))
+    assert r.detail == "Muse Image · inside the Label box"
+
+
+def test_a_row_with_a_part_is_physical_whatever_its_stored_type(session: Session) -> None:
+    b = board(session)
+    img = item(session, b, "image", "image")
+    part(session, img, "hands", "Hands", "mask")
+    row = dim(session, img, "hand_style", "hands")
+    row.dim_type = "abstract"  # a legacy lens row
+    (r,) = renderers_for(session, img, row)
+    assert r.detail == "Muse Image · inside the Hands mask"

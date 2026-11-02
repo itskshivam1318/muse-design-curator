@@ -58,4 +58,5 @@ def spec_from_dimension(d: DimensionOut) -> AttributeSpec:
 
 
 def dimension_type(row: ItemAttribute) -> DimType:
-    return "physical" if row.dim_type == "physical" else "abstract"
+    """A row with a part is physical, whatever its stored type; otherwise the stored type."""
+    return "physical" if row.part or row.dim_type == "physical" else "abstract"

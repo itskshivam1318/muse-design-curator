@@ -27,8 +27,8 @@ def composite_in_region(
     source: bytes, edited: bytes, region: Region, mask: np.ndarray | None, feather_px: int = 6
 ) -> bytes:
     """`edited`, resized to the source, blended over the source through the region's alpha
-    (Gaussian-feathered by `feather_px`), as PNG. Where the alpha is 0 the source pixel is
-    kept exactly."""
+    (Gaussian-feathered by `feather_px` inside the region only), as PNG. Every pixel outside
+    the region is kept exactly."""
     with Image.open(io.BytesIO(source)) as im:
         im.load()
         has_alpha = "A" in im.getbands() or "transparency" in im.info
@@ -37,10 +37,11 @@ def composite_in_region(
         edit = im.convert("RGBA")
     if edit.size != src.size:
         edit = edit.resize(src.size, Image.Resampling.LANCZOS)
-    alpha = _alpha(src.size, region, mask)
-    if feather_px > 0:
-        alpha = alpha.filter(ImageFilter.GaussianBlur(feather_px))
-    a = np.asarray(alpha, dtype=np.uint32)[..., None]
+    hard = _alpha(src.size, region, mask)
+    a = np.asarray(hard, dtype=np.uint32)
+    if feather_px > 0:  # the feather fades in from the edge; it never reaches outside it
+        a = np.minimum(np.asarray(hard.filter(ImageFilter.GaussianBlur(feather_px))), a)
+    a = a.astype(np.uint32)[..., None]
     s = np.asarray(src, dtype=np.uint32)
     e = np.asarray(edit, dtype=np.uint32)
     blended = (s * (255 - a) + e * a + 127) // 255  # a == 0 gives s exactly

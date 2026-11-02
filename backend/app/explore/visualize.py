@@ -179,33 +179,66 @@ class _Area:
     mask: np.ndarray | None
 
 
+def _region_empty() -> AppError:
+    return AppError(422, "REGION_EMPTY", "Nothing found for this part")
+
+
+def _region_of(session: Session, source: BoardItem, row: ItemAttribute) -> Region:
+    """The physical dimension's part region (located now if need be): 404/422/502 AppError."""
+    if not row.part:
+        raise _region_empty()
+    return locate(session, source.id, row.part)  # commits a newly located mask
+
+
 def _area(session: Session, source: BoardItem, row: ItemAttribute | None) -> _Area | None:
-    """Where a physical dimension's edit is composited back: its part's mask or box (located
-    now if need be). None for an abstract dimension: the whole image changes."""
+    """Where a physical dimension's edit is composited back: its part's mask or box. None for
+    an abstract dimension: the whole image changes. A region that cannot be used is refused
+    (never widened to the whole image)."""
     if row is None or not is_physical(row):
         return None
-    assert row.part is not None
-    region = locate(session, source.id, row.part)  # 404/422/502 AppError; commits a new mask
-    if region.kind == "box" and region.box is not None:
+    region = _region_of(session, source, row)
+    if region.kind == "box":
+        if region.box is None:
+            raise _region_empty()
         return _Area(region, None)
     if region.kind != "mask":
-        return None  # a text range on an image: nothing to mask by
+        raise _region_empty()  # a text range on an image: nothing to composite inside
     part = session.scalar(
         select(ItemPart).where(ItemPart.item_id == source.id, ItemPart.key == row.part)
     )
-    assert part is not None and part.mask_path is not None
-    with Image.open(files.abs_path(part.mask_path)) as m:
-        return _Area(region, np.asarray(m.convert("L")) > 127)
+    path = files.abs_path(part.mask_path) if part is not None and part.mask_path else None
+    if path is None or not path.is_file():
+        raise AppError(502, "REGION_FAILED", "Could not locate this part")
+    with Image.open(path) as m:
+        mask = np.asarray(m.convert("L")) > 127
+    if not mask.any():
+        raise _region_empty()
+    return _Area(region, mask)
+
+
+def _passage(
+    session: Session, source: BoardItem, row: ItemAttribute | None
+) -> tuple[int, int] | None:
+    """The physical dimension's text range, refused when it has none; None for an abstract
+    dimension (the whole text is rewritten)."""
+    if row is None or not is_physical(row):
+        return None
+    region = _region_of(session, source, row)
+    if region.range is None:
+        raise _region_empty()
+    start, end = span(source.note_text or "", (region.range[0], region.range[1]))
+    if start >= end:
+        raise _region_empty()
+    return start, end
 
 
 def _render_image(
     session: Session, source: BoardItem, o: ExploreOption, row: ItemAttribute | None,
-    info: RendererInfo,
+    info: RendererInfo, area: _Area | None,
 ) -> BoardItem:  # fmt: skip
     """Edit the whole image; composite it back inside the part's region when there is one."""
     provider = get_image_provider(get_settings())
     image, _sha = _image_for(session, source)
-    area = _area(session, source, row)
     prompt = o.edit_prompt
     if not info.builtin and area is not None and row is not None:  # a plugin's part prompt
         prompt = PART_PROMPT.format(part=_part_label(session, row), prompt=prompt.rstrip(" ."))
@@ -216,17 +249,11 @@ def _render_image(
 
 
 def _rewrite(
-    session: Session, source: BoardItem, o: ExploreOption, row: ItemAttribute | None
+    session: Session, source: BoardItem, o: ExploreOption, rng: tuple[int, int] | None
 ) -> BoardItem:
-    """Rewrite the dimension's passage (the whole text for an abstract one) into a new staged
-    note beside the source; `changed_range` is where the new passage sits in it."""
+    """Rewrite the passage (the whole text when `rng` is None) into a new staged note beside
+    the source; `changed_range` is where the new passage sits in it."""
     text = source.note_text or ""
-    rng = None
-    if row is not None and is_physical(row):
-        assert row.part is not None
-        region = locate(session, source.id, row.part)
-        if region.range is not None:
-            rng = (region.range[0], region.range[1])
     start, end = span(text, rng)
     new_text = rewrite_passage(text, rng, o.edit_prompt)
     new_len = len(new_text) - (len(text) - (end - start))
@@ -280,13 +307,21 @@ def visualize(session: Session, option_id: str, renderer_id: str | None = None) 
         return
     e = _exploration(session, o)
     try:
-        source = _require_item(session, e.item_id)
-        row = _dimension(session, source.id, e.key)
-        info = pick_renderer(session, source, row, renderer_id)
+        try:  # nothing has rendered yet: a refusal here gives the render slot back
+            source = _require_item(session, e.item_id)
+            row = _dimension(session, source.id, e.key)
+            info = pick_renderer(session, source, row, renderer_id)
+            if info.id == SPARK_REWRITE:
+                rng = _passage(session, source, row)
+            else:
+                area = _area(session, source, row)
+        except (ModelError, AppError):
+            limits.refund(e.board_id, "render")
+            raise
         if info.id == SPARK_REWRITE:
-            item = _rewrite(session, source, o, row)
+            item = _rewrite(session, source, o, rng)
         else:
-            item = _render_image(session, source, o, row, info)
+            item = _render_image(session, source, o, row, info, area)
     except (ModelError, AppError) as exc:
         session.rollback()
         _settle(session, option_id, exc.code)

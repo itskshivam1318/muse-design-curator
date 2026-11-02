@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.analysis.types import Region
 from app.config import get_settings
-from app.db.models import ItemPart
+from app.db.models import ItemAttribute, ItemPart
 from app.errors import AppError
 from app.extraction.service import _image_for, _mask_rel, _part_mask, _require_item
 from app.measure.palette import mask_ratio
@@ -20,8 +20,27 @@ MAX_PROMPT_WORDS = 3
 MIN_MASK_RATIO = 0.001
 
 
+def _lens_part(session: Session, item_id: str, key: str) -> ItemPart | None:
+    """A part a lens-extracted dimension names but no part row backs (rows written by the lens
+    extraction path): created as a mask part, as migration 0008 did for older rows."""
+    named = session.scalar(
+        select(ItemAttribute.id).where(ItemAttribute.item_id == item_id, ItemAttribute.part == key)
+    )
+    if named is None:
+        return None
+    part = ItemPart(
+        item_id=item_id, key=key, label=key.replace("_", " ").capitalize(), region_kind="mask",
+        source="ai",
+    )  # fmt: skip
+    session.add(part)
+    session.flush()
+    return part
+
+
 def _part(session: Session, item_id: str, key: str) -> ItemPart:
     part = session.scalar(select(ItemPart).where(ItemPart.item_id == item_id, ItemPart.key == key))
+    if part is None:
+        part = _lens_part(session, item_id, key)
     if part is None or part.removed:
         raise AppError(404, "PART_NOT_FOUND", "Part not found")
     return part

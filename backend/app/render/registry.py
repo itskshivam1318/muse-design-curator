@@ -10,8 +10,9 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.analysis.spec import dimension_type
 from app.analysis.types import ContentType
-from app.db.models import BoardItem, BoardPlugin, ItemAttribute
+from app.db.models import BoardItem, BoardPlugin, ItemAttribute, ItemPart
 from app.errors import AppError
 from app.explore.service import _part_label
 from app.plugins.registry import Plugin, get_registry
@@ -42,15 +43,27 @@ def content_type(item: BoardItem) -> ContentType | None:
 
 
 def is_physical(row: ItemAttribute | None) -> bool:
-    return row is not None and row.dim_type == "physical" and bool(row.part)
+    """A physical dimension: rendered inside its part's region only."""
+    return row is not None and dimension_type(row) == "physical"
+
+
+def _shape(session: Session, ct: ContentType, row: ItemAttribute) -> str:
+    """ "box" or "mask", from the part's region kind (the content type when it has no row)."""
+    part = session.scalar(
+        select(ItemPart).where(
+            ItemPart.item_id == row.item_id, ItemPart.key == row.part, ItemPart.removed.is_(False)
+        )
+    )
+    if part is not None:
+        return "box" if part.region_kind == "box" else "mask"
+    return "box" if ct == "ui" else "mask"
 
 
 def _image_detail(session: Session, ct: ContentType, row: ItemAttribute | None) -> str:
-    if not is_physical(row):
+    if row is None or not is_physical(row):
         return "Muse Image · whole image, no mask"
-    assert row is not None
-    shape = "box" if ct == "ui" else "mask"
-    return f"Muse Image · inside the {_part_label(session, row)} {shape}"
+    label = _part_label(session, row) or "part"
+    return f"Muse Image · inside the {label} {_shape(session, ct, row)}"
 
 
 def _builtin(

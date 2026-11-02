@@ -41,7 +41,7 @@ def far_from(x0: int, y0: int, x1: int, y1: int, margin: int) -> np.ndarray:
 def test_composite_outside_box_identical() -> None:
     src = source()
     out = composite_in_region(src, edited(), BOX, None)
-    outside = far_from(80, 64, 120, 96, 30)
+    outside = far_from(80, 64, 120, 96, 0)
     assert np.array_equal(arr(out)[outside], arr(src)[outside])
 
 
@@ -66,7 +66,7 @@ def test_composite_with_mask_follows_the_mask() -> None:
     mask[10:30, 10:30] = True  # source px 20..60
     region = Region(kind="mask", box=[0.0, 0.0, 1.0, 1.0], mask_url="/api/media/masks/x.png")
     out = composite_in_region(src, edited(), region, mask)
-    outside = far_from(20, 20, 60, 60, 30)
+    outside = far_from(20, 20, 60, 60, 0)
     assert np.array_equal(arr(out)[outside], arr(src)[outside])
     assert np.abs(arr(out)[38:42, 38:42] - (255, 0, 0)).max() < 16
 
