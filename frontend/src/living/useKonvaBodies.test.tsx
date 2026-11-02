@@ -63,6 +63,21 @@ describe('useKonvaBodies', () => {
     expect((node('.living-link') as Konva.Line).points()).toEqual([250, 100, 350, 100, 350, 100, 450, 100])
   })
 
+  it('does not redraw the layer when nothing moved', () => {
+    const { frame, node } = setup()
+    frame()
+    frame() // settled (both pinned)
+    const layer = node('#a').getLayer()!
+    let draws = 0
+    const orig = layer.batchDraw.bind(layer)
+    layer.batchDraw = () => {
+      draws++
+      return orig()
+    }
+    frame()
+    expect(draws).toBe(0)
+  })
+
   it('leaves the node Konva is dragging alone', () => {
     const { world, frame, node } = setup()
     frame()

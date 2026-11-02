@@ -1,6 +1,7 @@
 import type { Point } from '../api'
 
-export type BodyKind = 'item' | 'kept' | 'hub' | 'petal' | 'callout' | 'badge'
+/** An `obstacle` (e.g. the selection toolbar) is never drawn: it sits at its home and only pushes. */
+export type BodyKind = 'item' | 'kept' | 'hub' | 'petal' | 'callout' | 'badge' | 'obstacle'
 export type Home = { kind: 'abs'; x: number; y: number } | { kind: 'rel'; to: string; dx: number; dy: number }
 
 export interface BodySpec {
@@ -41,8 +42,8 @@ export const FEEL = {
   driftW: [0.55, 0.42] as [number, number],
   damp: 0.86,
   dampReduced: 0.72,
-  k: { item: 0.012, hub: 0.035, petal: 0.05, kept: 0.05, callout: 0.09, badge: 0.035 } as Record<BodyKind, number>,
-  invMass: { item: 0.22, kept: 0.45, hub: 0.6, petal: 1, callout: 0.35, badge: 0.6 } as Record<BodyKind, number>,
+  k: { item: 0.012, hub: 0.035, petal: 0.05, kept: 0.05, callout: 0.09, badge: 0.035, obstacle: 0 } as Record<BodyKind, number>,
+  invMass: { item: 0.22, kept: 0.45, hub: 0.6, petal: 1, callout: 0.35, badge: 0.6, obstacle: 0 } as Record<BodyKind, number>,
   gap: 14,
   iterations: 3,
   push: 0.3,
@@ -160,8 +161,16 @@ export function stepWorld(w: World, dtFrames: number, now: number, opts: { reduc
   // Homes resolve against the parent's position before anyone moves this frame.
   const homes = bodies.map((b) => homeOf(w, b))
   bodies.forEach((b, i) => {
-    if (b.pinned || !awake(b) || now < b.bornAt + (b.delay ?? 0)) return
     const h = homes[i]
+    if (b.kind === 'obstacle') {
+      // no spring, no drift: exactly at its home
+      b.x = h.x
+      b.y = h.y
+      b.vx = 0
+      b.vy = 0
+      return
+    }
+    if (b.pinned || !awake(b) || now < b.bornAt + (b.delay ?? 0)) return
     const tx = h.x + Math.sin(t * FEEL.driftW[0] + b.ph1) * drift
     const ty = h.y + Math.cos(t * FEEL.driftW[1] + b.ph2) * drift
     const k = FEEL.k[b.kind]

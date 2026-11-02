@@ -20,20 +20,33 @@ export function useKonvaBodies(world: LivingWorld, layerRef: RefObject<Konva.Lay
     const write = (now: number): void => {
       const layer = layerRef.current
       if (!layer) return
+      let changed = false // at rest nothing moves: no redraw
       for (const node of layer.getChildren()) {
         const link = node.attrs.link as [string, string] | undefined
         if (link) {
           const [from, to] = link.map(boxOf)
-          if (from && to) (node as Konva.Line).points(lineagePoints(from, to))
+          if (!from || !to) continue
+          const points = lineagePoints(from, to)
+          const line = node as Konva.Line
+          const old = line.points()
+          if (old.length !== points.length || old.some((v, i) => v !== points[i])) {
+            line.points(points)
+            changed = true
+          }
           continue
         }
         const b = world.body((node.attrs.body as string | undefined) ?? node.id())
         if (!b || node.isDragging()) continue
         const s = Math.max(growScale(b, now, world.reduced()), 0.001) // a zero scale cannot be hit-tested
-        node.position({ x: b.x - (b.w * s) / 2, y: b.y - (b.h * s) / 2 })
-        node.scale({ x: s, y: s })
+        const x = b.x - (b.w * s) / 2
+        const y = b.y - (b.h * s) / 2
+        if (node.x() !== x || node.y() !== y || node.scaleX() !== s || node.scaleY() !== s) {
+          node.position({ x, y })
+          node.scale({ x: s, y: s })
+          changed = true
+        }
       }
-      layer.batchDraw()
+      if (changed) layer.batchDraw()
     }
     write(world.now())
     return world.onFrame(write)

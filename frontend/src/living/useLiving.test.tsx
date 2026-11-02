@@ -52,12 +52,36 @@ describe('useBodyElement', () => {
     expect(getByTestId('box').style.transform).toContain('translate(150px, 60px)')
   })
 
-  it('hides the element when the body is missing', () => {
+  it('hides the element when the body is missing, and makes it inert', () => {
     const { world, frame } = setup()
     const { getByTestId } = render(<LivingProvider world={world}><Box id="nope" /></LivingProvider>)
     world.start()
     frame()
     expect(getByTestId('box').style.opacity).toBe('0')
+    expect(getByTestId('box').hasAttribute('inert')).toBe(true)
+  })
+
+  it('an element not yet grown in is inert; once grown it takes focus again', () => {
+    const { world, frame } = setup()
+    world.sync(scene('a'), 0)
+    const { getByTestId } = render(<LivingProvider world={world}><Box id="a" /></LivingProvider>)
+    expect(getByTestId('box').hasAttribute('inert')).toBe(true) // born this instant: scale 0
+    world.start()
+    frame()
+    expect(getByTestId('box').hasAttribute('inert')).toBe(false)
+  })
+
+  it('leaves the style alone while the body is at rest', () => {
+    const { world, frame } = setup()
+    world.sync(scene('a'), -1000)
+    world.setPinned(['a'])
+    const { getByTestId } = render(<LivingProvider world={world}><Box id="a" /></LivingProvider>)
+    world.start()
+    frame()
+    const el = getByTestId('box')
+    el.style.opacity = '0.5' // a write would set it back to 1
+    frame()
+    expect(el.style.opacity).toBe('0.5')
   })
 
   it('useLivingWorld throws without a provider', () => {

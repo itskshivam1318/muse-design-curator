@@ -14,6 +14,7 @@ vi.mock('../api', async (orig) => ({
 const api = await import('../api')
 const { NodesMenu } = await import('./NodesMenu')
 const { NodeLayer } = await import('./NodeLayer')
+const { createLivingWorld } = await import('../living/world')
 const { BottomToolbar } = await import('../shell/BottomToolbar')
 const { LOCKED_TITLE } = await import('../demo')
 const { sendNoteToNode, useNodeDrop } = await import('./nodeDrop')
@@ -138,6 +139,19 @@ describe('NodeLayer', () => {
     expect(document.querySelectorAll('.node-lines path')).toHaveLength(1) // the removed input has no line
     expect(screen.getByText('1 input removed from the board')).toBeTruthy()
     expect(viewportStore.get()).toEqual({ view: { x: 0, y: 0, scale: 0.5 }, width: 800, height: 600 })
+  })
+
+  it("a wire runs from where its item's body is now, not its stored spot", () => {
+    const qc = client()
+    qc.setQueryData<NodesResponse>(keys.nodes('b1'), { nodes: [makeNode({ x: 1000, input_item_ids: ['i1'] })], runs: {} })
+    const world = createLivingWorld({ reduced: true })
+    // photo i1 is stored at (300, 40), 200x150; its body rests 100 lower
+    world.sync({ specs: [{ id: 'i1', kind: 'item', w: 200, h: 150, home: { kind: 'abs', x: 400, y: 215 } }], edges: [], flowers: [], docked: new Map() }, -1000)
+    render(<NodeLayer boardId="b1" items={[note, photo]} view={{ x: 0, y: 0, scale: 1 }} size={{ width: 800, height: 600 }} world={world} />, {
+      wrapper: wrap(qc),
+    })
+    // it leaves the item's right edge at its middle: (500, 215), not the stored (500, 115)
+    expect(document.querySelector('.node-lines path')!.getAttribute('d')).toMatch(/^M500 215C/)
   })
 
   it('renders nothing while plugins are off', () => {

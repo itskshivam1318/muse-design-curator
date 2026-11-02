@@ -65,6 +65,13 @@ export interface SceneInput {
   selectedId: string | null
   /** The open add-forms on a card of the selected item (they make it taller). */
   formsOn?: (card: string) => number
+  /** The selected item's callout cards as drawn (canvas units): their measured height wins over the estimate. */
+  calloutHeights?: ReadonlyMap<string, number>
+  /**
+   * The selection toolbar's size (canvas units, including its gap to the item): it floats centred
+   * just above the selected item, and nothing may sit under it.
+   */
+  toolbar?: { w: number; h: number }
 }
 
 interface Card {
@@ -94,7 +101,7 @@ const rel = (to: string, p: Point): Home => ({ kind: 'rel', to, dx: p.x, dy: p.y
 const polar = (angle: number, r: number): Point => ({ x: Math.cos(angle) * r, y: Math.sin(angle) * r })
 
 export function buildScene(input: SceneInput): Scene {
-  const { items, explorations, analyses, labels, collapsed, selectedId, formsOn = () => 0 } = input
+  const { items, explorations, analyses, labels, collapsed, selectedId, formsOn = () => 0, calloutHeights, toolbar } = input
   const onBoard = items.filter((i) => !i.staged) // staged takes wait in their option's stage
   const byId = new Map(onBoard.map((i) => [i.id, i]))
   const cardCache = new Map<string, Map<string, Card> | null>()
@@ -205,8 +212,15 @@ export function buildScene(input: SceneInput): Scene {
     const b = itemBounds(selected)
     for (const [card, { angle }] of selectedCards) {
       const p = ellipsePoint({ w: b.width, h: b.height }, angle, CALLOUT_GAP)
-      specs.push({ id: calloutId(selected.id, card), kind: 'callout', ...calloutSize(selected, analysis, card, formsOn(card)), home: rel(selected.id, p), ignore: selected.id })
+      const size = calloutSize(selected, analysis, card, formsOn(card))
+      const h = calloutHeights?.get(card) ?? size.h
+      specs.push({ id: calloutId(selected.id, card), kind: 'callout', w: size.w, h, home: rel(selected.id, p), ignore: selected.id })
     }
+  }
+  if (selected && toolbar) {
+    const b = itemBounds(selected)
+    const home = rel(selected.id, { x: 0, y: -(b.height / 2 + toolbar.h / 2) })
+    specs.push({ id: `toolbar:${selected.id}`, kind: 'obstacle', w: toolbar.w, h: toolbar.h, home, ignore: selected.id })
   }
 
   return { specs, edges, flowers: flowers.map((f) => f.model), docked }

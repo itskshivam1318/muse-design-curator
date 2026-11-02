@@ -45,8 +45,11 @@ interface Props {
   /** Clicking a dimension opens its flower (exploring it first if it has none); settles when it is open. */
   onOpenDimension?: (key: string) => unknown
   onHoverPart: (key: string | null) => void
-  /** The open add-forms on each card (they make it taller), reported as they open and close. */
-  onForms?: (forms: Record<string, number>) => void
+  /**
+   * Each card's height as drawn (canvas units; its rows, open forms and error text decide it),
+   * reported as it changes, so the card's body matches it.
+   */
+  onHeights?: (heights: Record<string, number>) => void
   /** Public demo, not unlocked: nothing that changes the item. */
   locked?: boolean
   onWheel?: (e: WheelEvent) => void
@@ -56,7 +59,7 @@ type Form = { kind: 'dimension'; card: string } | { kind: 'part' } | null
 
 const calloutId = (itemId: string, card: string) => `callout:${itemId}:${card}`
 
-export function Callouts({ item, analysis, view, onOpenDimension, onHoverPart, onForms, locked = false, onWheel }: Props) {
+export function Callouts({ item, analysis, view, onOpenDimension, onHoverPart, onHeights, locked = false, onWheel }: Props) {
   const qc = useQueryClient()
   const [form, setForm] = useState<Form>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -67,15 +70,17 @@ export function Callouts({ item, analysis, view, onOpenDimension, onHoverPart, o
     hoverRef.current = onHoverPart
   })
   useEffect(() => () => hoverRef.current(null), [])
-  const formsRef = useRef(onForms)
+  const heightsRef = useRef(onHeights)
   useLayoutEffect(() => {
-    formsRef.current = onForms
+    heightsRef.current = onHeights
   })
-  useEffect(() => {
-    if (!form) return formsRef.current?.({})
-    formsRef.current?.({ [form.kind === 'part' ? WHOLE : form.card]: 1 })
-  }, [form])
-  useEffect(() => () => formsRef.current?.({}), [])
+  const heights = useRef(new Map<string, number>())
+  const measured = (card: string, h: number) => {
+    if (h <= 0 || heights.current.get(card) === h) return
+    heights.current.set(card, h)
+    heightsRef.current?.(Object.fromEntries(heights.current))
+  }
+  useEffect(() => () => heightsRef.current?.({}), [])
 
   const parts = analysis.parts
   const physical = (key: string) => analysis.dimensions.filter((d) => d.type === 'physical' && d.part === key)
@@ -141,6 +146,7 @@ export function Callouts({ item, analysis, view, onOpenDimension, onHoverPart, o
       <Card
         key={key}
         id={calloutId(item.id, key)}
+        onHeight={(h) => measured(key, h)}
         title={title}
         part={p?.key}
         onMouseEnter={() => onHoverPart(hoverKey)}
@@ -225,13 +231,30 @@ interface CardProps {
   onMouseLeave: () => void
   onFocus: () => void
   onBlur: (e: FocusEvent<HTMLDivElement>) => void
+  /** The card's drawn height, after each render and whenever its content resizes it. */
+  onHeight: (h: number) => void
   children: ReactNode
 }
 
 /** A callout card, placed by its body. */
-function Card({ id, title, part, children, ...handlers }: CardProps) {
+function Card({ id, title, part, onHeight, children, ...handlers }: CardProps) {
   const ref = useRef<HTMLDivElement>(null)
-  useBodyElement(id, ref)
+  // the body takes the card's width; the card keeps the height its content needs, which is measured
+  useBodyElement(id, ref, { ownHeight: true })
+  const onHeightRef = useRef(onHeight)
+  useLayoutEffect(() => {
+    onHeightRef.current = onHeight
+  })
+  useLayoutEffect(() => {
+    if (ref.current) onHeightRef.current(ref.current.offsetHeight)
+  })
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => onHeightRef.current(el.offsetHeight))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
   return (
     <div ref={ref} role="group" aria-label={title} className={part ? 'callout' : 'callout is-whole'} data-part={part} {...handlers}>
       {children}

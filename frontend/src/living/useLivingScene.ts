@@ -18,18 +18,19 @@ import { buildScene, type Scene } from './scene'
 const dataOf = (results: { data?: AnalysisView; isPending: boolean }[]): (AnalysisView | null | undefined)[] =>
   results.map((r) => r.data ?? (r.isPending ? undefined : null))
 
-const NO_FORMS: Readonly<Record<string, number>> = {}
+const NO_HEIGHTS: Readonly<Record<string, number>> = {}
 
 /**
- * `selectedId` is the item whose callouts show (null: none); `forms` counts the open add-forms on
- * each of its cards (they make it taller).
+ * `selectedId` is the item whose callouts show (null: none). `calloutHeights` are its cards' drawn
+ * heights and `toolbar` the selection toolbar's size (both canvas units), see `SceneInput`.
  */
 export function useLivingScene(
   boardId: string,
   items: readonly Item[],
   selectedId: string | null,
-  forms: Readonly<Record<string, number>> = NO_FORMS,
+  extra: { calloutHeights?: Readonly<Record<string, number>>; toolbar?: { w: number; h: number } } = {},
 ): Scene {
+  const { calloutHeights = NO_HEIGHTS, toolbar } = extra
   const { exploreEnabled } = useDemo()
   const explorations = useExplorations(boardId).data
   const lensAttrs = useBoardLens(boardId).data?.spec.attributes
@@ -60,7 +61,8 @@ export function useLivingScene(
       labels,
       collapsed: (id) => isCollapsed(boardId, id),
       selectedId,
-      formsOn: (card) => forms[card] ?? 0,
+      calloutHeights: new Map(Object.entries(calloutHeights)),
+      toolbar,
     })
-  }, [items, shown, analyses, labels, boardId, version, selectedId, forms])
+  }, [items, shown, analyses, labels, boardId, version, selectedId, calloutHeights, toolbar])
 }

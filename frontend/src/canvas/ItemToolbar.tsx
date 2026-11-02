@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Item } from '../api'
 import { safeExternalUrl } from '../format'
 import { hasDrawerPanel } from '../panels/drawerRegistry'
@@ -15,9 +15,13 @@ interface Props {
   onReanalyse?: (itemId: string) => Promise<unknown>
   /** Public demo, not unlocked: role changes and removal are disabled. */
   readOnly?: boolean
+  /** Its size on screen as drawn, reported as it changes (null once gone): floating cards keep off it. */
+  onSize?: (size: { width: number; height: number } | null) => void
 }
 
 export const COMPARE_MAX = 4
+/** Screen px between the toolbar's bottom edge and the selection's top. */
+export const TOOLBAR_GAP = 14
 
 /**
  * Floating toolbar above the selection. One item: Inspect · Re-analyse · Not this · Remove (+ Open
@@ -33,7 +37,27 @@ export function ItemToolbar({
   onRemove,
   onReanalyse,
   readOnly = false,
+  onSize,
 }: Props) {
+  const ref = useRef<HTMLDivElement>(null)
+  const onSizeRef = useRef(onSize)
+  useLayoutEffect(() => {
+    onSizeRef.current = onSize
+  })
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (el) onSizeRef.current?.({ width: el.offsetWidth, height: el.offsetHeight })
+  })
+  useEffect(() => {
+    const el = ref.current
+    const report = () => el && onSizeRef.current?.({ width: el.offsetWidth, height: el.offsetHeight })
+    const ro = el && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(report) : null
+    if (el) ro?.observe(el)
+    return () => {
+      ro?.disconnect()
+      onSizeRef.current?.(null)
+    }
+  }, [])
   const [busy, setBusy] = useState<string | null>(null)
   const [refusal, setRefusal] = useState<{ id: string; text: string } | null>(null)
   const single = items.length === 1 ? items[0] : null
@@ -57,10 +81,11 @@ export function ItemToolbar({
   const canCompare = items.length >= 2 && items.length <= COMPARE_MAX && items.every((i) => i.kind !== 'link')
   return (
     <div
+      ref={ref}
       className="item-toolbar"
       role="toolbar"
       aria-label={single ? 'Item actions' : `${items.length} items selected`}
-      style={{ left: screen.x + screen.width / 2, top: Math.max(8, screen.y - 14) }}
+      style={{ left: screen.x + screen.width / 2, top: Math.max(8, screen.y - TOOLBAR_GAP) }}
       onMouseDown={(e) => e.stopPropagation()}
     >
       {canPanel && hasDrawerPanel('inspect') && (

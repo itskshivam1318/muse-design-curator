@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useLayoutEffect, useState } from 'react'
 import type { Bounds } from '../canvas/geometry'
 import { useLivingWorld } from './useLiving'
 import type { LivingWorld } from './world'
@@ -37,7 +37,8 @@ export function useLiveBoxes(ids: readonly string[]): Bounds[] | null {
   const world = useLivingWorld()
   const key = ids.join('\n')
   const [boxes, setBoxes] = useState(() => read(world, ids))
-  useEffect(() => {
+  // a layout effect: when the ids change, the new boxes are in before the next paint
+  useLayoutEffect(() => {
     const list = key ? key.split('\n') : []
     const tick = () => {
       const next = read(world, list)

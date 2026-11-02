@@ -14,6 +14,7 @@ const { extractPart, addDimension, addPart } = await import('../api')
 const { Callouts } = await import('./Callouts')
 const { partAnchor } = await import('./regions')
 const { buildScene } = await import('../living/scene')
+const { WHOLE: WHOLE_KEY } = await import('./cards')
 const { createLivingWorld } = await import('../living/world')
 const { LivingProvider } = await import('../living/useLiving')
 
@@ -117,19 +118,25 @@ describe('Callouts', () => {
     expect(Number(leader.getAttribute('x2'))).toBeGreaterThanOrEqual(body.x - body.w / 2)
   })
 
-  it('an open add-form is reported, so the card body can grow to fit it', () => {
-    const onForms = vi.fn()
+  it('a callout with an error message reports a taller height, so its body grows to fit it', async () => {
+    // jsdom has no layout: a card is 80 tall, 40 more with an error in it
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains('callout') ? 80 + (this.querySelector('[role="alert"]') ? 40 : 0) : 0
+    })
+    vi.mocked(extractPart).mockRejectedValueOnce(new Error('No luck'))
+    const onHeights = vi.fn()
     const qc = new QueryClient()
     const world = createLivingWorld({ reduced: true })
     render(
       <QueryClientProvider client={qc}>
         <LivingProvider world={world}>
-          <Callouts item={item} analysis={analysis} view={view} onHoverPart={vi.fn()} onForms={onForms} />
+          <Callouts item={item} analysis={analysis} view={view} onHoverPart={vi.fn()} onHeights={onHeights} />
         </LivingProvider>
       </QueryClientProvider>,
     )
-    fireEvent.click(within(card('Hands')).getByRole('button', { name: '+ Add dimension' }))
-    expect(onForms).toHaveBeenLastCalledWith({ hands: 1 })
+    expect(onHeights).toHaveBeenLastCalledWith({ hands: 80, strap: 80, [WHOLE_KEY]: 80 })
+    fireEvent.click(within(card('Strap')).getByRole('button', { name: 'Extract' }))
+    await waitFor(() => expect(onHeights).toHaveBeenLastCalledWith({ hands: 80, strap: 120, [WHOLE_KEY]: 80 }))
   })
 
   it('hovering a callout or one of its dimensions reports the part; leaving clears it', () => {

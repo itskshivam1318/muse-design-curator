@@ -48,4 +48,13 @@ describe('clampCard', () => {
     const p = clampCard({ x: 900, y: 0 }, tall, area, agent)
     expect(p).toEqual({ x: 844 - 8 - 260, y: 8 })
   })
+
+  it('keeps clear of several rects in turn (the agent card and the selection toolbar)', () => {
+    const toolbar = { x: 100, y: 100, width: 200, height: 40 }
+    const agent = { x: 0, y: 300, width: 400, height: 100 }
+    const p = clampCard({ x: 120, y: 110 }, { width: 100, height: 80 }, { width: 800, height: 600 }, [agent, toolbar])
+    const box = { ...p, width: 100, height: 80 }
+    expect(rectsIntersect(box, toolbar)).toBe(false)
+    expect(rectsIntersect(box, agent)).toBe(false)
+  })
 })

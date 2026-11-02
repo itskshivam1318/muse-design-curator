@@ -115,14 +115,13 @@ test('flower: note petals, render one inside the mask, keep it as an item', asyn
   await expect(callout(page, 'Whole item')).toBeVisible()
 })
 
-test('three flowers: no overlap, nothing moves', async ({ page }) => {
+test('three flowers: settled, nothing overlaps, every flower connected', async ({ page }) => {
   const boardId = await boardWith(page, 'E2E three flowers', ['watch_01.jpg', 'watch_02.jpg'])
   const positions = async () => (await boardItems(boardId)).map((i) => `${i.id}:${i.x},${i.y}`).sort()
   const placed = await positions()
 
   await selectItem(page, /^image watch_01\.jpg/)
   const first = await openDimension(page, 'Body colour')
-  const hub = await restingHubAt(page, first)
   const second = await openDimension(page, 'Detail style')
   await page.keyboard.press('Escape')
   await selectItem(page, /^image watch_02\.jpg/)
@@ -141,6 +140,8 @@ test('three flowers: no overlap, nothing moves', async ({ page }) => {
     await page.keyboard.up('Control')
   }
   await expect(flowers).toHaveCount(3)
+  // once everything has come to rest (reduced motion: no drift)
+  for (const f of [first, second, third]) await restingHubAt(page, f)
   const boxes = [await flowerBoxes(first), await flowerBoxes(second), await flowerBoxes(third)]
   for (let i = 0; i < boxes.length; i++) {
     for (let j = i + 1; j < boxes.length; j++) {
@@ -148,9 +149,12 @@ test('three flowers: no overlap, nothing moves', async ({ page }) => {
       expect(hit, `flowers ${i} and ${j} overlap`).toBe(false)
     }
   }
-  // the first hub is where it was (bodies only nudge each other apart, a few px at most)
-  const now = await restingHubAt(page, first)
-  expect(Math.hypot(now.x - hub.x, now.y - hub.y)).toBeLessThan(20)
+  // every flower keeps its stem to its item
+  for (const f of [first, second, third]) {
+    const id = await f.getAttribute('data-exploration-id')
+    await expect(page.locator(`path[data-edge-kind="stem"][data-edge-id="stem:${id}"]`)).toHaveCount(1)
+  }
+  // nothing was written: the floating never moves a stored item
   expect(await positions()).toEqual(placed)
 })
 

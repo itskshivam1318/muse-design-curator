@@ -37,6 +37,28 @@ describe('physics', () => {
     expect(c.y).toBeCloseTo(350, 0)
   })
 
+  it('an obstacle never moves and pushes a callout off it', () => {
+    const w = createWorld()
+    syncWorld(
+      w,
+      [
+        item('a', 0, 0),
+        { id: 'toolbar:a', kind: 'obstacle', w: 200, h: 40, home: { kind: 'rel', to: 'a', dx: 0, dy: -70 } },
+        // a callout whose home sits right on the toolbar
+        { id: 'callout:a:x', kind: 'callout', w: 120, h: 50, home: { kind: 'rel', to: 'a', dx: 0, dy: -75 }, ignore: 'a' },
+      ],
+      0,
+    )
+    w.bodies.get('a')!.pinned = true
+    run(w, 600, true)
+    const o = w.bodies.get('toolbar:a')!
+    expect([o.x, o.y, o.vx, o.vy]).toEqual([0, -70, 0, 0])
+    const c = w.bodies.get('callout:a:x')!
+    const overlapX = (o.w + c.w) / 2 - Math.abs(c.x - o.x)
+    const overlapY = (o.h + c.h) / 2 - Math.abs(c.y - o.y)
+    expect(Math.min(overlapX, overlapY)).toBeLessThanOrEqual(0)
+  })
+
   it('two overlapping bodies separate by at least the gap', () => {
     const w = createWorld()
     syncWorld(w, [item('a', 0, 0), item('b', 0, 0)], 0)

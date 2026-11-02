@@ -52,7 +52,7 @@ import type { Move } from './history'
 import { ItemDecorations, type ItemHandlers, ItemNode, NoteVisualizing } from './ItemNode'
 import { CreditCaption } from './CreditCaption'
 import { creditTargets } from './credit'
-import { ItemToolbar } from './ItemToolbar'
+import { ItemToolbar, TOOLBAR_GAP } from './ItemToolbar'
 import { itemBounds, lineagePoints, statusLabel } from './nodeProps'
 import { NoteBar } from './NoteBar'
 import { NoteEditor } from './NoteEditor'
@@ -154,8 +154,10 @@ export function Canvas({
   const stripTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const overStrip = useRef(false)
   const [dragging, setDragging] = useState(false)
-  // the open add-forms on the selected item's callout cards (they make its card bodies taller)
-  const [forms, setForms] = useState<Record<string, number>>({})
+  // the selected item's callout cards as drawn (canvas units), and the toolbar's size on screen:
+  // the cards' bodies take their real height, and nothing floats under the toolbar
+  const [calloutHeights, setCalloutHeights] = useState<Record<string, number>>({})
+  const [toolbarSize, setToolbarSize] = useState<{ width: number; height: number } | null>(null)
   const explorations = useExplorations(boardId).data
   const lensAttrs = useBoardLens(boardId).data?.spec.attributes
   const labels = useMemo(() => new Map((lensAttrs ?? []).map((a) => [a.key, a.label])), [lensAttrs])
@@ -506,8 +508,27 @@ export function Canvas({
   // a note still being read (or that could not be) shows nothing until it has parts or dimensions
   const showCallouts =
     !!analysis && (analysis.parse_status === 'completed' || analysis.parts.length > 0 || analysis.dimensions.length > 0)
-  const scene = useLivingScene(boardId, visible, calloutItem && showCallouts ? calloutItem.id : null, forms)
-  const onForms = useCallback((next: Record<string, number>) => setForms((cur) => (sameCounts(cur, next) ? cur : next)), [])
+  const onHeights = useCallback(
+    (next: Record<string, number>) => setCalloutHeights((cur) => (sameCounts(cur, next) ? cur : next)),
+    [],
+  )
+  const onToolbarSize = useCallback(
+    (next: { width: number; height: number } | null) =>
+      setToolbarSize((cur) => (cur?.width === next?.width && cur?.height === next?.height ? cur : next)),
+    [],
+  )
+  // the toolbar in canvas units, its gap to the item included (an unmeasured one blocks nothing)
+  const toolbar = useMemo(
+    () =>
+      toolbarSize && toolbarSize.width > 0
+        ? { w: toolbarSize.width / view.scale, h: (toolbarSize.height + TOOLBAR_GAP) / view.scale }
+        : undefined,
+    [toolbarSize, view.scale],
+  )
+  const scene = useLivingScene(boardId, visible, calloutItem && showCallouts ? calloutItem.id : null, {
+    calloutHeights,
+    toolbar,
+  })
   useLayoutEffect(() => world.sync(scene), [world, scene])
   useLayoutEffect(() => world.setPinned(selected), [world, selected])
   // a selected item is pinned: when its stored spot changes (an undo, a move elsewhere) it goes there at once
@@ -683,7 +704,7 @@ export function Canvas({
         {exploreEnabled && (
           <FlowerLayer boardId={boardId} items={visible} view={view} flowers={scene.flowers} locked={readOnly} onWheel={onOverlayWheel} />
         )}
-        <NodeLayer boardId={boardId} items={visible} view={view} size={size} readOnly={readOnly} onWheel={onOverlayWheel} />
+        <NodeLayer boardId={boardId} items={visible} view={view} size={size} readOnly={readOnly} onWheel={onOverlayWheel} world={world} />
         {hoveredItem && hoveredItem.kind !== 'link' && hoveredItem.kind !== 'note' && hoveredItem.parse_status !== 'completed' && (
           <Live items={[hoveredItem]}>{(b) => <StatusTip item={hoveredItem} screen={toScreenBounds(b, view)} />}</Live>
         )}
@@ -708,6 +729,7 @@ export function Canvas({
                 onRemove={() => actions.remove(selected)}
                 onReanalyse={actions.reanalyse}
                 readOnly={readOnly}
+                onSize={onToolbarSize}
               />
             )}
           </Live>
@@ -725,7 +747,7 @@ export function Canvas({
             item={calloutItem}
             analysis={analysis}
             view={view}
-            onForms={onForms}
+            onHeights={onHeights}
             locked={readOnly}
             onOpenDimension={exploreEnabled ? (key) => openDimension(calloutItem, key) : undefined}
             onHoverPart={(part) => setHoveredPart(part ? { itemId: calloutItem.id, part } : null)}

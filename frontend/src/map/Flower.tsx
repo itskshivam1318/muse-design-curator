@@ -208,10 +208,11 @@ export function FlowerLayer({ boardId, items, view, flowers, locked = false, onW
       let next: Point | null = null
       if (wanted && el && layer && layer.width > 0 && layer.height > 0) {
         const card = el.getBoundingClientRect()
-        const agent = document.querySelector('.agent-card')?.getBoundingClientRect()
-        const avoid = agent && agent.width > 0
-          ? { x: agent.left - layer.left, y: agent.top - layer.top, width: agent.width, height: agent.height }
-          : null // prettier-ignore
+        // the agent card and the selection toolbar sit over the layer: keep the card off both
+        const avoid = ['.agent-card', '.item-toolbar'].flatMap((sel) => {
+          const r = document.querySelector(sel)?.getBoundingClientRect()
+          return r && r.width > 0 ? [{ x: r.left - layer.left, y: r.top - layer.top, width: r.width, height: r.height }] : []
+        })
         next = clampCard(wanted, { width: card.width, height: card.height }, layer, avoid)
       }
       setPlaced((old) => (old?.x === next?.x && old?.y === next?.y ? old : next))

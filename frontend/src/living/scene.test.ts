@@ -180,4 +180,22 @@ describe('buildScene', () => {
     // no lens label either: the key itself
     expect(scene({ explorations: [exp('e1', 'old_key', [opt('o1')])] }).flowers[0].label).toBe('old_key')
   })
+
+  it("the selection toolbar is an obstacle centred just above the selected item, and nowhere else", () => {
+    const toolbar = { w: 240, h: 50 }
+    expect(scene({ explorations: [], toolbar }).specs.some((b) => b.kind === 'obstacle')).toBe(false)
+    const other = makeItem({ id: 'b', board_id: 'b1', x: 600, y: 0 })
+    const s = scene({ items: [item, other], explorations: [], selectedId: 'a', toolbar })
+    const obstacles = s.specs.filter((b) => b.kind === 'obstacle')
+    expect(obstacles).toEqual([
+      { id: 'toolbar:a', kind: 'obstacle', w: 240, h: 50, home: { kind: 'rel', to: 'a', dx: 0, dy: -(75 + 25) }, ignore: 'a' },
+    ])
+    expect(s.edges.some((e) => e.from.body === 'toolbar:a' || e.to.body === 'toolbar:a')).toBe(false)
+  })
+
+  it("a callout's measured height wins over the estimate", () => {
+    const s = scene({ explorations: [], selectedId: 'a', calloutHeights: new Map([['hands', 140]]) })
+    expect(spec(s, 'callout:a:hands')!.h).toBe(140)
+    expect(spec(s, 'callout:a:whole:item')!.h).toBe(calloutSize(item, analysis, WHOLE).h)
+  })
 })

@@ -3,11 +3,12 @@
  * node, the node out to what its latest run made) and a notice for node actions that failed
  * elsewhere.
  */
-import { type WheelEvent, useEffect, useMemo } from 'react'
+import { type WheelEvent, useEffect, useMemo, useRef } from 'react'
 import type { Item } from '../api'
 import { itemBounds, lineagePoints } from '../canvas/nodeProps'
 import { type Bounds, toScreenPoint, type View } from '../canvas/geometry'
 import { useDemo } from '../demo'
+import type { LivingWorld } from '../living/world'
 import { useNodes, usePlugins } from '../queries'
 import { NodeCard } from './NodeCard'
 import { nodeBounds } from './nodeLogic'
@@ -16,8 +17,10 @@ import { nodeNoticeStore, useDropTarget, useNodeNotice, viewportStore } from './
 
 interface Props {
   boardId: string
-  /** The canvas's visible items, as drawn (a dragged item carries its lines along). */
+  /** The canvas's visible items. */
   items: readonly Item[]
+  /** The living board: wires follow where its items' bodies are now, every frame. */
+  world?: LivingWorld
   view: View
   size: { width: number; height: number }
   readOnly?: boolean
@@ -31,7 +34,9 @@ function path(points: number[], view: View): string {
   return `M${a.x} ${a.y}C${b.x} ${b.y} ${c.x} ${c.y} ${d.x} ${d.y}`
 }
 
-export function NodeLayer({ boardId, items, view, size, readOnly = false, onWheel }: Props) {
+type Wire = { id: string; d: string; out: boolean; itemId: string; node: Bounds }
+
+export function NodeLayer({ boardId, items, view, size, readOnly = false, onWheel, world }: Props) {
   const { pluginsEnabled } = useDemo()
   const nodes = useNodes(boardId).data
   const plugins = usePlugins().data
@@ -49,22 +54,37 @@ export function NodeLayer({ boardId, items, view, size, readOnly = false, onWhee
   }, [notice])
 
   const byId = useMemo(() => new Map(items.filter((i) => !i.staged).map((i) => [i.id, i])), [items])
+  const paths = useRef(new Map<string, { el: SVGPathElement; wire: Wire }>())
+  // each frame, a wire runs from where its item's body is now (an item rests off its stored spot)
+  useEffect(() => {
+    if (!world) return
+    const write = (): void => {
+      for (const { el, wire: w } of paths.current.values()) {
+        const b = world.body(w.itemId)
+        if (!b) continue
+        const box: Bounds = { x: b.x - b.w / 2, y: b.y - b.h / 2, width: b.w, height: b.h }
+        el.setAttribute('d', path(w.out ? lineagePoints(w.node, box) : lineagePoints(box, w.node), view))
+      }
+    }
+    write()
+    return world.onFrame(write)
+  }, [world, view])
   const pluginById = useMemo(() => new Map((plugins ?? []).map((p) => [p.id, p])), [plugins])
 
   if (!pluginsEnabled || !nodes) return null
 
-  const lines: { id: string; d: string; out: boolean }[] = []
+  const lines: Wire[] = []
   for (const n of nodes.nodes) {
     const nb: Bounds = nodeBounds(n)
     for (const id of n.input_item_ids) {
       const it = byId.get(id)
-      if (it) lines.push({ id: `${n.id}-in-${id}`, d: path(lineagePoints(itemBounds(it), nb), view), out: false })
+      if (it) lines.push({ id: `${n.id}-in-${id}`, d: path(lineagePoints(itemBounds(it), nb), view), out: false, itemId: id, node: nb })
     }
     const run = nodes.runs[n.id]
     for (const id of run?.output?.created_item_ids ?? []) {
       const it = byId.get(id)
       if (it && it.generation?.run_id === run?.id)
-        lines.push({ id: `${n.id}-out-${id}`, d: path(lineagePoints(nb, itemBounds(it)), view), out: true })
+        lines.push({ id: `${n.id}-out-${id}`, d: path(lineagePoints(nb, itemBounds(it)), view), out: true, itemId: id, node: nb })
     }
   }
 
@@ -73,7 +93,15 @@ export function NodeLayer({ boardId, items, view, size, readOnly = false, onWhee
       {lines.length > 0 && (
         <svg className="node-lines" width={size.width} height={size.height} aria-hidden="true">
           {lines.map((l) => (
-            <path key={l.id} d={l.d} className={l.out ? 'is-out' : undefined} />
+            <path
+              key={l.id}
+              ref={(el) => {
+                if (el) paths.current.set(l.id, { el, wire: l })
+                else paths.current.delete(l.id)
+              }}
+              d={l.d}
+              className={l.out ? 'is-out' : undefined}
+            />
           ))}
         </svg>
       )}

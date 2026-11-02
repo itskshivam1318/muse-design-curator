@@ -18,27 +18,36 @@ export function useLivingWorld(): LivingWorld {
 
 /**
  * Writes `transform` (translate to top-left + grow scale), size and opacity onto ref.current: once on
- * mount (so it never shows unplaced), then every frame.
+ * mount (so it never shows unplaced), then every frame, touching the style only when a rounded value
+ * changed (a body at rest or asleep costs nothing). While it is not grown in (or has no body) the
+ * element is `inert`: invisible things take no focus. With `ownHeight` the element keeps the height
+ * its content gives it (the body is sized to match it).
  */
-export function useBodyElement(id: string, ref: RefObject<HTMLElement | null>): void {
+export function useBodyElement(id: string, ref: RefObject<HTMLElement | null>, opts: { ownHeight?: boolean } = {}): void {
   const world = useLivingWorld()
+  const ownHeight = opts.ownHeight ?? false
   useEffect(() => {
+    let last = ''
     const write = (now: number): void => {
       const el = ref.current
       if (!el) return
       const b = world.body(id)
+      const s = b ? growScale(b, now, world.reduced()) : 0
+      // to 0.01px: a body at rest keeps an identical style (no float noise), so it reads as still
+      const key = b ? `${r2(b.w)} ${r2(b.h)} ${r2(b.x - b.w / 2)} ${r2(b.y - b.h / 2)} ${r2(s)}` : 'none'
+      if (key === last) return
+      last = key
+      el.toggleAttribute('inert', s === 0)
       if (!b) {
         el.style.opacity = '0'
         return
       }
-      const s = growScale(b, now, world.reduced())
-      // to 0.01px: a body at rest keeps an identical style (no float noise), so it reads as still
       el.style.width = `${r2(b.w)}px`
-      el.style.height = `${r2(b.h)}px`
+      if (!ownHeight) el.style.height = `${r2(b.h)}px`
       el.style.transform = `translate(${r2(b.x - b.w / 2)}px, ${r2(b.y - b.h / 2)}px) scale(${r2(s)})`
       el.style.opacity = String(Math.min(1, s * 1.6))
     }
     write(world.now())
     return world.onFrame(write)
-  }, [world, id, ref])
+  }, [world, id, ref, ownHeight])
 }
