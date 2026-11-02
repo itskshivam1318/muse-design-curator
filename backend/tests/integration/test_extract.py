@@ -10,9 +10,10 @@ from PIL import Image
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import jobs
+from app import demo, jobs
 from app.analysis import locate as locate_mod
 from app.analysis.extract import Bounds, extract, free_slot
+from app.analysis.service import queue_analyse
 from app.api import deps
 from app.board import profile_hook
 from app.db.models import BoardItem, ItemPart
@@ -188,3 +189,50 @@ def test_extract_text_range_outside_text_is_empty(client: TestClient) -> None:
         with pytest.raises(AppError) as e:
             extract(s, src.id, "gone")
         assert e.value.code == "REGION_EMPTY" and count_items(s) == before
+
+
+def used(board_id: str, kind: str = "analyse") -> int:
+    return len(demo.windows._hits.get(f"{kind}:{board_id}", ()))
+
+
+def test_extract_counts_one_slot_and_its_child_analysis_is_free(
+    client: TestClient, env: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: TriangleSeg())
+    with deps._factory()() as s:
+        b = board(client)
+        src = add_image(s, b)
+        child = extract(s, src.id, "body")
+        s.commit()
+        assert child.id in env and used(b) == 1
+
+
+def test_extract_region_empty_refunds_the_slot(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: TinySeg())
+    with deps._factory()() as s:
+        b = board(client)
+        src = add_image(s, b)
+        with pytest.raises(AppError):
+            extract(s, src.id, "body")
+        s.rollback()
+        assert used(b) == 0
+
+
+def test_queue_analyse_counts_refunds_on_claim_miss_and_skips_when_uncounted(
+    client: TestClient,
+) -> None:
+    with deps._factory()() as s:
+        b = board(client)
+        item = add_image(s, b)
+        assert queue_analyse(s, item.id, count=False) is True
+        assert used(b) == 0
+        item.parse_status = "processing"
+        s.flush()
+        assert queue_analyse(s, item.id) is False  # claim missed: the slot is given back
+        assert used(b) == 0
+        item.parse_status = "completed"
+        s.flush()
+        assert queue_analyse(s, item.id) is True
+        assert used(b) == 1

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 
 from app import demo, events, jobs
+from app.analysis import limits
 from app.api.boards import require_board
 from app.api.deps import SessionDep
 from app.api.extension import require_extension_token
@@ -37,6 +38,20 @@ def _ingest_file(session: Session, board_id: str, data: bytes, meta: ItemMeta) -
     if sniff_video(data):
         return ingest_video(session, board_id, data, meta)
     raise AppError(415, "UNSUPPORTED_MEDIA_TYPE", "Unsupported file type")
+
+
+def _meter(res: IngestResult) -> IngestResult:
+    """Take one analyse slot for a new item that will be analysed. Over the board's daily limit
+    the item is still kept, but marked failed (DAILY_LIMIT) so it is not queued; retry works
+    tomorrow."""
+    i = res.item
+    if res.deduped or i.kind == "link" or i.parse_status != "pending":
+        return res
+    try:
+        limits.check_and_count(i.board_id, "analyse")
+    except AppError:
+        i.parse_status, i.parse_error_code = "failed", "DAILY_LIMIT"
+    return res
 
 
 def _announce(session: Session, results: list[IngestResult]) -> None:
@@ -83,6 +98,7 @@ async def _files_ingest(
                      "error": {"code": e.code, "message": e.message}}
                 )  # fmt: skip
                 continue
+            _meter(res)
             done.append(res)
             out.append(
                 {
@@ -143,7 +159,7 @@ async def add_items(board_id: str, request: Request, session: SessionDep) -> Any
             raise AppError(400, "VALIDATION_ERROR", "Invalid request body") from e
         if parsed.capture is not None:  # only extension captures need the pairing token
             require_extension_token(request, session)
-        res = await run_in_threadpool(_json_ingest, session, board_id, parsed)
+        res = _meter(await run_in_threadpool(_json_ingest, session, board_id, parsed))
         done = [res]
         body, status = {"item": item_to_dict(res.item), "deduped": res.deduped}, 201
     after_commit(session, lambda: _announce(session, done))
