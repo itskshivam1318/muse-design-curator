@@ -192,3 +192,33 @@ def test_unknown_part_and_dimension_404(client: TestClient) -> None:
             with pytest.raises(AppError) as e:
                 call()
             assert e.value.status == 404
+
+
+def test_content_type_survives_analyse(client: TestClient) -> None:
+    with deps._factory()() as s:
+        item = make_item(client, s)  # the mock reads this 4:3 image as "image"
+        label.set_content_type(s, item.id, "ui")
+        s.commit()
+        assert item.content_type_locked
+        item.parse_status = "completed"
+        s.commit()
+        service.analyse(s, item.id)
+        s.expire_all()
+        assert s.get(BoardItem, item.id).content_type == "ui"  # type: ignore[union-attr]
+        kinds = {p.region_kind for p in s.query(ItemPart).filter_by(item_id=item.id)}
+    assert kinds == {"box"}
+
+
+def test_add_part_region_kind_must_fit_item(client: TestClient) -> None:
+    with deps._factory()() as s:
+        item = make_item(client, s)
+        with pytest.raises(AppError) as e:
+            label.add_part(s, item.id, "Intro", Region(kind="text_range", range=[0, 5]))
+        assert (e.value.status, e.value.code) == (422, "REGION_KIND_MISMATCH")
+        note = items_repo.create(
+            s, board_id=item.board_id, kind="note", origin="note", note_text="hello world",
+            rights_status="user_supplied", parse_status="completed",
+        )  # fmt: skip
+        with pytest.raises(AppError) as e2:
+            label.add_part(s, note.id, "Box", Region(kind="box", box=[0, 0, 1, 1]))
+    assert e2.value.code == "REGION_KIND_MISMATCH"

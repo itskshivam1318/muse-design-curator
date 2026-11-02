@@ -32,6 +32,8 @@ def hints_for(session: Session, board_id: str, item_id: str) -> Hints:
         elif a.source in USER_SOURCES:
             hints.you_dimensions.append(a.key)
     item = items_repo.get(session, item_id)
+    if item is not None and item.content_type_locked:
+        hints.content_type = item.content_type
     if item is not None and item.parent_item_id:
         parent_rows = session.scalars(
             select(ItemAttribute)

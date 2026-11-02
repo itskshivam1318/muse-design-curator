@@ -326,6 +326,10 @@ def _mock_item_analysis(images: list[bytes], prompt: str) -> dict[str, Any]:
         }  # fmt: skip
     with Image.open(io.BytesIO(images[0])) as im:
         wide = im.width / max(1, im.height) >= 1.6
+    if "set content_type to 'ui'" in prompt:
+        wide = True
+    elif "set content_type to 'image'" in prompt:
+        wide = False
     if wide:
         return {
             "content_type": "ui",

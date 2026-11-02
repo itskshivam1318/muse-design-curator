@@ -16,6 +16,9 @@ def upgrade() -> None:
     with op.batch_alter_table("board_items", recreate="always") as b:
         b.add_column(sa.Column("content_type", sa.String()))
         b.add_column(sa.Column("extracted_part", sa.String()))
+        b.add_column(
+            sa.Column("content_type_locked", sa.Boolean(), nullable=False, server_default="0")
+        )
         b.create_check_constraint(
             "ck_item_content_type",
             "content_type IS NULL OR content_type IN ('image', 'ui', 'text')",
@@ -84,6 +87,7 @@ def downgrade() -> None:
         b.drop_column("dim_type")
     with op.batch_alter_table("board_items", recreate="always") as b:
         b.drop_constraint("ck_item_content_type", type_="check")
+        b.drop_column("content_type_locked")
         b.drop_column("extracted_part")
         b.drop_column("content_type")
     with op.batch_alter_table("boards", recreate="always") as b:

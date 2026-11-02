@@ -49,6 +49,7 @@ class Hints:
     you_dimensions: list[str] = field(default_factory=list)
     removed: list[str] = field(default_factory=list)
     parent_dimensions: list[dict[str, Any]] = field(default_factory=list)
+    content_type: str | None = None  # set when the person chose what the item is
 
     @classmethod
     def empty(cls) -> "Hints":
@@ -100,6 +101,8 @@ def build_prompt(content: ItemContent, board_context: str, hints: Hints) -> str:
             "a kind, a value and a confidence in 0..1."
         ),
     ]
+    if hints.content_type and not is_text:
+        lines.append(f"The user has set content_type to '{hints.content_type}'; use exactly that.")
     if hints.abstract_definitions:
         lines.append(
             "Reuse these abstract dimension labels and prompts exactly when they apply: "
@@ -199,6 +202,8 @@ def run_analyser(content: ItemContent, board_context: str, hints: Hints) -> Anal
     is_text = content.text is not None
     declared = raw.get("content_type")
     content_type = "text" if is_text else ("ui" if declared == "ui" else "image")
+    if hints.content_type in ("image", "ui", "text") and not is_text:
+        content_type = hints.content_type
     text_len = len(content.text or "")
 
     parts: list[PartOut] = []

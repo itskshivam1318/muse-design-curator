@@ -31,6 +31,18 @@ class TinySeg(MockSegmentationProvider):
         return SegResult(True, [SegInstance((0, 0, 1, 1), mask, None)])
 
 
+class TriangleSeg(MockSegmentationProvider):
+    """A part that fills only the lower-left triangle of its box."""
+
+    def localize(self, image: bytes, sha256: str, noun: str) -> SegResult:
+        inst = super().localize(image, sha256, noun).instances[0]
+        ys, xs = np.nonzero(inst.mask)
+        mask = np.zeros_like(inst.mask)
+        box = np.tril(np.ones((ys.max() - ys.min() + 1, xs.max() - xs.min() + 1), dtype=bool))
+        mask[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1] = box
+        return SegResult(True, [SegInstance(inst.bbox, mask, inst.score)])
+
+
 @pytest.fixture(autouse=True)
 def env(data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[list[str]]:
     monkeypatch.setattr(profile_hook, "request_recompute", lambda _board_id: None)
@@ -64,7 +76,10 @@ def count_items(s: Session) -> int:
     return s.scalar(select(func.count()).select_from(BoardItem)) or 0
 
 
-def test_extract_mask_gives_rgba_child_beside_source(client: TestClient, env: list[str]) -> None:
+def test_extract_mask_gives_rgba_child_beside_source(
+    client: TestClient, env: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: TriangleSeg())
     with deps._factory()() as s:
         src = add_image(s, board(client))
         child = extract(s, src.id, "body")
@@ -79,7 +94,8 @@ def test_extract_mask_gives_rgba_child_beside_source(client: TestClient, env: li
         with Image.open(files.abs_path(child.storage_path)) as im:  # type: ignore[arg-type]
             assert im.mode == "RGBA"
             alpha = np.asarray(im.getchannel("A"))
-            assert 0 < alpha.mean() <= 255 and im.size == (child.width, child.height)
+            assert im.size == (child.width, child.height)
+            assert {0, 255} <= set(np.unique(alpha).tolist())  # the mask became the alpha
     assert env == [child.id]
 
 

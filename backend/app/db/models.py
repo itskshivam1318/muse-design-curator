@@ -150,6 +150,7 @@ class BoardItem(Base):
     staged: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     content_type: Mapped[str | None] = mapped_column(String)
     extracted_part: Mapped[str | None] = mapped_column(String)
+    content_type_locked: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     created_at: Mapped[str] = _created()
     __table_args__ = (
         CheckConstraint(_in("kind", ITEM_KINDS), name="ck_item_kind"),

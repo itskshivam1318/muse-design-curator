@@ -80,6 +80,10 @@ def add_part(session: Session, item_id: str, label: str, region: Region | None) 
     key = _snake(label)
     if region is None and item.kind == "note":
         raise AppError(400, "VALIDATION_ERROR", "A part of a note needs a text range")
+    if region is not None and (region.kind == "text_range") != (item.kind == "note"):
+        raise AppError(
+            422, "REGION_KIND_MISMATCH", f"A {region.kind} region does not fit this item"
+        )
     kind = region.kind if region is not None else "mask"
     if region is None:
         value: Any = None
@@ -227,7 +231,7 @@ def set_content_type(session: Session, item_id: str, content_type: str) -> Board
     item = _require_item(session, item_id)
     if content_type not in CONTENT_TYPES:
         raise AppError(400, "VALIDATION_ERROR", f"content_type must be one of {CONTENT_TYPES}")
-    item.content_type = content_type
+    item.content_type, item.content_type_locked = content_type, True
     session.flush()
     request_analyse(session, item_id)
     return item

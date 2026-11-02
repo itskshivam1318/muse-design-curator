@@ -42,7 +42,8 @@ def _summary(row: ItemAttribute) -> dict[str, Any]:
 def merge_analysis(session: Session, item: BoardItem, a: Analysis) -> None:
     """Write the analysis. User rows and parts are untouched; removed ones are never re-added;
     AI rows the analysis no longer has are deleted, or marked stale when they were explored."""
-    item.content_type = a.content_type
+    if not item.content_type_locked:  # the person said what this item is
+        item.content_type = a.content_type
     _merge_dimensions(session, item, a)
     _merge_parts(session, item, a)
 
