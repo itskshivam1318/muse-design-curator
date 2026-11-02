@@ -13,6 +13,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app import events, jobs
+from app.analysis import limits
 from app.analysis.analysers import load_content, run_analyser
 from app.analysis.context import USER_SOURCES, board_context, hints_for, refresh_learned
 from app.analysis.spec import spec_from_dimension
@@ -193,22 +194,31 @@ def _run(session: Session, item_id: str, board_id: str) -> Analysis:
     return analysis
 
 
-def queue_analyse(session: Session, item_id: str) -> bool:
-    """Queue an analysis unless one is running. False when the item is processing."""
+def queue_analyse(session: Session, item_id: str, *, count: bool = True) -> bool:
+    """Queue an analysis unless one is running. False when the item is processing.
+
+    `count` takes a slot of the board's daily analyse allowance (429 when it is used up); the
+    system's own re-queues (note saves, extracted parts) pass False."""
+    item = session.get(BoardItem, item_id)
+    if item is None:
+        return False
+    if count:
+        limits.check_and_count(item.board_id, "analyse")
     res = session.execute(
         update(BoardItem)
         .where(BoardItem.id == item_id, BoardItem.parse_status.in_((*RETRYABLE, "pending")))
         .values(parse_status="pending")
     )  # fmt: skip
     if not res.rowcount:  # type: ignore[attr-defined]
+        if count:
+            limits.refund(item.board_id, "analyse")
         return False
-    # The "analyse" daily limit (Task 8) is counted here once it exists.
     after_commit(session, partial(jobs.enqueue, "analyse_item", item_id=item_id))
     return True
 
 
-def request_analyse(session: Session, item_id: str) -> None:
-    queue_analyse(session, item_id)
+def request_analyse(session: Session, item_id: str, *, count: bool = True) -> None:
+    queue_analyse(session, item_id, count=count)
 
 
 def analyse_item_job(item_id: str) -> None:

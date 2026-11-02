@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import events
+from app.analysis import limits
 from app.analysis.context import board_context
 from app.analysis.spec import dimension_type, spec_for
 from app.config import get_settings
@@ -206,6 +207,7 @@ def explore(
         part_label=_part_label(session, row) if dimension_type(row) == "physical" else None,
     )  # fmt: skip
     image, _sha = _image_for(session, item)
+    limits.check_and_count(item.board_id, "analyse")
     try:
         raw = get_reasoning(get_settings()).explore_options([image], prompt)
     except ModelError as exc:

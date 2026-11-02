@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     IMAGE_PROVIDER: str = "muse-image"
     IMAGE_MODEL: str = "muse-image-1.0"
     EXPLORE_ENABLED: bool = True
+    # per-board daily caps on model work (see app/analysis/limits.py)
+    ANALYSE_PER_BOARD_PER_DAY: int = 300
+    RENDER_PER_BOARD_PER_DAY: int = 60
     PLUGINS_ENABLED: bool = True
     PLUGINS_DIR: str = "data/plugins"
     PLUGIN_TIMEOUT_S: int = 30

@@ -19,6 +19,7 @@ from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from app import events, jobs
+from app.analysis import limits
 from app.analysis.service import analyse
 from app.api.schemas import item_to_dict
 from app.config import get_settings
@@ -69,7 +70,8 @@ def request_visualize(
     if o is None:
         raise AppError(404, "OPTION_NOT_FOUND", "Option not found")
     e = _exploration(session, o)
-    _require_item(session, e.item_id)
+    item = _require_item(session, e.item_id)
+    limits.check_and_count(item.board_id, "render")
     stale = _iso(datetime.now(UTC) - timedelta(seconds=CLAIM_TTL_S))
     claimed = session.execute(
         update(ExploreOption)
@@ -87,6 +89,7 @@ def request_visualize(
         )
     )  # fmt: skip
     if not claimed.rowcount:  # type: ignore[attr-defined]
+        limits.refund(item.board_id, "render")
         raise AppError(409, "VISUALIZE_IN_PROGRESS", "This option is already being visualized")
     session.refresh(o)
     publish_later(session, e)

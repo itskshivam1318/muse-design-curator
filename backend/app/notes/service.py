@@ -22,7 +22,7 @@ MAX_CHARS = 2000
 def _request_analyse(session: Session, item_id: str) -> None:
     from app.analysis.service import request_analyse  # imported late: it imports the notes layer
 
-    request_analyse(session, item_id)
+    request_analyse(session, item_id, count=False)
 
 
 def create_note(

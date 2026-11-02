@@ -41,6 +41,16 @@ def _no_source_cooldowns() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def _no_daily_counts() -> Iterator[None]:
+    """Per-board daily counts are process state: every test starts and ends without any."""
+    from app import demo
+
+    demo.reset()
+    yield
+    demo.reset()
+
+
+@pytest.fixture(autouse=True)
 def _offline_resolver(monkeypatch: pytest.MonkeyPatch) -> None:
     """The SSRF guard resolves every host; tests never touch real DNS. Fake `*.test` hosts get a
     public documentation address; anything else is unresolvable (a test patches its own)."""

@@ -11,6 +11,7 @@ from PIL.PngImagePlugin import PngInfo
 from sqlalchemy.orm import Session
 
 from app import events
+from app.analysis import limits
 from app.analysis.locate import locate
 from app.analysis.service import request_analyse
 from app.api.schemas import item_to_dict
@@ -145,6 +146,20 @@ def extract(session: Session, item_id: str, part_key: str) -> BoardItem:
     Nothing is created when the region is empty. The new item is analysed like any other.
     """
     source = _require_item(session, item_id)
+    limits.check_and_count(source.board_id, "analyse")
+    try:
+        child = _extract(session, source, item_id, part_key)
+    except AppError:
+        limits.refund(source.board_id, "analyse")  # nothing was made, so nothing is spent
+        raise
+    after_commit(
+        session, partial(events.publish, child.board_id, "item.added", item_to_dict(child))
+    )
+    request_analyse(session, child.id, count=False)
+    return child
+
+
+def _extract(session: Session, source: BoardItem, item_id: str, part_key: str) -> BoardItem:
     region = locate(session, item_id, part_key)
     if region.kind == "text_range":
         if source.kind != "note" or region.range is None:
@@ -155,10 +170,6 @@ def extract(session: Session, item_id: str, part_key: str) -> BoardItem:
             raise _empty()
         mask_rel = region.mask_url.removeprefix("/api/media/") if region.mask_url else None
         child = _image_child(session, source, part_key, f"{part_key}.png", region.box, mask_rel)
-    after_commit(
-        session, partial(events.publish, child.board_id, "item.added", item_to_dict(child))
-    )
-    request_analyse(session, child.id)
     return child
 
 
