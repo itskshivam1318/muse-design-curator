@@ -128,7 +128,9 @@ def _part_label(session: Session, row: ItemAttribute) -> str | None:
     if not row.part:
         return None
     part = session.scalar(
-        select(ItemPart).where(ItemPart.item_id == row.item_id, ItemPart.key == row.part)
+        select(ItemPart).where(
+            ItemPart.item_id == row.item_id, ItemPart.key == row.part, ItemPart.removed.is_(False)
+        )
     )
     return part.label if part is not None else row.part.replace("_", " ")
 

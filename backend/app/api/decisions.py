@@ -1,16 +1,14 @@
 import csv
 import io
-from typing import Annotated
 
-from fastapi import APIRouter, Header
-from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel
+from fastapi import APIRouter
+from fastapi.responses import Response
 from sqlalchemy import select
 
 from app.api.boards import require_board
 from app.api.deps import SessionDep
 from app.db.models import Decision
-from app.feedback.service import record_decision
+from app.errors import AppError
 
 router = APIRouter(prefix="/api")
 CSV_COLUMNS = [
@@ -25,26 +23,10 @@ def _safe(v: str | None) -> str:
     return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
 
 
-class DecisionBody(BaseModel):
-    decision: str
-    reason_code: str | None = None
-    note: str | None = None
-    mark_not_this: bool = False
-
-
-@router.post("/runs/{run_id}/candidates/{candidate_id}/decisions", status_code=201)
-def post_decision(
-    run_id: str,
-    candidate_id: str,
-    body: DecisionBody,
-    session: SessionDep,
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
-) -> JSONResponse:
-    out = record_decision(
-        session, run_id, candidate_id, body.decision, body.reason_code, body.note,
-        body.mark_not_this, idempotency_key or None,
-    )  # fmt: skip
-    return JSONResponse(out, status_code=201)
+@router.post("/runs/{run_id}/candidates/{candidate_id}/decisions")
+def post_decision(run_id: str, candidate_id: str) -> None:
+    """Vary is retired: its candidates can no longer be kept or rejected."""
+    raise AppError(410, "VARY_RETIRED", "Vary has been replaced by Explore")
 
 
 @router.get("/boards/{board_id}/decisions.csv")

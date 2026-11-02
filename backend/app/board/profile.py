@@ -271,7 +271,11 @@ def _group_by_label(
     items: Sequence[Any], attrs_by_item: Mapping[str, Sequence[Any]], lens: LensSpec | None
 ) -> list[_Group]:
     """Reliable, current dimensions of `items` grouped by label, case-insensitively. A group
-    is named by its most common key and label and holds only rows of its most common kind."""
+    holds only rows of its most common kind and is named by its most common key and label.
+
+    On a lens board, groups backed by the lens (rows read through a lens attribute) come first,
+    in lens order, named by that key; the other groups follow by label and take a suffixed key
+    on a clash."""
     found: dict[str, list[tuple[str, Any, Any]]] = defaultdict(list)
     for it in items:
         for a in attrs_by_item.get(it.id, ()):
@@ -279,19 +283,29 @@ def _group_by_label(
                 continue
             spec = spec_for(a, lens)
             found[" ".join(spec.label.lower().split())].append((it.id, a, spec))
-    groups: dict[str, _Group] = {}
-    for _name, members in sorted(found.items()):
+    lens_order = {a.key: n for n, a in enumerate(lens.attributes)} if lens else {}
+    ranked = []
+    for name, members in found.items():
         kind = _modal([a.kind for _, a, _ in members])  # the row's kind: legacy rows lack a spec
         same = [(iid, a, spec) for iid, a, spec in members if a.kind == kind]
-        key = _modal([spec.key for _, _, spec in same])
+        # lens-backed: a legacy row whose spec is the lens attribute (no spec of its own)
+        in_lens = [spec.key for _, a, spec in same if not a.spec_json and spec.key in lens_order]
+        key = _modal(in_lens or [spec.key for _, _, spec in same])
         spec = next(spec for _, _, spec in same if spec.key == key)
         rows = [(iid, a) for iid, a, _ in same]
-        name, n = key, 1
-        while name in groups:  # another label already named its group with this key
+        rank = (0, lens_order[key], "") if in_lens else (1, 0, name)
+        ranked.append((rank, _Group(key=key, label=spec.label, kind=kind, spec=spec, rows=rows)))
+    groups: list[_Group] = []
+    taken: set[str] = set()
+    for _rank, g in sorted(ranked, key=lambda r: r[0]):
+        name, n = g.key, 1
+        while name in taken:  # a lens group or an earlier label already holds this key
             n += 1
-            name = f"{key}_{n}"
-        groups[name] = _Group(key=name, label=spec.label, kind=kind, spec=spec, rows=rows)
-    return [groups[k] for k in sorted(groups)]
+            name = f"{g.key}_{n}"
+        taken.add(name)
+        g.key = name
+        groups.append(g)
+    return groups
 
 
 def compute_profile(

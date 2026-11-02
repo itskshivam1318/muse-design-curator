@@ -1,10 +1,10 @@
-"""Check a generated item: ask directly whether it shows the option, compare the kept attributes.
+"""Check a generated item: ask directly whether it shows the option, compare the held dimensions.
 
 The target is a direct visual question to the reasoning provider (re-parsing alone misses new
-values). Kept attributes use the validator's comparators against the source; only the source
-item's own dimensions still found on it (not removed, not stale) whose value is reliable are
-judged; `of` counts the decidable ones (kept + drifted) and the ones the comparator calls
-"unknown" (a key the take does not carry among them) are counted apart."""
+values). Every other dimension of the source item still found on it (not removed, not stale)
+is held, whatever the option's keeps say: each whose source value is reliable is compared
+with the validator's comparators; `of` counts the decidable ones (kept + drifted) and the ones
+the comparator calls "unknown" (a key the take does not carry among them) are counted apart."""
 
 import math
 from typing import Any
@@ -72,8 +72,8 @@ def check_generated(
     session: Session, source_id: str, generated_id: str, option: ExploreOption
 ) -> dict[str, Any]:
     """{"target": {answer, confidence, box, note}, "kept": n, "of": m, "drifted": [keys],
-    "unknown": k}: `of` is the decidable keeps (kept + drifted), `unknown` the ones the
-    comparator could not judge."""
+    "unknown": k}: `of` is the decidable held dimensions (kept + drifted), `unknown` the ones
+    the comparator could not judge."""
     e = session.get(Exploration, option.exploration_id)
     assert e is not None
     gen = _require_item(session, generated_id)
@@ -91,9 +91,8 @@ def check_generated(
     before = {r.key: record_of(r) for r in rows if is_held(r)}
     after = {r.key: record_of(r) for r in dimensions(session, generated_id) if is_held(r)}
     kept, unknown, drifted = 0, 0, []
-    for key in option.keeps_json or []:
-        src = before.get(key)
-        if src is None:
+    for key, src in before.items():
+        if key == e.key:
             continue
         a = AttrValue.from_record(src)
         if not a.reliable(RANKING_CONFIG):

@@ -92,7 +92,7 @@ def test_open_routes_work_while_locked(client: TestClient, world: dict[str, Any]
     run = make_run(world, board)  # a run from before Vary was retired
     top = next(c for c in runs_repo.candidates(world["session"], run.id) if c.rank is not None)
     r = client.post(f"/api/runs/{run.id}/candidates/{top.id}/decisions", json={"decision": "keep"})
-    assert r.status_code == 201
+    assert r.status_code == 410 and r.json()["error"]["code"] == "VARY_RETIRED"  # not locked
 
 
 def test_unlock_success_opens_writes(client: TestClient, clock: Clock) -> None:

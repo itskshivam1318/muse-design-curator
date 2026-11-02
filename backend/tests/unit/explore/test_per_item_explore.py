@@ -81,7 +81,7 @@ def test_abstract_prompt_reaches_model(session: Session, board: str, spy: Spy) -
     assert "The feeling the whole bag gives off: calm, loud, playful." in p
     assert "soft leather, quiet hardware" in p  # board context
     assert "- strap_stitching (Strap stitching): contrast" in p
-    assert "hardware" not in p.split("Use only keys")[1]  # removed: not offered for keeps
+    assert "- hardware (" not in p  # removed: not offered for keeps
     assert opts[0].keeps_json == ["strap_stitching"]
 
 
@@ -93,6 +93,16 @@ def test_physical_prompt_says_only_the_part_changes(session: Session, board: str
     service.explore(session, item.id, "strap_stitching", steer=None, parent_option_id=None,
                     mode="initial")  # fmt: skip
     assert "only the Shoulder strap changes" in spy.prompts[0]
+
+
+def test_removed_part_label_is_not_used(session: Session, board: str, spy: Spy) -> None:
+    item = ingest_image(session, board, png((10, 20, 30)), ItemMeta()).item
+    session.add(ItemPart(item_id=item.id, key="strap", label="Shoulder strap", removed=True,
+                         region_kind="box", region_json=[0, 0, 1, 1], source="ai"))  # fmt: skip
+    dim(session, item.id, STITCH, "contrast", physical=True)
+    service.explore(session, item.id, "strap_stitching", steer=None, parent_option_id=None,
+                    mode="initial")  # fmt: skip
+    assert "Shoulder strap" not in spy.prompts[0] and "only the strap changes" in spy.prompts[0]
 
 
 def test_stale_dimension_is_still_explorable(session: Session, board: str, spy: Spy) -> None:
@@ -159,3 +169,26 @@ def test_vocabulary_grows_the_items_own_closed_spec(session: Session, board: str
     rows = {r.key: r for r in attrs_repo.for_item(session, item)}
     assert spec_for(rows["hardware"]).vocabulary == ["brass", "gunmetal"]  # type: ignore[union-attr]
     assert boards_repo.get(session, board).lens_id is None  # type: ignore[union-attr]
+    rows["hardware"].removed = True  # a removed dimension's spec is never grown
+    session.flush()
+    assert add_vocabulary(session, board, "hardware", "copper", item_id=item) is False
+    assert spec_for(rows["hardware"]).vocabulary == ["brass", "gunmetal"]  # type: ignore[union-attr]
+
+
+def test_check_holds_dimensions_the_keeps_leave_out(
+    session: Session, board: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    src = ingest_image(session, board, png((10, 20, 30)), ItemMeta()).item.id
+    gen = ingest_image(session, board, png((200, 20, 30)), ItemMeta(origin="generated")).item.id
+    dim(session, src, MOOD, "calm", physical=False, prompt="How it feels.")  # explored: not held
+    dim(session, gen, MOOD, "hushed", physical=False, prompt="How it feels.")
+    dim(session, src, HARDWARE, "brass", physical=True)  # not in keeps, drifts
+    dim(session, gen, HARDWARE, "chrome", physical=True)
+    e = explore_repo.get_or_create(session, board, src, "mood")
+    (o,) = explore_repo.add_options(session, e.id, [{
+        "name": "Hushed", "description": "", "distance": "near", "value_json": "hushed",
+        "keeps_json": [], "edit_prompt": "Make it hushed.", "batch": 1,
+    }])  # fmt: skip
+    monkeypatch.setattr(check, "get_reasoning", lambda _s: Checker())
+    got = check_generated(session, src, gen, o)
+    assert (got["kept"], got["drifted"], got["of"], got["unknown"]) == (0, ["hardware"], 1, 0)

@@ -204,3 +204,19 @@ def test_lens_board_keys_and_labels_stay() -> None:
     attrs = {f"i{n}": [attr("finish", "brushed")] for n in range(3)}  # row label "finish"
     p = run(items, attrs)
     assert list(p.attributes) == ["finish"] and p.attributes["finish"].label == "Finish"
+
+
+def test_lens_groups_claim_keys_and_come_first_in_lens_order() -> None:
+    own = {"key": "finish", "label": "Surface", "category": "physical", "kind": "enum",
+           "part": "body", "vocabulary": ["matte"], "open_vocabulary": True}  # fmt: skip
+    items = [item(f"i{n}") for n in range(3)]
+    attrs = {
+        "i0": [attr("finish", "matte", label="Surface", spec_json=own),  # own spec, same key
+               attr("mood", "calm", "text", label="Mood"), attr("hue", "blue")],
+        "i1": [attr("finish", "brushed"), attr("hue", "blue")],
+        "i2": [attr("finish", "brushed")],
+    }  # fmt: skip
+    p = run(items, attrs)
+    assert list(p.attributes) == ["finish", "hue", "mood", "finish_2"]
+    assert p.attributes["finish"].label == "Finish" and p.attributes["finish"].n_known == 2
+    assert p.attributes["finish_2"].label == "Surface"

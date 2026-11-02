@@ -108,7 +108,11 @@ def add_vocabulary(
     """
     if item_id is not None:
         row = session.scalar(
-            select(ItemAttribute).where(ItemAttribute.item_id == item_id, ItemAttribute.key == key)
+            select(ItemAttribute).where(
+                ItemAttribute.item_id == item_id,
+                ItemAttribute.key == key,
+                ItemAttribute.removed.is_(False),
+            )
         )
         if row is not None and row.spec_json:
             return _add_to_item(session, row, value)
