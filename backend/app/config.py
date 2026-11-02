@@ -64,8 +64,6 @@ class Settings(BaseSettings):
     DEMO_MODE: bool = False
     DEMO_PASSCODE: str | None = None
     DEMO_SECRET: str | None = None
-    DEMO_RUNS_PER_IP_PER_HOUR: int = 10
-    DEMO_RUNS_PER_DAY: int = 150
     # Deepening shortlisted live items (full indexing: a Spark call plus SAM per part) is paid
     # background work; in DEMO_MODE it is off unless this is set
     DEMO_DEEPEN: bool = False

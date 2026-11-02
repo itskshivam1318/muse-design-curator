@@ -156,7 +156,6 @@ def test_free_slot_skips_occupied(client: TestClient) -> None:
                     and y < blocker.y + blocker.h and blocker.y < y + 100)  # fmt: skip
         assert free_slot(s, bid, near, (100, 100)) == (x, y)  # deterministic
         blocker.staged = True  # a staged take does not block
-        blocker.staged = True
         s.commit()
         assert free_slot(s, bid, near, (100, 100)) == first
 
