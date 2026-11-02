@@ -172,17 +172,8 @@ test('note: a passage part, rewrite only the passage, the change marked', async 
   await selectItem(page, /^note /)
   const passage = callout(page, 'Opening')
   await expect(passage).toBeVisible()
-  // a board with only a note keeps the "Getting started" steps over the middle of the canvas:
-  // scroll the note up and away from them so its callouts can be clicked
-  const steps = page.getByRole('region', { name: 'Getting started' })
-  const c = (await canvas(page).boundingBox())!
-  await page.mouse.move(c.x + 40, c.y + c.height - 40)
-  for (let i = 0; i < 10; i++) {
-    const s = await steps.boundingBox()
-    const boxes = [await passage.boundingBox(), await callout(page, 'Whole item').boundingBox()]
-    if (!s || boxes.every((b) => b && !overlaps(b, s))) break
-    await page.mouse.wheel(0, 80)
-  }
+  // a note is an item: the "Getting started" steps are gone, nothing covers the callouts
+  await expect(page.getByRole('region', { name: 'Getting started' })).toHaveCount(0)
   await expect(passage).toContainText('passage')
   await expect(callout(page, 'Whole item').getByRole('button', { name: /^Tone ·/ })).toBeVisible()
 
