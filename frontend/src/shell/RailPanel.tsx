@@ -14,8 +14,6 @@ interface Props {
   onClose: () => void
   /** Library: an item was picked; select it and bring it into view. */
   onFocusItem: (item: Item) => void
-  /** Search: open Find real examples for this image. */
-  onFindExamples: (item: Item) => void
   /** Library extras under the items list: add actions, board signals, lens review. */
   library?: ReactNode
   /** Opened by the person (take focus) rather than by the board (leave focus be). */
@@ -51,14 +49,13 @@ function ItemList({ items, name, onPick }: { items: Item[]; name: string; onPick
 }
 
 /** The slide-out beside the rail, over the canvas. Esc (or the rail icon again) closes it. */
-export function RailPanel({ id, boardId, items, onClose, onFocusItem, onFindExamples, library, autoFocus = true }: Props) {
+export function RailPanel({ id, boardId, items, onClose, onFocusItem, library, autoFocus = true }: Props) {
   const ref = useRef<HTMLElement>(null)
   // opened by the person: take focus; opened by the board (a lens to review): leave focus be
   useEffect(() => {
     if (autoFocus) ref.current?.focus()
   }, [id, autoFocus])
   const visible = visibleItems(items)
-  const images = visible.filter((i) => i.kind === 'image')
   const name = RAIL_LABELS[id]
   return (
     <section
@@ -93,15 +90,7 @@ export function RailPanel({ id, boardId, items, onClose, onFocusItem, onFindExam
           {library}
         </>
       )}
-      {id === 'search' &&
-        (images.length > 0 ? (
-          <>
-            <h3 className="rail-sub">Find real examples of</h3>
-            <ItemList items={images} name="Find real examples of" onPick={onFindExamples} />
-          </>
-        ) : (
-          <p className="muted small">Add an image to find real examples of it.</p>
-        ))}
+      {id === 'search' && <p className="muted">Search is coming soon.</p>}
       {id === 'plugins' && <PluginsPanel boardId={boardId} />}
       {id === 'vocabulary' && <p className="muted">Vocabulary is coming soon.</p>}
     </section>

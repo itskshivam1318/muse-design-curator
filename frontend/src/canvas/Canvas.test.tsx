@@ -186,6 +186,30 @@ describe('Canvas part callouts', () => {
     expect(screen.queryByTestId('region-overlay')).toBeNull()
   })
 
+  it('deselecting while a part is hovered clears it: selecting again shows no region', async () => {
+    const qc = client([], [makeItem({ id: 'src', board_id: 'b1' })])
+    qc.setQueryData(keys.analysis('src'), analysis)
+    renderBoard(qc)
+    act(() => selection.select(['src']))
+    fireEvent.mouseEnter(screen.getByRole('group', { name: 'Hands' }))
+    await waitFor(() => expect(screen.getByTestId('region-overlay').dataset.state).toBe('mask'))
+    act(() => selection.clear()) // e.g. Escape; the mouse never left the card
+    expect(screen.queryByTestId('region-overlay')).toBeNull()
+    act(() => selection.select(['src']))
+    expect(screen.getByRole('group', { name: 'Hands' })).toBeTruthy()
+    expect(screen.queryByTestId('region-overlay')).toBeNull()
+  })
+
+  it('a mask that cannot be found falls back to an outline of the part', async () => {
+    vi.mocked(getRegion).mockRejectedValueOnce(new Error('REGION_EMPTY'))
+    const qc = client([], [makeItem({ id: 'src', board_id: 'b1' })])
+    qc.setQueryData(keys.analysis('src'), analysis)
+    renderBoard(qc)
+    act(() => selection.select(['src']))
+    fireEvent.mouseEnter(screen.getByRole('group', { name: 'Hands' }))
+    await waitFor(() => expect(screen.getByTestId('region-overlay').dataset.state).toBe('bbox'))
+  })
+
   it('a note waiting for analysis shows no callouts', () => {
     const note = makeItem({ id: 'n1', board_id: 'b1', kind: 'note', origin: 'note', note_text: 'Olive', parse_status: 'pending' })
     const qc = client([], [note])
@@ -193,5 +217,7 @@ describe('Canvas part callouts', () => {
     renderBoard(qc)
     act(() => selection.select(['n1']))
     expect(screen.queryByRole('group', { name: 'Whole item' })).toBeNull()
+    expect(document.querySelectorAll('.callout')).toHaveLength(0)
+    expect(screen.queryAllByRole('group').filter((g) => g.closest('.callout-layer'))).toHaveLength(0)
   })
 })

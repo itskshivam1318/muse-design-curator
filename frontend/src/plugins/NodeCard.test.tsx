@@ -191,7 +191,7 @@ describe('NodeCard', () => {
   it('typing in a param field does not trigger tool shortcuts', () => {
     setup({
       wrap: (card) => (
-        <BoardShell boardId="b1" items={[]} header={null} canvas={card} onFocusItem={vi.fn()} onFindExamples={vi.fn()} plugins />
+        <BoardShell boardId="b1" items={[]} header={null} canvas={card} onFocusItem={vi.fn()} plugins />
       ),
     })
     fireEvent.click(screen.getByRole('button', { name: /Change only a part/ }))

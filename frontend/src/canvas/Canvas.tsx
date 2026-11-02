@@ -782,7 +782,8 @@ function ItemList({ items, selected }: { items: Item[]; selected: readonly strin
 
 /**
  * What to draw for a hovered part: its region once known; until then the stored region (a box or a
- * passage is already exact) or, for a mask being found, a loading outline of its bbox.
+ * passage is already exact) or, for a mask being found, a loading outline of its bbox. A mask that
+ * could not be found falls back to an outline of its bbox (or of the whole item).
  */
 function regionOf(part: PartView | undefined, fetched: Region | undefined, pending: boolean): { region: Region; loading: boolean } | null {
   if (!part) return null
@@ -790,5 +791,5 @@ function regionOf(part: PartView | undefined, fetched: Region | undefined, pendi
   const r = part.region ?? undefined
   if (part.region_kind === 'box') return r ? { region: { kind: 'box', box: r }, loading: false } : null
   if (part.region_kind === 'text_range') return r ? { region: { kind: 'text_range', range: r }, loading: false } : null
-  return pending ? { region: { kind: 'mask', box: r }, loading: true } : null
+  return { region: { kind: 'mask', box: r }, loading: pending }
 }

@@ -110,7 +110,10 @@ describe('Callouts', () => {
     const lume = screen.getByRole('button', { name: 'Lume · green' })
     expect(lume.className).toContain('is-stale')
     expect(lume.getAttribute('title')).toBe('old dimension, not found on this item')
-    expect(screen.getByRole('button', { name: 'Hand style · syringe' }).className).not.toContain('is-stale')
+    const hand = screen.getByRole('button', { name: 'Hand style · syringe' })
+    expect(hand.className).not.toContain('is-stale')
+    // labels are one line (ellipsis): the full text is in the title
+    expect(hand.getAttribute('title')).toBe('Hand style · syringe')
   })
 
   it('+ Add dimension and + Add part label the item', async () => {

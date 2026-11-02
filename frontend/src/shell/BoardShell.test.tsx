@@ -27,7 +27,6 @@ const items: Item[] = [
 function setup(over: { plugins?: boolean } = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const onFocusItem = vi.fn()
-  const onFindExamples = vi.fn()
   render(
     <QueryClientProvider client={qc}>
       <BoardShell
@@ -45,12 +44,11 @@ function setup(over: { plugins?: boolean } = {}) {
           </>
         }
         onFocusItem={onFocusItem}
-        onFindExamples={onFindExamples}
         plugins={over.plugins ?? true}
       />
     </QueryClientProvider>,
   )
-  return { onFocusItem, onFindExamples }
+  return { onFocusItem }
 }
 
 const rail = () => within(screen.getByRole('navigation', { name: 'Panels' }))
@@ -107,12 +105,12 @@ describe('BoardShell', () => {
     expect(screen.queryByRole('dialog', { name: 'Vocabulary' })).toBeNull()
   })
 
-  it('Search lists images and opens Find real examples for the chosen one', () => {
-    const { onFindExamples } = setup()
+  it('Search no longer offers Find real examples', () => {
+    setup()
     fireEvent.click(rail().getByRole('button', { name: 'Search' }))
     const panel = screen.getByRole('dialog', { name: 'Search' })
-    fireEvent.click(within(panel).getByRole('button', { name: 'dial-macro.png' }))
-    expect(onFindExamples).toHaveBeenCalledWith(items[1])
+    expect(panel.textContent).not.toMatch(/real examples/i)
+    expect(within(panel).queryByRole('list')).toBeNull()
   })
 
   it('Plugins opens the plugins panel slot', () => {

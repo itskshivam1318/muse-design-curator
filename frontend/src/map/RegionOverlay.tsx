@@ -19,7 +19,10 @@ interface Props {
   /** The part's region; while `loading`, only its `box` (if known) is used. */
   region: Region | null
   view: View
-  /** The region is still being found: a dashed outline of the bbox, or of the whole item. */
+  /**
+   * The region is still being found: a dashed outline of the bbox, or of the whole item. A mask
+   * with no image (it could not be found) gets a solid outline of the same.
+   */
   loading?: boolean
 }
 
@@ -39,7 +42,10 @@ export function RegionOverlay({ item, region, view, loading = false }: Props) {
     if (!isBox(region.box)) return null
     return <div className="region-overlay is-box" data-testid="region-overlay" data-state="box" style={style(boxBounds(whole, region.box))} aria-hidden="true" />
   }
-  if (!region.mask_url) return null
+  if (!region.mask_url) {
+    const b = isBox(region.box) ? boxBounds(whole, region.box) : whole
+    return <div className="region-overlay is-bbox" data-testid="region-overlay" data-state="bbox" style={style(b)} aria-hidden="true" />
+  }
   const s = style(whole)
   // the mask (white on black) becomes alpha; a dilated copy minus the original is the outline
   return (

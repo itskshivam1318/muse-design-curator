@@ -6,7 +6,7 @@
  * canvas can highlight its region.
  */
 import { useQueryClient } from '@tanstack/react-query'
-import { type FormEvent, type WheelEvent, useState } from 'react'
+import { type FormEvent, type WheelEvent, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   addDimension,
   addPart,
@@ -71,6 +71,12 @@ export function Callouts({ item, analysis, view, onOpenDimension, onHoverPart, o
   const [form, setForm] = useState<Form>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<{ card: string; text: string } | null>(null)
+  // gone (deselected, Escape, a drag or marquee, another item): no part stays highlighted
+  const hoverRef = useRef(onHoverPart)
+  useLayoutEffect(() => {
+    hoverRef.current = onHoverPart
+  })
+  useEffect(() => () => hoverRef.current(null), [])
 
   const bounds = itemBounds(item)
   const parts = analysis.parts
@@ -170,12 +176,13 @@ export function Callouts({ item, analysis, view, onOpenDimension, onHoverPart, o
         </div>
         {dims.map((d) => {
           const stale = d.status === 'stale'
+          const text = `${d.label} · ${formatValue(d.value)}`
           return (
             <button
               key={d.key}
               type="button"
               className={stale ? 'callout-dim is-stale' : 'callout-dim'}
-              title={stale ? STALE_TITLE : undefined}
+              title={stale ? STALE_TITLE : text}
               aria-busy={busy === `dim:${d.key}`}
               disabled={locked || !onOpenDimension || busy !== null}
               onClick={() => open(key, d)}

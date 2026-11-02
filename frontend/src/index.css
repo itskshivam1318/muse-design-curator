@@ -2109,8 +2109,12 @@ button.onboarding-step:hover {
   color: var(--muted);
 }
 .callout-dim {
-  min-height: 30px;
+  width: 100%;
+  height: 30px;
+  overflow: hidden;
   padding: 5px 8px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   border: 1px solid var(--rule);
   border-radius: 6px;
   background: var(--raised);
@@ -2180,6 +2184,10 @@ button.onboarding-step:hover {
   border: 2px solid #ffd166;
   border-radius: 4px;
   background: rgba(255, 209, 102, 0.35);
+}
+.region-overlay.is-bbox {
+  border: 2px solid #ffd166;
+  border-radius: 4px;
 }
 .region-overlay.is-loading {
   border: 2px dashed #ffd166;

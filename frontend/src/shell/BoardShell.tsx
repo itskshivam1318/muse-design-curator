@@ -22,13 +22,12 @@ interface Props {
   /** Floating things over the stage (onboarding, upload status, the maybe strip…). */
   overlays?: ReactNode
   onFocusItem: (item: Item) => void
-  onFindExamples: (item: Item) => void
   /** Server flag: plugins on shows the Plugins rail icon and Nodes. */
   plugins: boolean
 }
 
 /** The calm board: header, slim left rail with slide-outs, the canvas stage, tools and the agent card. */
-export function BoardShell({ boardId, items, header, canvas, library, overlays, onFocusItem, onFindExamples, plugins }: Props) {
+export function BoardShell({ boardId, items, header, canvas, library, overlays, onFocusItem, plugins }: Props) {
   const railState = useRail()
   const rail = railState.open === 'plugins' && !plugins ? null : railState.open
   const [nodesOpen, setNodesOpen] = useState(false)
@@ -76,7 +75,6 @@ export function BoardShell({ boardId, items, header, canvas, library, overlays, 
               items={items}
               onClose={closeRail}
               onFocusItem={focusItem}
-              onFindExamples={onFindExamples}
               library={library}
               autoFocus={railState.reason === 'user'}
             />

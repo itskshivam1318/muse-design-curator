@@ -7,7 +7,6 @@
  */
 import { useSyncExternalStore } from 'react'
 import { API_ORIGIN } from './api'
-import { humanize } from './format'
 
 export interface UiEvent {
   action: string
@@ -66,8 +65,6 @@ export interface UiActivityEntry {
 const ACTIVITY_MAX = 50
 const PANEL_NAMES: Record<string, string> = {
   inspect: 'Inspect',
-  explore: 'Explore',
-  vary: 'Find real examples',
   compare: 'Compare',
 }
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
@@ -81,14 +78,6 @@ export function describeUiAction(action: string, detail: Record<string, unknown>
       const name = PANEL_NAMES[String(detail?.kind)]
       return name ? `Opened ${name}.` : null
     }
-    case 'vary.run': {
-      const target = typeof detail?.target === 'string' ? humanize(detail.target).toLowerCase() : null
-      return target ? `Started Find real examples for ${target}.` : 'Started Find real examples.'
-    }
-    case 'candidate.keep':
-      return 'Kept a real example.'
-    case 'candidate.reject':
-      return 'Rejected a real example.'
     case 'item.remove':
       return `Removed ${plural(count(detail), 'item')}.`
     case 'item.role': {

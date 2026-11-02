@@ -195,7 +195,6 @@ export function BoardPage({ boardId }: { boardId: string }) {
         items={list}
         plugins={pluginsEnabled}
         onFocusItem={focusItem}
-        onFindExamples={focusItem}
         header={
           <>
             <Link href="/" className="back-link" aria-label="All boards">

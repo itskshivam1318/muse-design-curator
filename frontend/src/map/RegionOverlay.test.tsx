@@ -41,6 +41,14 @@ describe('RegionOverlay', () => {
     expect(box().style.width).toBe('800px')
   })
 
+  it('a mask that could not be found: a solid outline of its bbox, or of the whole item', () => {
+    const { rerender } = render(<RegionOverlay item={item} region={{ kind: 'mask', box: [0, 0, 0.5, 0.5] }} view={view} />)
+    expect(box().dataset.state).toBe('bbox')
+    expect(box().style.width).toBe('400px')
+    rerender(<RegionOverlay item={item} region={{ kind: 'mask' }} view={view} />)
+    expect(box().style.width).toBe('800px')
+  })
+
   it('draws nothing for a text range (the note highlights it) or no region', () => {
     const { rerender } = render(<RegionOverlay item={item} region={{ kind: 'text_range', range: [0, 4] }} view={view} />)
     expect(screen.queryByTestId('region-overlay')).toBeNull()
