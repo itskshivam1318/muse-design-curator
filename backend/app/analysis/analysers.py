@@ -49,6 +49,7 @@ class Hints:
     you_dimensions: list[str] = field(default_factory=list)
     removed: list[str] = field(default_factory=list)
     parent_dimensions: list[dict[str, Any]] = field(default_factory=list)
+    own_dimensions: list[dict[str, Any]] = field(default_factory=list)  # from an earlier run
     content_type: str | None = None  # set when the person chose what the item is
 
     @classmethod
@@ -68,6 +69,15 @@ def load_content(session: Session, item: BoardItem) -> ItemContent:
 def _labels(rows: list[dict[str, Any]]) -> str:
     return "; ".join(
         f"{r.get('label', '')}" + (f" ({r['prompt']})" if r.get("prompt") else "") for r in rows
+    )
+
+
+def _dimension_list(dims: list[dict[str, Any]]) -> str:
+    return "; ".join(
+        f"{d.get('key')} ({d.get('label')}, {d.get('type')}"
+        + (f", part {d['part']}" if d.get("part") else "")
+        + f", {d.get('kind')})"
+        for d in dims
     )
 
 
@@ -124,16 +134,15 @@ def build_prompt(content: ItemContent, board_context: str, hints: Hints) -> str:
         lines.append(
             "Never propose any of these (the user removed them): " + ", ".join(hints.removed)
         )
+    if hints.own_dimensions:
+        lines.append(
+            "This item was analysed before. Reuse these keys where they still apply: "
+            + _dimension_list(hints.own_dimensions)
+        )
     if hints.parent_dimensions:
         lines.append(
             "This item was derived from another item. Reuse these exact dimension keys and "
-            "labels where they still apply: "
-            + "; ".join(
-                f"{d.get('key')} ({d.get('label')}, {d.get('type')}"
-                + (f", part {d['part']}" if d.get("part") else "")
-                + f", {d.get('kind')})"
-                for d in hints.parent_dimensions
-            )
+            "labels where they still apply: " + _dimension_list(hints.parent_dimensions)
         )
     if board_context:
         lines.append(f"Board context: {board_context}")

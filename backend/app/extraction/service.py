@@ -127,6 +127,8 @@ def _part_mask(
     """
     height, width = size
     row = masks_repo.get(session, sha, prompt)
+    if row is not None and row.mask_path and not files.abs_path(row.mask_path).is_file():
+        row = None  # the cached mask file is gone: segment again (the row is overwritten)
     if row is None:
         res = seg.localize(image, sha, prompt)
         if not res.found or not res.instances:

@@ -118,3 +118,57 @@ def test_your_words_never_changed_by_refresh(session: Session) -> None:
     session.expire_all()
     assert boards_repo.get(session, board.id).context == "my own words"  # type: ignore[union-attr]
     assert "Your words: my own words" in board_context(session, board.id)
+
+
+def test_learned_keeps_room_for_kept_and_rejected(session: Session) -> None:
+    """A board with many profile signals still tells the analyser what was kept or rejected."""
+    board = boards_repo.create(session, "B")
+    ids = [add_item(session, board.id, n) for n in range(3)]
+    for i in ids:
+        for k in range(14):  # 14 signals: more than MAX_LEARNED on their own
+            add_attr(session, i, f"sig_{k:02d}", "same", label=f"Signal {k:02d}")
+    for k in range(5):
+        add_attr(session, ids[0], f"opt_{k}", "x", label=f"Explored {k}")
+        expl = Exploration(board_id=board.id, item_id=ids[0], key=f"opt_{k}")
+        session.add(expl)
+        session.flush()
+        session.add(ExploreOption(exploration_id=expl.id, name=f"kept {k}", status="kept"))
+    session.commit()
+    lines = refresh_learned(session, board.id)
+    assert len(lines) == 12
+    assert sum(line.startswith("Kept for") for line in lines) == 4
+    assert sum(line.startswith("Signal") for line in lines) == 8
+
+
+def test_learned_gives_unused_room_to_the_profile(session: Session) -> None:
+    board = boards_repo.create(session, "B")
+    ids = [add_item(session, board.id, n) for n in range(3)]
+    for i in ids:
+        for k in range(14):
+            add_attr(session, i, f"sig_{k:02d}", "same", label=f"Signal {k:02d}")
+    expl = Exploration(board_id=board.id, item_id=ids[0], key="sig_00")
+    session.add(expl)
+    session.flush()
+    session.add(ExploreOption(exploration_id=expl.id, name="bright", status="dismissed"))
+    session.commit()
+    lines = refresh_learned(session, board.id)
+    assert len(lines) == 12 and lines[-1] == "Not for Signal 00: bright"
+    assert sum(line.startswith("Signal") for line in lines) == 11
+
+
+def test_rerun_hints_carry_the_items_own_ai_dimensions(session: Session) -> None:
+    board = boards_repo.create(session, "B")
+    a = add_item(session, board.id, 1)
+    add_attr(session, a, "dial_colour", label="Dial colour", part="dial", dim_type="physical",
+             category="physical", kind="color")  # fmt: skip
+    add_attr(session, a, "mood", label="Mood")
+    add_attr(session, a, "typed", label="Typed", source="user")  # the user's: kept anyway
+    add_attr(session, a, "gone", label="Gone", removed=True)
+    hints = hints_for(session, board.id, a)
+    assert sorted(d["key"] for d in hints.own_dimensions) == ["dial_colour", "mood"]
+    prompt = build_prompt(ItemContent(item_id=a, kind="note", text="t"), "", hints)
+    line = next(x for x in prompt.splitlines() if x.startswith("This item was analysed before"))
+    assert "Reuse these keys where they still apply" in line
+    assert "dial_colour (Dial colour, physical, part dial, color)" in line
+    assert "mood (Mood, abstract, enum)" in line
+    assert "typed" not in line and "gone" not in line

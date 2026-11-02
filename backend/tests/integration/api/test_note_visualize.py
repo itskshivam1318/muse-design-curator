@@ -97,6 +97,28 @@ def test_visualize_conflict_409_then_stale_claim_allowed(
     assert client.post(f"/api/items/{note['id']}/visualize").status_code == 202
 
 
+def renders_used(board: str) -> int:
+    return len(demo.windows._hits.get(f"render:{board}", ()))
+
+
+def test_visualize_counts_a_render_and_stops_at_the_daily_limit(
+    client: TestClient, board: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(visualize.jobs, "enqueue", lambda *_a, **_k: None)  # job never runs
+    monkeypatch.setenv("RENDER_PER_BOARD_PER_DAY", "2")
+    note = make_note(client, board)
+    assert client.post(f"/api/items/{note['id']}/visualize").status_code == 202
+    assert renders_used(board) == 1
+    busy = client.post(f"/api/items/{note['id']}/visualize")
+    assert busy.status_code == 409 and renders_used(board) == 1  # the refusal gave it back
+    other = make_note(client, board, "a pear")
+    assert client.post(f"/api/items/{other['id']}/visualize").status_code == 202
+    third = make_note(client, board, "a plum")
+    r = client.post(f"/api/items/{third['id']}/visualize")
+    assert r.status_code == 429 and error(r) == "DAILY_LIMIT"
+    assert renders_used(board) == 2
+
+
 def test_not_found_and_not_a_note(client: TestClient, board: str, world: Any) -> None:
     r = client.post("/api/items/nope/visualize")
     assert r.status_code == 404

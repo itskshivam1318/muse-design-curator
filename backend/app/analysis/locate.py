@@ -15,6 +15,7 @@ from app.extraction.service import _image_for, _mask_rel, _part_mask, _require_i
 from app.measure.palette import mask_ratio
 from app.providers import get_segmentation
 from app.providers.reliability import ModelError
+from app.storage import files
 
 MAX_PROMPT_WORDS = 3
 MIN_MASK_RATIO = 0.001
@@ -64,8 +65,9 @@ def locate(session: Session, item_id: str, part_key: str) -> Region:
         return Region(kind="box", box=part.region_json)
     if part.region_kind == "text_range":
         return Region(kind="text_range", range=part.region_json)
-    if part.mask_path:
+    if part.mask_path and files.abs_path(part.mask_path).is_file():
         return _mask_region(part)
+    part.mask_path = None  # never located, or its cached file is gone: locate it (again)
 
     image, sha = _image_for(session, item)
     prompt = " ".join(part.label.split()[:MAX_PROMPT_WORDS])

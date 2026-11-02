@@ -21,6 +21,7 @@ USER_SOURCES = ("you", "user")
 
 
 MAX_LEARNED = 12
+MIN_OPTION_LINES = 4  # of MAX_LEARNED, kept for what the user kept or rejected when there is any
 MAX_DEFINITIONS = 12
 OFFER_MIN_ITEMS = 2
 
@@ -64,7 +65,8 @@ def _abstract_definitions(session: Session, board_id: str) -> list[dict[str, Any
 
 def hints_for(session: Session, board_id: str, item_id: str) -> Hints:
     """Board dimensions and abstract definitions in use, plus the item's own parts and
-    dimensions, what the user removed, and the source item's dimensions."""
+    dimensions (the user's, and the AI's from an earlier run), what the user removed, and the
+    source item's dimensions."""
     hints = Hints.empty()
     board = boards_repo.get(session, board_id)
     if board is not None:
@@ -82,6 +84,11 @@ def hints_for(session: Session, board_id: str, item_id: str) -> Hints:
             hints.removed.append(a.key)
         elif a.source in USER_SOURCES:
             hints.you_dimensions.append(a.key)
+        else:  # the item's own AI dimensions: a re-run keeps their keys where they still apply
+            hints.own_dimensions.append(
+                {"key": a.key, "label": a.label, "type": a.dim_type, "part": a.part,
+                 "kind": a.kind}
+            )  # fmt: skip
     item = items_repo.get(session, item_id)
     if item is not None and item.content_type_locked:
         hints.content_type = item.content_type
@@ -156,8 +163,9 @@ def refresh_learned(session: Session, board_id: str) -> list[str]:
                 for v, sh in zip(t.values, t.shares, strict=True)
             )
         )
-    lines.extend(_option_lines(session, board_id))
-    lines = lines[:MAX_LEARNED]
+    options = _option_lines(session, board_id)
+    n_options = min(len(options), max(MIN_OPTION_LINES, MAX_LEARNED - len(lines)))
+    lines = lines[: MAX_LEARNED - n_options] + options[:n_options]
     if lines != (board.learned_json or []):
         board.learned_json = lines
         session.flush()

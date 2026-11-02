@@ -603,11 +603,16 @@ def test_unusable_region_is_refused_and_refunded(client: TestClient, world, monk
     assert run(client, opt["id"]).status_code == 202  # the refused render cost nothing
 
 
-def test_missing_mask_file_is_refused(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
-    _as_physical(world, "mask", mask_path="masks/gone.png", region_json=[0.1, 0.1, 0.5, 0.5])
+def test_missing_mask_file_is_located_again(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    src = _as_physical(world, "mask", mask_path="masks/gone.png", region_json=[0.1, 0.1, 0.5, 0.5])
     opt = first_option(client, world)
     assert run(client, opt["id"]).status_code == 202
-    _refused(world, opt["id"], "REGION_FAILED")
+    assert option_row(world, opt["id"]).last_error is None
+    assert len(generated(world, opt["id"])) == 1
+    s = world["session"]
+    s.expire_all()
+    part = s.scalar(select(ItemPart).where(ItemPart.item_id == src, ItemPart.key == "dial"))
+    assert part.mask_path != "masks/gone.png" and files.abs_path(part.mask_path).is_file()
 
 
 def test_physical_text_dimension_without_a_range_is_refused(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]

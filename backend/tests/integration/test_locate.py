@@ -115,3 +115,20 @@ def test_removed_or_unknown_part_is_404(client: TestClient) -> None:
             with pytest.raises(AppError) as e:
                 locate(s, item_id, key)
             assert (e.value.status, e.value.code) == (404, "PART_NOT_FOUND")
+
+
+def test_missing_mask_file_is_located_again(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seg = CountingSeg()
+    monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: seg)
+    with deps._factory()() as s:
+        item_id = setup_item(s, board(client))
+        first = locate(s, item_id, "body")
+        part = s.query(ItemPart).filter_by(item_id=item_id).one()
+        assert part.mask_path
+        files.abs_path(part.mask_path).unlink()  # the cached file is gone (a wiped volume)
+        again = locate(s, item_id, "body")
+        assert files.abs_path(part.mask_path).is_file()
+    assert seg.calls == 2
+    assert again.kind == "mask" and again.mask_url == first.mask_url
