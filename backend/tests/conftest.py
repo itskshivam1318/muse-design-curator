@@ -104,6 +104,7 @@ def client(data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
     from app.db.session import make_engine, make_session_factory, run_migrations
     from app.extraction import service
     from app.main import app
+    from app.put import service as put_service
 
     engine = make_engine(
         "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
@@ -126,6 +127,7 @@ def client(data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
     app.dependency_overrides[get_session] = override
     jobs.register("parse_item", service.parse_item_job)  # other tests may have cleared the registry
     jobs.register("analyse_item", analysis_service.analyse_item_job)
+    jobs.register(put_service.JOB, put_service.put_into_job)
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
