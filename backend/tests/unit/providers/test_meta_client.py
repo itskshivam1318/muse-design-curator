@@ -81,12 +81,12 @@ def test_429_retry_after_retried_once_then_succeeds(api: FakeApi, _no_sleep: lis
     assert _no_sleep == [1.0]
 
 
-def test_504_is_gateway_timeout_no_retry(api: FakeApi) -> None:
+def test_504_is_gateway_timeout_retried_once(api: FakeApi) -> None:
     route = api.post(URL, response(504, json={"error": {}}))
     with pytest.raises(ModelError) as ei:
         provider(api).extract([IMG], SCHEMA, "p")
     assert ei.value.code == "GATEWAY_TIMEOUT"
-    assert route.call_count == 1
+    assert route.call_count == 2
 
 
 @pytest.mark.parametrize(

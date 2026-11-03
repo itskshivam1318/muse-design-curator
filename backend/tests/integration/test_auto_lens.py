@@ -91,3 +91,21 @@ def test_fewer_than_three_items_do_nothing(session: Session) -> None:
     profile_mod.recompute(session, bid)
     board = boards_repo.get(session, bid)
     assert board is not None and board.domain is None and board.lens_id is None
+
+
+def test_board_whose_items_fit_no_domain_stays_without_lens(session: Session) -> None:
+    # cars on a board with only watch and ui prototypes: each item leans a hair toward watch
+    between = [[0.71, 0.7], [0.712, 0.7], [0.71, 0.705], [0.715, 0.7]]
+    bid, _ = board_with(session, between)
+    profile_mod.recompute(session, bid)
+    board = boards_repo.get(session, bid)
+    assert board is not None and board.domain is None and board.lens_id is None
+
+
+def test_a_clear_minority_does_not_name_the_board(session: Session) -> None:
+    # two items are plainly watches, four fit nothing: under half the board is no winner
+    between = [[0.71, 0.7], [0.712, 0.7], [0.71, 0.705], [0.715, 0.7]]
+    bid, _ = board_with(session, [WATCH, WATCH, *between])
+    profile_mod.recompute(session, bid)
+    board = boards_repo.get(session, bid)
+    assert board is not None and board.domain is None and board.lens_id is None

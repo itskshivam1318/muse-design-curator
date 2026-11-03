@@ -19,6 +19,8 @@ import {
   keys,
   type PartView,
   type Point,
+  removeDimension,
+  removePart,
 } from '../api'
 import { formatValue } from '../attrValues'
 import type { Bounds, View } from '../canvas/geometry'
@@ -65,6 +67,8 @@ export function Callouts({ item, analysis, view, onOpenDimension, onHoverPart, o
   const [form, setForm] = useState<Form>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<{ card: string; text: string } | null>(null)
+  // the part whose Remove was clicked, waiting for "Remove part" (its dimensions go with it)
+  const [confirming, setConfirming] = useState<string | null>(null)
   // gone (deselected, Escape, a drag or marquee, another item): no part stays highlighted
   const hoverRef = useRef(onHoverPart)
   useLayoutEffect(() => {
@@ -114,6 +118,28 @@ export function Callouts({ item, analysis, view, onOpenDimension, onHoverPart, o
         await qc.invalidateQueries({ queryKey: keys.items(item.board_id) })
       },
       'Could not extract',
+    )
+  /** Removed for good: a re-analysis never brings it back. */
+  const dropDimension = (card: string, d: DimensionView) =>
+    void run(
+      card,
+      `remove:${d.key}`,
+      async () => {
+        await removeDimension(item.id, d.key)
+        await refresh()
+      },
+      'Could not remove the dimension',
+    )
+  const dropPart = (p: PartView) =>
+    void run(
+      p.key,
+      `remove:${p.key}`,
+      async () => {
+        await removePart(item.id, p.key)
+        setConfirming(null)
+        await refresh()
+      },
+      'Could not remove the part',
     )
   const submitDimension = async (card: string, label: string) => {
     const part = card === WHOLE ? null : card
@@ -165,32 +191,60 @@ export function Callouts({ item, analysis, view, onOpenDimension, onHoverPart, o
           const stale = d.status === 'stale'
           const text = `${d.label} · ${formatValue(d.value)}`
           return (
-            <button
-              key={d.key}
-              type="button"
-              className={stale ? 'callout-dim is-stale' : 'callout-dim'}
-              title={stale ? STALE_TITLE : text}
-              aria-busy={busy === `dim:${d.key}`}
-              disabled={locked || !onOpenDimension || busy !== null}
-              onClick={() => open(key, d)}
-            >
-              {d.label} <span className="callout-value">· {formatValue(d.value)}</span>
-            </button>
+            <div key={d.key} className="callout-dim-row">
+              <button
+                type="button"
+                className={stale ? 'callout-dim is-stale' : 'callout-dim'}
+                title={stale ? STALE_TITLE : text}
+                aria-busy={busy === `dim:${d.key}`}
+                disabled={locked || !onOpenDimension || busy !== null}
+                onClick={() => open(key, d)}
+              >
+                {d.label} <span className="callout-value">· {formatValue(d.value)}</span>
+              </button>
+              <button
+                type="button"
+                className="callout-dim-remove"
+                aria-label={`Remove ${d.label}`}
+                title={`Remove ${d.label}`}
+                aria-busy={busy === `remove:${d.key}`}
+                disabled={locked || busy !== null}
+                onClick={() => dropDimension(key, d)}
+              >
+                ×
+              </button>
+            </div>
           )
         })}
         {form?.kind === 'dimension' && form.card === key ? (
           <LabelForm name={`New dimension on ${title}`} placeholder="Dimension name" busy={busy === 'add'} onSubmit={(l) => void submitDimension(key, l)} onCancel={() => setForm(null)} />
         ) : null}
-        <div className="callout-actions">
-          {p && (
-            <button type="button" className="callout-act" disabled={locked || busy !== null} aria-busy={busy === `extract:${p.key}`} onClick={() => extract(p)}>
-              Extract
+        {p && confirming === p.key ? (
+          <div className="callout-actions">
+            <button type="button" className="callout-act is-danger" disabled={locked || busy !== null} aria-busy={busy === `remove:${p.key}`} onClick={() => dropPart(p)}>
+              Remove part
             </button>
-          )}
-          <button type="button" className="callout-act" disabled={locked || busy !== null} onClick={() => setForm({ kind: 'dimension', card: key })}>
-            + Add dimension
-          </button>
-        </div>
+            <button type="button" className="callout-act" disabled={busy !== null} onClick={() => setConfirming(null)}>
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="callout-actions">
+            {p && (
+              <button type="button" className="callout-act" disabled={locked || busy !== null} aria-busy={busy === `extract:${p.key}`} onClick={() => extract(p)}>
+                Extract
+              </button>
+            )}
+            <button type="button" className="callout-act" disabled={locked || busy !== null} onClick={() => setForm({ kind: 'dimension', card: key })}>
+              + Add dimension
+            </button>
+            {p && (
+              <button type="button" className="callout-act" disabled={locked || busy !== null} onClick={() => setConfirming(p.key)}>
+                Remove
+              </button>
+            )}
+          </div>
+        )}
         {!p && canAddPart(item, analysis) && (
           <>
             {form?.kind === 'part' && (

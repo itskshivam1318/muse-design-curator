@@ -1,45 +1,67 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { type Item, keys } from '../api'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
+import { type AnalysisView, type DimensionView, type Item, keys } from '../api'
 import { selection } from '../canvas/selection'
-import { makeAttrs } from '../test/attrs'
-import { makeItem, makeProfile } from '../test/fixtures'
-
-vi.mock('../api', async (orig) => ({
-  ...(await orig<typeof import('../api')>()),
-  patchAttribute: vi.fn(async (_id: string, key: string, body: Record<string, unknown>) => ({
-    ...makeAttrs().attributes.find((a) => a.key === key)!,
-    ...('value' in body ? { value: body.value, status: 'edited', source: 'user' } : {}),
-    ...(body.action === 'confirm' ? { status: 'confirmed' } : {}),
-    ...(body.action === 'disable' ? { enabled: false } : {}),
-  })),
-}))
-const { patchAttribute } = await import('../api')
-const { InspectPanel } = await import('./InspectPanel')
+import { makeItem } from '../test/fixtures'
+import { InspectPanel } from './InspectPanel'
+import { inspectGroups } from './inspectGroups'
 
 afterEach(() => {
   cleanup()
   selection.reset()
-  vi.useRealTimers()
 })
 
-function setup(locked = false, item: Partial<Item> = {}, explorations?: unknown[]) {
+const dim = (d: Partial<DimensionView> & Pick<DimensionView, 'key' | 'label'>): DimensionView => ({
+  type: d.part ? 'physical' : 'abstract', part: null, prompt: null, kind: 'text', value: null,
+  confidence: null, source: 'ai', status: 'current', ...d,
+})
+
+const analysis = (a: Partial<AnalysisView> = {}): AnalysisView => ({
+  content_type: 'image',
+  parse_status: 'completed',
+  parts: [{ key: 'trousers', label: 'wide pinstripe trousers', region_kind: 'mask', region: null, mask_url: null, source: 'ai' }],
+  dimensions: [
+    dim({ key: 'fabric', label: 'Fabric', part: 'trousers', value: 'wool' }),
+    dim({ key: 'case_finish', label: 'Case finish', value: 'brushed', source: 'user' }),
+    dim({ key: 'mood', label: 'Mood', status: 'stale' }),
+  ],
+  ...a,
+})
+
+function setup(item: Partial<Item> = {}, explorations?: unknown[], a: AnalysisView = analysis()) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   qc.setQueryData(keys.items('b1'), [makeItem({ id: 'i1', board_id: 'b1', ...item })])
-  if (explorations) qc.setQueryData(keys.explorations('b1'), explorations)
-  qc.setQueryData(keys.attributes('i1'), makeAttrs({ case_finish: { status: 'edited', source: 'user' } }))
-  qc.setQueryData(keys.profile('b1'), {
-    version: 1,
-    profile: makeProfile({ signals: [{ key: 'legibility', label: 'Legibility', kind: 'ordinal', modal_value: 'medium', consistency: 0.8, n_known: 5 }] }),
-  })
+  qc.setQueryData(keys.explorations('b1'), explorations ?? [])
+  qc.setQueryData(keys.analysis('i1'), a)
   render(
     <QueryClientProvider client={qc}>
-      <InspectPanel boardId="b1" itemId="i1" onClose={() => {}} locked={locked} />
+      <InspectPanel boardId="b1" itemId="i1" onClose={() => {}} />
     </QueryClientProvider>,
   )
   return qc
 }
+
+describe('inspectGroups', () => {
+  it('puts physical dimensions under their part and the rest under Whole item', () => {
+    const groups = inspectGroups(analysis({
+      dimensions: [
+        dim({ key: 'fabric', label: 'Fabric', part: 'trousers' }),
+        dim({ key: 'orphan', label: 'Orphan', part: 'gone' }),
+        dim({ key: 'mood', label: 'Mood' }),
+      ],
+    }))
+    expect(groups.map((g) => [g.title, g.dims.map((d) => d.key)])).toEqual([
+      ['wide pinstripe trousers', ['fabric']],
+      ['Whole item', ['orphan', 'mood']],
+    ])
+  })
+
+  it('no whole-item group when every dimension sits on a part', () => {
+    const groups = inspectGroups(analysis({ dimensions: [dim({ key: 'fabric', label: 'Fabric', part: 'trousers' })] }))
+    expect(groups.map((g) => g.title)).toEqual(['wide pinstripe trousers'])
+  })
+})
 
 describe('InspectPanel', () => {
   const generated = {
@@ -49,8 +71,30 @@ describe('InspectPanel', () => {
     check: { target: { answer: 'yes' as const, confidence: 1, note: '' }, kept: 3, of: 4 },
   }
 
+  it("shows the item's own parts and dimensions, never a board lens", () => {
+    setup()
+    expect(screen.getByRole('heading', { name: 'wide pinstripe trousers' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Whole item' })).toBeTruthy()
+    expect(screen.getByText('Fabric')).toBeTruthy()
+    expect(screen.getByText('wool')).toBeTruthy()
+    expect(screen.getByText(/edited by you/)).toBeTruthy()
+    expect(screen.getByText(/stale/)).toBeTruthy()
+    expect(screen.queryByText('Case shape')).toBeNull()
+  })
+
+  it('while the item is still being read it says so', () => {
+    setup({}, [], analysis({ parse_status: 'processing', parts: [], dimensions: [] }))
+    expect(screen.getByText(/Still reading this item/)).toBeTruthy()
+    expect(screen.queryByText('Nothing was found on this item.')).toBeNull()
+  })
+
+  it('a failed analysis names its error code', () => {
+    setup({ parse_error_code: 'REGION_EMPTY' }, [], analysis({ parse_status: 'failed', parts: [], dimensions: [] }))
+    expect(screen.getByText('Analysis failed (REGION_EMPTY).')).toBeTruthy()
+  })
+
   it('a generated item shows where it came from, its verdict, model and prompt, and no credit', () => {
-    setup(false, { ...generated, rights_status: 'licensed', licence: { credit: 'c', license_code: 'X', license_url: null, creator_name: null, landing_url: null, source: 's' } },
+    setup({ ...generated, rights_status: 'licensed', licence: { credit: 'c', license_code: 'X', license_url: null, creator_name: null, landing_url: null, source: 's' } },
       [{ id: 'e1', board_id: 'b1', item_id: 'i1', key: 'case_finish', options: [{ id: 'o1', name: 'Polished' }] }])
     expect(screen.getByText('Generated from Polished')).toBeTruthy()
     expect(screen.getByText('Case finish → Polished ✓ · 3 of 4 kept')).toBeTruthy()
@@ -60,13 +104,13 @@ describe('InspectPanel', () => {
   })
 
   it('with the option not found it falls back to a neutral heading and verdict', () => {
-    setup(false, generated, [])
+    setup(generated, [])
     expect(screen.getByText('Generated image')).toBeTruthy()
     expect(screen.getByText('✓ · 3 of 4 kept')).toBeTruthy()
   })
 
   it('a licensed item shows its stored credit in the header', () => {
-    setup(false, {
+    setup({
       rights_status: 'licensed',
       licence: {
         credit: 'Photo by Ana B, CC BY 4.0', license_code: 'CC-BY-4.0',
@@ -82,92 +126,5 @@ describe('InspectPanel', () => {
   it('a user item shows no credit line', () => {
     setup()
     expect(screen.queryByRole('note', { name: 'Image credit' })).toBeNull()
-  })
-
-  it('locked demo: values are shown but every editor is disabled', () => {
-    setup(true)
-    expect(screen.getByText('Demo — read-only: unlock to edit values.')).toBeTruthy()
-    const row = screen.getByRole('group', { name: 'Legibility' })
-    const controls = row.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, select, button[role="radio"]')
-    expect(controls.length).toBeGreaterThan(0)
-    for (const c of controls) expect(c.matches(':disabled')).toBe(true)
-  })
-
-  it('groups rows by category with status chips and board signal marks', () => {
-    setup()
-    expect(screen.getByRole('heading', { name: 'Dial' })).toBeTruthy()
-    expect(screen.getByRole('heading', { name: 'Case' })).toBeTruthy()
-    const legibility = screen.getByRole('group', { name: 'Legibility' })
-    expect(legibility.textContent).toContain('board signal')
-    expect(screen.getByRole('group', { name: 'Case finish' }).textContent).toContain('edited by you')
-  })
-
-  it('per-kind editors PATCH typed values', async () => {
-    setup()
-    fireEvent.click(screen.getByRole('radio', { name: 'medium' })) // already the value: no PATCH
-    fireEvent.click(screen.getByRole('button', { name: 'Increase Case diameter' }))
-    fireEvent.click(screen.getByRole('radio', { name: 'high' }))
-    fireEvent.click(screen.getByRole('switch', { name: 'Date window value' }))
-    fireEvent.change(screen.getByRole('combobox', { name: 'Case finish value' }), { target: { value: 'polished' } })
-    await waitFor(() => expect(patchAttribute).toHaveBeenCalledTimes(4))
-    const calls = vi.mocked(patchAttribute).mock.calls.map((c) => [c[1], c[2]])
-    expect(calls).toEqual([
-      ['case_diameter', { value: 41 }],
-      ['legibility', { value: 'high' }],
-      ['date_window', { value: true }],
-      ['case_finish', { value: 'polished' }],
-    ])
-    expect(await screen.findAllByText('edited by you')).toBeTruthy()
-  })
-
-  it('confirm and disable; no Vary this', async () => {
-    const qc = setup()
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm Dial colour' }))
-    await waitFor(() => expect(patchAttribute).toHaveBeenCalledWith('i1', 'dial_color', { action: 'confirm' }))
-    fireEvent.click(screen.getByRole('switch', { name: 'Use Dial colour' }))
-    await waitFor(() => expect(patchAttribute).toHaveBeenCalledWith('i1', 'dial_color', { action: 'disable' }))
-    await act(async () => {})
-    expect(qc.getQueryData<{ attributes: { key: string; enabled: boolean }[] }>(keys.attributes('i1'))!
-      .attributes.find((a) => a.key === 'dial_color')!.enabled).toBe(false)
-    expect(screen.queryByRole('button', { name: 'Vary Legibility' })).toBeNull()
-  })
-})
-
-describe('TextEditor', () => {
-  it('debounces typing into one PATCH', async () => {
-    vi.useFakeTimers()
-    const { TextEditor } = await import('./InspectPanel')
-    const onCommit = vi.fn()
-    render(<TextEditor name="Era value" value="1960s" onCommit={onCommit} />)
-    const input = screen.getByRole('textbox', { name: 'Era value' })
-    fireEvent.change(input, { target: { value: '1970' } })
-    act(() => vi.advanceTimersByTime(300))
-    fireEvent.change(input, { target: { value: '1970s' } })
-    act(() => vi.advanceTimersByTime(300))
-    expect(onCommit).not.toHaveBeenCalled()
-    act(() => vi.advanceTimersByTime(400))
-    expect(onCommit).toHaveBeenCalledTimes(1)
-    expect(onCommit).toHaveBeenCalledWith('1970s')
-  })
-
-  it('flushes a pending edit on unmount instead of dropping it', async () => {
-    vi.useFakeTimers()
-    const { TextEditor } = await import('./InspectPanel')
-    const onCommit = vi.fn()
-    const { unmount } = render(<TextEditor name="Era value" value="1960s" onCommit={onCommit} />)
-    fireEvent.change(screen.getByRole('textbox', { name: 'Era value' }), { target: { value: '1980s' } })
-    expect(onCommit).not.toHaveBeenCalled()
-    unmount()
-    expect(onCommit).toHaveBeenCalledTimes(1)
-    expect(onCommit).toHaveBeenCalledWith('1980s')
-    act(() => vi.advanceTimersByTime(2000))
-    expect(onCommit).toHaveBeenCalledTimes(1) // the cleared timer does not fire it again
-  })
-
-  it('does not commit on unmount when nothing changed', async () => {
-    const { TextEditor } = await import('./InspectPanel')
-    const onCommit = vi.fn()
-    render(<TextEditor name="Era value" value="1960s" onCommit={onCommit} />).unmount()
-    expect(onCommit).not.toHaveBeenCalled()
   })
 })

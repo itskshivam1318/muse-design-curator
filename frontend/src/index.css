@@ -638,7 +638,7 @@ button.onboarding-step:hover {
   width: min(420px, 100vw);
   background: var(--raised);
   box-shadow: var(--shadow);
-  z-index: 8;
+  z-index: 10; /* over the board header (9): the drawer runs full height, its × sits in the header row */
   overflow: auto;
 }
 
@@ -1052,6 +1052,12 @@ button.onboarding-step:hover {
   gap: 6px;
   padding: 10px 0;
   border-top: 1px solid var(--rule);
+}
+.attr-row dd {
+  margin: 0;
+}
+.attr-row.is-stale {
+  opacity: 0.6;
 }
 .attr-row.is-disabled > :not(.attr-head) {
   opacity: 0.45;
@@ -1712,6 +1718,43 @@ button.onboarding-step:hover {
 }
 .callout-value {
   opacity: 0.75;
+}
+/* a dimension and its × */
+.callout-dim-row {
+  display: flex;
+  gap: 2px;
+}
+.callout-dim-row .callout-dim {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.callout-dim-remove {
+  flex: none;
+  width: 22px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: 14px var(--f-body);
+  cursor: pointer;
+  opacity: 0;
+}
+.callout-dim-row:hover .callout-dim-remove,
+.callout-dim-remove:focus-visible,
+.callout-dim-remove[aria-busy='true'] {
+  opacity: 1;
+}
+.callout-dim-remove:hover:not(:disabled) {
+  color: var(--bad);
+  background: var(--hover, var(--paper));
+}
+.callout-dim-remove:disabled {
+  cursor: default;
+}
+.callout-act.is-danger {
+  color: var(--bad);
 }
 .callout-actions {
   display: flex;

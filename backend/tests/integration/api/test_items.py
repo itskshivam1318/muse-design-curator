@@ -189,6 +189,27 @@ def test_choosing_a_curated_domain_attaches_its_lens_and_keeps_items_analysed(
     assert all(i["parse_status"] == "completed" for i in items)
 
 
+def test_changing_the_domain_drops_the_old_lens(client: TestClient, board: str) -> None:
+    b = client.patch(f"/api/boards/{board}", json={"domain": "watch"}).json()
+    watch_lens = b["lens_id"]
+    b = client.patch(f"/api/boards/{board}", json={"domain": "fashion"}).json()
+    assert b["lens_id"] not in (None, watch_lens)
+    assert client.get(f"/api/boards/{board}/lens").json()["lens"]["domain"] == "fashion"
+    # back to Auto: no lens until the items vote for one
+    b = client.patch(f"/api/boards/{board}", json={"domain": None}).json()
+    assert b["domain"] is None and b["lens_id"] is None
+    assert client.get(f"/api/boards/{board}/lens").json()["lens"] is None  # not the old one
+    # saving the brief alone leaves the lens as it is
+    b = client.patch(f"/api/boards/{board}", json={"domain": "fashion"}).json()
+    kept = b["lens_id"]
+    assert (
+        client.patch(f"/api/boards/{board}", json={"context": "trousers"}).json()["lens_id"] == kept
+    )
+    assert (
+        client.patch(f"/api/boards/{board}", json={"domain": "fashion"}).json()["lens_id"] == kept
+    )
+
+
 def test_upload_over_the_daily_limit_keeps_items_but_fails_them(
     client: TestClient, board: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -33,7 +33,7 @@ from app.explore.prompts import build_explore_prompt
 from app.extraction.service import _image_for, _require_item, current_lens
 from app.notes.service import with_notes
 from app.providers import get_reasoning
-from app.providers.reliability import ModelError
+from app.providers.reliability import ModelError, user_message
 from app.runs.orchestrator import record_of
 
 Mode = Literal["initial", "more", "further"]
@@ -218,7 +218,7 @@ def explore(
     try:
         raw = get_reasoning(get_settings()).explore_options(images, prompt)
     except ModelError as exc:
-        raise AppError(502, exc.code, f"The model could not explore: {exc.message}") from exc
+        raise AppError(502, exc.code, f"Could not explore. {user_message(exc)}") from exc
 
     seen = {o.name.lower() for o in existing}
     cleaned = _clean(raw, spec, current, held, seen)
