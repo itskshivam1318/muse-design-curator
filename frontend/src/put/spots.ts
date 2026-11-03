@@ -29,10 +29,10 @@ export function partAt(parts: readonly PartView[], fx: number, fy: number): Part
   return best
 }
 
-/** The aimed part first, then every other box part of the same head noun, in order. */
+/** The aimed part first, then every other part of the same head noun in order (a part with no box is still offered; text ranges are not). */
 export function sameKind(parts: readonly PartView[], aimed: PartView): PartView[] {
   const noun = headNoun(aimed.label)
-  return [aimed, ...parts.filter((p) => p !== aimed && p.key !== aimed.key && hasBox(p) && headNoun(p.label) === noun)]
+  return [aimed, ...parts.filter((p) => p !== aimed && p.key !== aimed.key && p.region_kind !== 'text_range' && headNoun(p.label) === noun)]
 }
 
 export function aimAt(analysis: AnalysisView | null | undefined, fx: number, fy: number): Spot[] {

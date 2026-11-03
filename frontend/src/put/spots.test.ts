@@ -31,6 +31,10 @@ describe('sameKind', () => {
   it('puts the aimed part first, then its kind in order', () => {
     expect(sameKind([front, body, rear], rear)).toEqual([rear, front])
   })
+  it('still offers a same-kind part that has no box', () => {
+    const loose = part('rw2', 'Rear wheel', null)
+    expect(sameKind([front, loose, body], front)).toEqual([front, loose])
+  })
 })
 
 describe('aimAt', () => {
