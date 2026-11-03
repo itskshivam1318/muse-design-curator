@@ -80,6 +80,7 @@ async def _files_ingest(
         raise AppError(400, "VALIDATION_ERROR", f"Send 1-{MAX_FILES} files")
     x = _num(form.get("x"))
     y = _num(form.get("y"))
+    page_url = str(form.get("page_url") or "").strip() or None
     origin = _origin_for_upload(request)
     payloads = [(u.filename or "", await u.read()) for u in uploads]
 
@@ -91,7 +92,9 @@ async def _files_ingest(
             try:
                 res = _ingest_file(
                     session, board_id, data,
-                    ItemMeta(origin=origin, filename=name, x=cursor[0], y=cursor[1]),
+                    ItemMeta(
+                        origin=origin, filename=name, page_url=page_url, x=cursor[0], y=cursor[1]
+                    ),
                 )  # fmt: skip
             except AppError as e:
                 out.append(

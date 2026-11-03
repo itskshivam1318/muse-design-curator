@@ -16,12 +16,39 @@ from typing import Any
 
 from app.agent import steps
 from app.agent.context import ToolContext
+from app.agent.tools import (
+    add_note,
+    add_reference,
+    create_board,
+    list_boards,
+    move_item,
+    open_board,
+    propose_lens,
+    read_board,
+    remove_item,
+    set_lens,
+    upload_reference,
+    visualize_note,
+)
 
 log = logging.getLogger(__name__)
 
 SAY_MAX = 200
 
-_MODULES: tuple[ModuleType, ...] = ()
+_MODULES: tuple[ModuleType, ...] = (
+    add_note,
+    add_reference,
+    create_board,
+    list_boards,
+    move_item,
+    open_board,
+    propose_lens,
+    read_board,
+    remove_item,
+    set_lens,
+    upload_reference,
+    visualize_note,
+)
 
 TOOLS: dict[str, ModuleType] = {m.DEFINITION["name"]: m for m in _MODULES}
 

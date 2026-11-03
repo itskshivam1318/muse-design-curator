@@ -63,6 +63,13 @@ def test_fifty_files_one_bad(client: TestClient, board: str) -> None:
     assert len(client.get(f"/api/boards/{board}/items").json()["items"]) == 49
 
 
+def test_upload_keeps_page_url(client: TestClient, board: str) -> None:
+    r = upload(client, board, [("a.png", image_bytes())], page_url="https://shop.test/a")
+    assert r.json()["results"][0]["item"]["page_url"] == "https://shop.test/a"
+    r = upload(client, board, [("b.png", image_bytes(seed=1))])
+    assert r.json()["results"][0]["item"]["page_url"] is None
+
+
 def test_all_bad_is_400_and_too_many_files(client: TestClient, board: str) -> None:
     assert upload(client, board, [("a.txt", b"zzzz")]).status_code == 400
     r = upload(client, board, [(f"{i}.txt", b"z") for i in range(51)])

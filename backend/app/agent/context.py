@@ -40,8 +40,13 @@ class ApiClient:
     async def get(self, path: str) -> ApiResult:
         return await self._send("GET", path)
 
-    async def post(self, path: str, json: Any = None, files: Any = None) -> ApiResult:
-        return await self._send("POST", path, json=json, files=files)
+    async def post(
+        self, path: str, json: Any = None, files: Any = None, data: Any = None
+    ) -> ApiResult:
+        return await self._send("POST", path, json=json, files=files, data=data)
+
+    async def put(self, path: str, json: Any = None) -> ApiResult:
+        return await self._send("PUT", path, json=json)
 
     async def patch(self, path: str, json: Any) -> ApiResult:
         return await self._send("PATCH", path, json=json)
@@ -69,6 +74,54 @@ class ToolContext:
     board_id: str | None
     run_id: str | None
     source: str
+
+
+SLOT_GAP = 40
+SLOT_ROW = 4
+
+
+def next_slot(items: list[dict[str, Any]]) -> tuple[float, float]:
+    """Where the next item goes by default: right of everything on the board, 40 px clear.
+
+    Items placed this way form a row; a row holds 4 items, then the next starts below it,
+    under the row's first item. Items carry `x`, `y`, `w`, `h`.
+    """
+    if not items:
+        return 0.0, 0.0
+    lead = max(items, key=lambda i: (i["x"] + i["w"], -i["y"]))
+    row = [i for i in items if i["y"] == lead["y"]]
+    left = min(i["x"] for i in row)
+    below = [i for i in items if i["y"] > lead["y"] and i["x"] >= left]
+    if below:  # rows already started under the first: the newest is the lowest
+        row = [i for i in below if i["y"] == max(b["y"] for b in below)]
+    if len(row) >= SLOT_ROW:
+        return float(left), float(max(i["y"] + i["h"] for i in row) + SLOT_GAP)
+    return float(max(i["x"] + i["w"] for i in row) + SLOT_GAP), float(row[0]["y"])
+
+
+async def board_items(ctx: ToolContext) -> list[dict[str, Any]] | dict[str, Any]:
+    """The open board's items, or a tool error."""
+    status, body = await ctx.api.get(f"/api/boards/{ctx.board_id}/items")
+    return body["items"] if status == 200 else api_error(status, body)
+
+
+async def place(ctx: ToolContext, args: dict[str, Any]) -> tuple[float, float] | dict[str, Any]:
+    """`(x, y)` from the args, or the next free slot when either is omitted."""
+    if args.get("x") is not None and args.get("y") is not None:
+        return float(args["x"]), float(args["y"])
+    items = await board_items(ctx)
+    return next_slot(items) if isinstance(items, list) else items
+
+
+async def require_item(ctx: ToolContext, item_id: str) -> dict[str, Any]:
+    """The item if it is live on the open board, else an `ITEM_NOT_ON_BOARD` error."""
+    items = await board_items(ctx)
+    if isinstance(items, dict):
+        return items
+    for item in items:
+        if item["id"] == item_id:
+            return item
+    return {"error": "ITEM_NOT_ON_BOARD", "message": f"{item_id} is not on the open board."}
 
 
 def api_error(status: int, body: Any) -> dict[str, Any]:
