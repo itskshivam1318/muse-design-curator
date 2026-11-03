@@ -10,6 +10,7 @@ import type { View } from '../canvas/geometry'
 import { type Body, growScale } from './physics'
 import type { Edge, EdgeEnd, Scene } from './scene'
 import { useLivingWorld } from './useLiving'
+import { writeAttr } from './writeAttr'
 
 const STEM_BEND = 40
 const SPOKE_BEND = 22
@@ -56,8 +57,8 @@ export function Edges({ scene, view }: { scene: Scene; view: View }) {
         const to = world.body(e.to.body)
         const dot = dots.current.get(e.id)
         if (!from || !to) {
-          path.setAttribute('opacity', '0')
-          dot?.setAttribute('opacity', '0')
+          writeAttr(path, 'opacity', '0')
+          if (dot) writeAttr(dot, 'opacity', '0')
           continue
         }
         const a = endPoint(from, e.from, to)
@@ -68,21 +69,21 @@ export function Edges({ scene, view }: { scene: Scene; view: View }) {
           const by = clamp((to.vy - from.vy) * -9, -SPOKE_BEND, SPOKE_BEND)
           const mx = (a.x + b.x) / 2 + bx
           const my = (a.y + b.y) / 2 + by
-          path.setAttribute('d', `M${r2(a.x)},${r2(a.y)} Q${r2(mx)},${r2(my)} ${r2(b.x)},${r2(b.y)}`)
-          path.setAttribute('opacity', String(e.kept ? 0.9 : 0.55 * grown))
+          writeAttr(path, 'd', `M${r2(a.x)},${r2(a.y)} Q${r2(mx)},${r2(my)} ${r2(b.x)},${r2(b.y)}`)
+          writeAttr(path, 'opacity', String(e.kept ? 0.9 : 0.55 * grown))
         } else {
           const bx = clamp(-to.vx * 10, -STEM_BEND, STEM_BEND)
           const by = clamp(-to.vy * 10, -STEM_BEND, STEM_BEND)
           // leave the source outward from its centre, arrive at the hub against its motion
           const c1 = { x: a.x + (a.x - from.x) * 0.35, y: a.y + (a.y - from.y) * 0.35 }
           const c2 = { x: b.x + bx - (b.x - a.x) * 0.25, y: b.y + by - (b.y - a.y) * 0.25 }
-          path.setAttribute('d', `M${r2(a.x)},${r2(a.y)} C${r2(c1.x)},${r2(c1.y)} ${r2(c2.x)},${r2(c2.y)} ${r2(b.x)},${r2(b.y)}`)
-          path.setAttribute('opacity', String(grown))
+          writeAttr(path, 'd', `M${r2(a.x)},${r2(a.y)} C${r2(c1.x)},${r2(c1.y)} ${r2(c2.x)},${r2(c2.y)} ${r2(b.x)},${r2(b.y)}`)
+          writeAttr(path, 'opacity', String(grown))
         }
         if (dot) {
-          dot.setAttribute('cx', String(r2(a.x)))
-          dot.setAttribute('cy', String(r2(a.y)))
-          dot.setAttribute('opacity', String(grown))
+          writeAttr(dot, 'cx', String(r2(a.x)))
+          writeAttr(dot, 'cy', String(r2(a.y)))
+          writeAttr(dot, 'opacity', String(grown))
         }
       }
     }

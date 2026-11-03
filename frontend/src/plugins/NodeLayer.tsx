@@ -8,6 +8,7 @@ import type { Item } from '../api'
 import { itemBounds, lineagePoints } from '../canvas/nodeProps'
 import { type Bounds, toScreenPoint, type View } from '../canvas/geometry'
 import { useDemo } from '../demo'
+import { writeAttr } from '../living/writeAttr'
 import type { LivingWorld } from '../living/world'
 import { useNodes, usePlugins } from '../queries'
 import { NodeCard } from './NodeCard'
@@ -28,8 +29,14 @@ interface Props {
   onWheel?: (e: WheelEvent) => void
 }
 
+const r2 = (n: number) => Math.round(n * 100) / 100
+
+/** The wire's path, to 0.01px (a wire at rest reads the same every frame and is not rewritten). */
 function path(points: number[], view: View): string {
-  const p = (i: number) => toScreenPoint({ x: points[i], y: points[i + 1] }, view)
+  const p = (i: number) => {
+    const s = toScreenPoint({ x: points[i], y: points[i + 1] }, view)
+    return { x: r2(s.x), y: r2(s.y) }
+  }
   const [a, b, c, d] = [p(0), p(2), p(4), p(6)]
   return `M${a.x} ${a.y}C${b.x} ${b.y} ${c.x} ${c.y} ${d.x} ${d.y}`
 }
@@ -63,7 +70,7 @@ export function NodeLayer({ boardId, items, view, size, readOnly = false, onWhee
         const b = world.body(w.itemId)
         if (!b) continue
         const box: Bounds = { x: b.x - b.w / 2, y: b.y - b.h / 2, width: b.w, height: b.h }
-        el.setAttribute('d', path(w.out ? lineagePoints(w.node, box) : lineagePoints(box, w.node), view))
+        writeAttr(el, 'd', path(w.out ? lineagePoints(w.node, box) : lineagePoints(box, w.node), view))
       }
     }
     write()

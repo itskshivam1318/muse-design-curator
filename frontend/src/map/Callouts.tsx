@@ -24,6 +24,7 @@ import { formatValue } from '../attrValues'
 import type { Bounds, View } from '../canvas/geometry'
 import { itemBounds } from '../canvas/nodeProps'
 import { useBodyElement, useLivingWorld } from '../living/useLiving'
+import { writeAttr } from '../living/writeAttr'
 import { canAddPart, WHOLE } from './cards'
 import { partAnchor, REGION_TAG } from './regions'
 
@@ -262,6 +263,8 @@ function Card({ id, title, part, onHeight, children, ...handlers }: CardProps) {
   )
 }
 
+const r2 = (n: number) => Math.round(n * 100) / 100
+
 /**
  * A leader from each part's anchor (where it sits on the item, carried with the item's body) to the
  * nearest point of its card's body, written every frame.
@@ -284,12 +287,13 @@ function Leaders({ item, anchors, view }: { item: Item; anchors: ReadonlyMap<str
         const at = owner ? { x: owner.x + a.x - cx, y: owner.y + a.y - cy } : a
         const box: Bounds = { x: card.x - card.w / 2, y: card.y - card.h / 2, width: card.w, height: card.h }
         const end = nearestOn(box, at)
-        line.setAttribute('x1', String(at.x))
-        line.setAttribute('y1', String(at.y))
-        line.setAttribute('x2', String(end.x))
-        line.setAttribute('y2', String(end.y))
-        dot.setAttribute('cx', String(at.x))
-        dot.setAttribute('cy', String(at.y))
+        // to 0.01px, and only what changed: a leader at rest costs nothing
+        writeAttr(line, 'x1', String(r2(at.x)))
+        writeAttr(line, 'y1', String(r2(at.y)))
+        writeAttr(line, 'x2', String(r2(end.x)))
+        writeAttr(line, 'y2', String(r2(end.y)))
+        writeAttr(dot, 'cx', String(r2(at.x)))
+        writeAttr(dot, 'cy', String(r2(at.y)))
       }
     }
     write()

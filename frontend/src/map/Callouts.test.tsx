@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AnalysisView, DimensionView, PartView } from '../api'
 import { makeItem } from '../test/fixtures'
@@ -64,7 +64,13 @@ function setup(
   const target = over.item ?? item
   const a = over.analysis ?? analysis
   // the selected item's callouts are bodies of the world, ringed around it
-  const world = createLivingWorld({ reduced: true })
+  let t = 0
+  let cb: FrameRequestCallback | null = null
+  const world = createLivingWorld({ reduced: true, now: () => t, schedule: (f) => ((cb = f), 1), cancel: () => {} })
+  const frame = () => {
+    t += 1000 / 60
+    act(() => cb?.(t))
+  }
   world.sync(
     buildScene({ items: [target], explorations: [], analyses: new Map([[target.id, a]]), labels: new Map(), collapsed: () => false, selectedId: target.id }),
     -1000,
@@ -76,7 +82,7 @@ function setup(
       </LivingProvider>
     </QueryClientProvider>,
   )
-  return { qc, onOpenDimension, onHoverPart, world }
+  return { qc, onOpenDimension, onHoverPart, world, frame }
 }
 
 const card = (name: string) => screen.getByRole('group', { name })
@@ -116,6 +122,16 @@ describe('Callouts', () => {
     const anchor = partAnchor({ x: 0, y: 0, width: 400, height: 300 }, analysis.parts[0])
     expect([leader.getAttribute('x1'), leader.getAttribute('y1')]).toEqual([String(anchor.x), String(anchor.y)])
     expect(Number(leader.getAttribute('x2'))).toBeGreaterThanOrEqual(body.x - body.w / 2)
+  })
+
+  it('leaders at rest are not rewritten each frame', () => {
+    const { world, frame } = setup()
+    world.start()
+    for (let i = 0; i < 400; i++) frame()
+    const els = [...document.querySelectorAll<SVGElement>('.callout-leader, .callout-anchor')]
+    const writes = els.map((el) => vi.spyOn(el, 'setAttribute'))
+    frame()
+    expect(writes.reduce((n, w) => n + w.mock.calls.length, 0)).toBe(0)
   })
 
   it('a callout with an error message reports a taller height, so its body grows to fit it', async () => {

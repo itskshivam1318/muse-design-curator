@@ -1,5 +1,5 @@
 import { act, cleanup, render } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AnalysisView } from '../api'
 import { analysis, exp, item, opt } from '../test/explore'
 import { makeItem } from '../test/fixtures'
@@ -62,6 +62,16 @@ describe('Edges', () => {
     const before = path('spoke:o1').getAttribute('d')
     for (let i = 0; i < 20; i++) frame()
     expect(path('spoke:o1').getAttribute('d')).not.toBe(before) // the petal grew out from its hub
+  })
+
+  it('a board at rest writes nothing: unchanged paths and dots are left alone', () => {
+    const { frame } = setup(scene)
+    for (let i = 0; i < 400; i++) frame()
+    const els = [...document.querySelectorAll<SVGElement>('svg.flower-lines path, svg.flower-lines circle')]
+    const writes = els.map((el) => vi.spyOn(el, 'setAttribute'))
+    frame()
+    frame()
+    expect(writes.reduce((n, w) => n + w.mock.calls.length, 0)).toBe(0)
   })
 
   it("a kept take's spoke is marked kept; the others are not", () => {
