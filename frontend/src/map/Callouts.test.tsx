@@ -9,8 +9,10 @@ vi.mock('../api', async (orig) => ({
   extractPart: vi.fn(() => Promise.resolve({})),
   addDimension: vi.fn(() => Promise.resolve({})),
   addPart: vi.fn(() => Promise.resolve({})),
+  removeDimension: vi.fn(() => Promise.resolve()),
+  removePart: vi.fn(() => Promise.resolve()),
 }))
-const { extractPart, addDimension, addPart } = await import('../api')
+const { extractPart, addDimension, addPart, removeDimension, removePart } = await import('../api')
 const { Callouts } = await import('./Callouts')
 const { partAnchor } = await import('./regions')
 const { buildScene } = await import('../living/scene')
@@ -177,6 +179,28 @@ describe('Callouts', () => {
     await waitFor(() => expect(extractPart).toHaveBeenCalledWith('i1', 'strap'))
   })
 
+  it('× on a dimension removes it from the item and refreshes the analysis', async () => {
+    const { qc } = setup()
+    const refresh = vi.spyOn(qc, 'invalidateQueries')
+    fireEvent.click(within(card('Whole item')).getByRole('button', { name: 'Remove Mood' }))
+    await waitFor(() => expect(removeDimension).toHaveBeenCalledWith('i1', 'mood'))
+    await waitFor(() => expect(refresh).toHaveBeenCalledWith({ queryKey: ['analysis', 'i1'] }))
+  })
+
+  it('Remove on a part asks once, then removes the part', async () => {
+    setup()
+    const hands = card('Hands')
+    fireEvent.click(within(hands).getByRole('button', { name: 'Remove' }))
+    expect(removePart).not.toHaveBeenCalled()
+    fireEvent.click(within(hands).getByRole('button', { name: 'Cancel' }))
+    expect(within(hands).queryByRole('button', { name: 'Remove part' })).toBeNull()
+    fireEvent.click(within(hands).getByRole('button', { name: 'Remove' }))
+    fireEvent.click(within(hands).getByRole('button', { name: 'Remove part' }))
+    await waitFor(() => expect(removePart).toHaveBeenCalledWith('i1', 'hands'))
+    // the Whole item card is not a part: nothing to remove
+    expect(within(card('Whole item')).queryByRole('button', { name: 'Remove' })).toBeNull()
+  })
+
   it('stale dimension is shown greyed with its explanation', () => {
     setup()
     const lume = screen.getByRole('button', { name: 'Lume · green' })
@@ -226,6 +250,8 @@ describe('Callouts', () => {
     expect((within(card('Strap')).getByRole('button', { name: 'Extract' }) as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByRole('button', { name: '+ Add part' }) as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByRole('button', { name: 'Hand style · syringe' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Remove Mood' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((within(card('Strap')).getByRole('button', { name: 'Remove' }) as HTMLButtonElement).disabled).toBe(true)
   })
 })
 
