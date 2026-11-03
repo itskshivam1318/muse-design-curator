@@ -45,4 +45,16 @@ describe('ghosts', () => {
     failGhost('zzz', 'm')
     expect(all()).toBe(before)
   })
+
+  it('a job done before its ghost is added leaves no ghost', () => {
+    applyEvent(new QueryClient(), 'b', 'put.done', { job_id: 'early1', item_id: 'i' })
+    addGhost(ghost({ jobId: 'early1' }))
+    expect(all()).toEqual([])
+  })
+
+  it('a job failed before its ghost is added gives a failed ghost', () => {
+    applyEvent(new QueryClient(), 'b', 'put.failed', { job_id: 'early2', code: 'X', message: 'too bad' })
+    addGhost(ghost({ jobId: 'early2' }))
+    expect(all().map((g) => g.error)).toEqual(['too bad'])
+  })
 })

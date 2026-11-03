@@ -31,15 +31,38 @@ export const ghostStore = {
   },
 }
 
-export const addGhost = (g: Ghost): void => set([...ghosts, g])
+/** Jobs that settled before their ghost was added (null = done, string = failure message); bounded. */
+const settled = new Map<string, string | null>()
+const SETTLED_MAX = 50
+function remember(jobId: string, outcome: string | null): void {
+  settled.delete(jobId)
+  settled.set(jobId, outcome)
+  if (settled.size > SETTLED_MAX) settled.delete(settled.keys().next().value as string)
+}
+
+export function addGhost(g: Ghost): void {
+  if (settled.has(g.jobId)) {
+    const outcome = settled.get(g.jobId)!
+    if (outcome === null) return
+    set([...ghosts, { ...g, error: outcome }])
+    return
+  }
+  set([...ghosts, g])
+}
 
 export function failGhost(jobId: string, message: string): void {
-  if (!ghosts.some((g) => g.jobId === jobId)) return
+  if (!ghosts.some((g) => g.jobId === jobId)) {
+    remember(jobId, message)
+    return
+  }
   set(ghosts.map((g) => (g.jobId === jobId ? { ...g, error: message } : g)))
 }
 
 export function removeGhost(jobId: string): void {
-  if (!ghosts.some((g) => g.jobId === jobId)) return
+  if (!ghosts.some((g) => g.jobId === jobId)) {
+    remember(jobId, null)
+    return
+  }
   set(ghosts.filter((g) => g.jobId !== jobId))
 }
 
