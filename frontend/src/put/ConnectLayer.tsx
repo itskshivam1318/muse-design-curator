@@ -185,7 +185,7 @@ export function ConnectLayer({ boardId, items, view, world, readOnly, selectedId
 
 type CardState = Extract<Connect, { phase: 'card' }>
 
-/** The card where its body is (it never moves: it is placed when the line is let go). */
+/** The card where its body is (placed when the line is let go; it gives way to what it meets, and its home holds it there). */
 function CardOnLine({ boardId, source, target, state, view, connect, onSize }: {
   boardId: string
   source: Item

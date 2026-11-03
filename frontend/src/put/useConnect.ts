@@ -15,7 +15,7 @@ export type Connect =
       end: Point
       spots: Spot[]
       off: Set<number>
-      /** The card's centre, fixed when it opens (it holds its place; the board moves round it); its body's too. */
+      /** The card's centre, fixed when it opens: its body's home (it gives way when pushed, and comes back). */
       cardAt: Point
       /** Where the line ends on the target (fractions of it), so the end follows it when it moves. */
       endOn: { fx: number; fy: number } | null

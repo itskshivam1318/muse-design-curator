@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { type AnalysisView, type Item, keys, type PartView } from '../api'
+import { type Body, type BodySpec, createWorld, stepWorld, syncWorld, type World } from '../living/physics'
 import type { LivingWorld } from '../living/world'
 import { LivingProvider } from '../living/useLiving'
 import { itemBounds } from '../canvas/nodeProps'
@@ -16,7 +17,7 @@ vi.mock('../api', async (orig) => ({
 const { getRegion, putInto } = await import('../api')
 const { ghostStore, removeGhost } = await import('./ghosts')
 const { ConnectLayer } = await import('./ConnectLayer')
-const { cardPlace, putBodies } = await import('./bodies')
+const { cardPlace, PUT_CARD_ID, putBodies } = await import('./bodies')
 const { itemUnder, useConnect } = await import('./useConnect')
 
 afterEach(() => {
@@ -223,14 +224,41 @@ describe('ConnectLayer', () => {
 })
 
 describe('putBodies', () => {
-  it('the open card is an obstacle its screen size at the zoom, each ghost an item at its centre', () => {
+  it('the open card is a callout its screen size at the zoom, each ghost an item at its centre', () => {
     const g = { jobId: 'j1', boardId: 'b1', targetId: 'tgt', x: 760, y: 0, w: 400, h: 200, error: null,
       request: { targetId: 'tgt', body: { source_id: 'src', spots: [] } } }
     expect(putBodies({ x: 450, y: 125 }, [g], 2)).toEqual([
-      { id: 'put-card', kind: 'obstacle', w: 130, h: 85, home: { kind: 'abs', x: 450, y: 125 } },
+      { id: 'put-card', kind: 'callout', w: 130, h: 85, home: { kind: 'abs', x: 450, y: 125 } },
       { id: 'ghost:j1', kind: 'item', w: 400, h: 200, home: { kind: 'abs', x: 960, y: 100 } },
     ])
     expect(putBodies(null, [], 1)).toEqual([])
+  })
+
+  it('the card gives way to a pinned picture dropped on it and to a toolbar reaching it; alone, its home holds it', () => {
+    const at = { x: 500, y: 100 }
+    const card = putBodies(at, [], 1)[0]
+    const intersects = (a: Body, b: Body) =>
+      (a.w + b.w) / 2 - Math.abs(a.x - b.x) > 0 && (a.h + b.h) / 2 - Math.abs(a.y - b.y) > 0
+    const steps = (w: World, n: number) => {
+      for (let i = 0, now = 1000; i < n; i++) stepWorld(w, 1, (now += 16.67), { reduced: true })
+    }
+
+    // a selected (pinned) picture right on the card's home, with its toolbar just above it
+    const w = createWorld()
+    const pic: BodySpec = { id: 'p', kind: 'item', w: 200, h: 150, home: { kind: 'abs', x: 520, y: 110 } }
+    const bar: BodySpec = { id: 'toolbar:p', kind: 'obstacle', w: 240, h: 50, home: { kind: 'rel', to: 'p', dx: 0, dy: -100 }, yieldTo: 'p' }
+    syncWorld(w, [pic, bar, card], 0)
+    w.bodies.get('p')!.pinned = true
+    steps(w, 600)
+    const c = w.bodies.get(PUT_CARD_ID)!
+    expect(intersects(c, w.bodies.get('p')!)).toBe(false)
+    expect(intersects(c, w.bodies.get('toolbar:p')!)).toBe(false)
+    expect(w.bodies.get('p')!).toMatchObject({ x: 520, y: 110 }) // the picture never moved
+
+    // once the picture goes, the card comes back to its home by the line
+    syncWorld(w, [card], 0)
+    steps(w, 600)
+    expect(Math.hypot(c.x - at.x, c.y - at.y)).toBeLessThan(0.5)
   })
 
   it('a taller measured card gives a taller body (screen px over the zoom); the estimate until measured', () => {

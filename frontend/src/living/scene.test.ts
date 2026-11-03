@@ -214,7 +214,7 @@ describe('buildScene', () => {
 
   it('extra bodies (the put-in card, its ghosts) are added to the specs unchanged', () => {
     const extras = [
-      { id: 'put-card', kind: 'obstacle' as const, w: 260, h: 170, home: { kind: 'abs' as const, x: 400, y: 80 } },
+      { id: 'put-card', kind: 'callout' as const, w: 260, h: 170, home: { kind: 'abs' as const, x: 400, y: 80 } },
       { id: 'ghost:j1', kind: 'item' as const, w: 200, h: 150, home: { kind: 'abs' as const, x: 700, y: 75 } },
     ]
     const s = scene({ explorations: [], extras })
