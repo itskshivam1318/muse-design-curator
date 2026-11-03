@@ -113,6 +113,36 @@ Critique. Your own go in `data/plugins/<id>/` (python or llm), reloaded with
 never loaded in demo mode. See [docs/plugins.md](docs/plugins.md) for the manifest, the I/O
 contract and two examples. `PLUGINS_ENABLED=0` turns the feature off.
 
+## Working a board from Claude Code (MCP)
+
+Muse serves its board tools over MCP (streamable HTTP) at `/mcp`: create or open a board, set a
+goal with its deliverables, add notes and references, analyse, explore, visualize, wait for
+results, lay out an output sheet and finish. The endpoint is off by default (`/mcp` answers 404).
+
+1. Set `MCP_ENABLED=1` in `.env` (or in the environment) and run `make dev`.
+2. Connect Claude Code to it:
+
+   ```bash
+   claude mcp add --transport http muse http://localhost:8000/mcp
+   ```
+
+3. Open the app at http://localhost:5173, then give Claude Code a first prompt such as:
+
+   > Create a board called EV coupe, set a goal "a two-door electric coupe" with these
+   > deliverables: front three-quarter view, side profile, interior, colour option. Add a note for
+   > each, visualize them, wait for each image, lay out the output sheet and finish. Narrate each
+   > step with `say`.
+
+4. Open the board it creates (it is listed on the home page). Notes and images land on the canvas
+   as each call completes; the agent card in the corner shows the goal, ticks off each deliverable
+   once the output sheet covers it, and lists every step with its `say` sentence and the call it
+   made. Click a step to jump to its item; star one to highlight it. When `finish` accepts the
+   sheet the card shows **done**; if a result check fails it refuses, says why, and after three
+   refusals the run waits for you (**needs input**).
+
+Each MCP session keeps its own open board and run, so two clients do not step on each other.
+Muse Code connects to the same URL. With `DEMO_MODE` on and locked, write tools are refused.
+
 ## Keys
 
 | Key | Needed for | Notes |

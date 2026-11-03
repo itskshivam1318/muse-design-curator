@@ -510,7 +510,10 @@
   align-items: center;
   gap: 6px;
 }
-.agent-deliverables input {
+.agent-deliverables input[type='checkbox'] {
+  /* outranks the global `input:not([type='file'])` width: 100%, which pushed the label aside */
+  flex: none;
+  width: auto;
   margin: 0;
   accent-color: var(--ok);
 }
