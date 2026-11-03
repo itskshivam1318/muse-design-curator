@@ -34,6 +34,7 @@ export interface Item {
   storage_path: string | null
   thumb_path: string | null
   parent_item_id: string | null
+  put_source_item_id: string | null
   created_at: string
   /** Stored provenance of a licensed (corpus) image; null for the user's own items. */
   licence?: ItemLicence | null

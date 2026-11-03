@@ -7,7 +7,7 @@ export function makeItem(over: Partial<Item> = {}): Item {
     page_url: null, page_title: null, creator_handle: null, captured_at: '2026-10-26T00:00:00Z',
     rights_status: 'user_supplied', parse_status: 'completed', parse_error_code: null,
     role: 'reference', x: 10, y: 20, w: 200, h: 150, z: 0,
-    storage_path: 'uploads/abc.png', thumb_path: 'thumbs/abc.webp', parent_item_id: null,
+    storage_path: 'uploads/abc.png', thumb_path: 'thumbs/abc.webp', parent_item_id: null, put_source_item_id: null,
     created_at: '2026-10-26T00:00:00Z',
     explore_option_id: null, generation: null, check: null, note_text: null, staged: false,
     content_type: null, extracted_part: null,

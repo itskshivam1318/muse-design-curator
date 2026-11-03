@@ -129,6 +129,7 @@ class BoardItem(Base):
     rights_status: Mapped[str] = mapped_column(String, default="user_supplied")
     corpus_item_id: Mapped[str | None] = mapped_column(ForeignKey("corpus_items.id"))
     parent_item_id: Mapped[str | None] = mapped_column(ForeignKey("board_items.id"))
+    put_source_item_id: Mapped[str | None] = mapped_column(ForeignKey("board_items.id"))
     parse_status: Mapped[str] = mapped_column(String, default="pending")
     parse_error_code: Mapped[str | None] = mapped_column(String)
     parse_attempts: Mapped[int] = mapped_column(Integer, default=0)
