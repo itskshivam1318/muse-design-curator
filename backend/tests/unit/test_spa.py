@@ -31,8 +31,9 @@ def test_serves_files_and_falls_back_to_index(tmp_path: Path) -> None:
         r = c.get(path)
         assert r.status_code == 200 and "id=root" in r.text, path
     assert "nope" not in c.get("/..%2Fsecret.txt").text
-    r = c.get("/api/does-not-exist")
-    assert r.status_code == 404 and r.json()["error"]["code"] == "NOT_FOUND"
+    for path in ("/api/does-not-exist", "/mcp", "/mcp/x"):  # never the shell
+        r = c.get(path)
+        assert r.status_code == 404 and r.json()["error"]["code"] == "NOT_FOUND", path
 
 
 def test_missing_build_is_404(tmp_path: Path) -> None:

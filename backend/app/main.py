@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app import demo
+from app.agent.mcp_server import mount_mcp
 from app.analysis import service as _analysis  # noqa: F401  (registers the analyse_item job)
 from app.api import (
     analysis,
@@ -69,7 +70,8 @@ def _recover_visualizing() -> None:
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     demo.check_settings(get_settings())
     _recover_visualizing()
-    yield
+    async with mcp.run():
+        yield
 
 
 app = FastAPI(title="Design Language Engine", lifespan=lifespan)
@@ -113,6 +115,7 @@ app.include_router(explore.router)
 app.include_router(plugins.router)
 app.include_router(ui_events.router)
 app.include_router(demo_api.router)
+mcp = mount_mcp(app)  # always routed; answers 404 unless MCP_ENABLED
 
 
 @app.get("/api/health")

@@ -71,6 +71,8 @@ class Settings(BaseSettings):
     # (the entries trusted proxies appended; the leftmost ones are client-controlled)
     DEMO_TRUST_PROXY: bool = False
     DEMO_PROXY_HOPS: int = 1
+    # The agent tools over MCP (streamable HTTP) at /mcp; off: /mcp is 404
+    MCP_ENABLED: bool = False
     # Built frontend to serve at / (the single-container deploy); unset in development
     FRONTEND_DIST: str | None = None
 

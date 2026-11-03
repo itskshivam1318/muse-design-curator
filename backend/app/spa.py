@@ -15,7 +15,7 @@ def spa_router(dist: Path) -> APIRouter:
 
     @router.get("/{full_path:path}", include_in_schema=False)
     def frontend(full_path: str) -> FileResponse:
-        if full_path == "api" or full_path.startswith("api/"):
+        if full_path.split("/", 1)[0] in ("api", "mcp"):
             raise AppError(404, "NOT_FOUND", "Not Found")
         if full_path:
             candidate = (root / full_path).resolve()
