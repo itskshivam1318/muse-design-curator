@@ -34,11 +34,17 @@ export function AddFab({ onFiles, onLink, disabled = false }: Props) {
   }, [open])
 
   const shown = open && !disabled
+  const pop = useRef<HTMLDivElement>(null)
+
+  // a dialog takes focus: its first action, so the keyboard starts inside it
+  useEffect(() => {
+    if (shown) pop.current?.querySelector<HTMLElement>('button:not([disabled])')?.focus()
+  }, [shown])
 
   return (
     <div className="add-fab-wrap" ref={root}>
       {shown && (
-        <div className="add-fab-pop" role="dialog" aria-label="Add to board">
+        <div ref={pop} className="add-fab-pop" role="dialog" aria-label="Add to board">
           <AddActions
             onFiles={(files) => {
               setOpen(false)

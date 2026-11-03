@@ -16,6 +16,13 @@ describe('AddFab', () => {
     expect(screen.getByRole('group', { name: 'Add to board' })).toBeTruthy()
   })
 
+  it('opening it moves focus to its first action', () => {
+    render(<AddFab onFiles={() => {}} onLink={async () => {}} />)
+    fireEvent.click(fab())
+    const first = screen.getByRole('dialog', { name: 'Add to board' }).querySelector('button')!
+    expect(document.activeElement).toBe(first)
+  })
+
   it('Escape and outside click close it', () => {
     render(<AddFab onFiles={() => {}} onLink={async () => {}} />)
     fireEvent.click(fab())
