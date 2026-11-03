@@ -311,7 +311,9 @@ describe('Canvas flowers', () => {
       expect(patchItem).toHaveBeenCalledTimes(1)
       const [id, body] = vi.mocked(patchItem).mock.calls[0]
       expect(id).toBe('k1')
-      expect(body).toMatchObject({ w: 168, h: 126 })
+      // in its slot where its hub comes to rest (300 right of the source's centre), not where it is mid-spring
+      const slot = { x: 100 + 300 + petalRadius(1) + KEPT_EXTRA, y: 75 }
+      expect(body).toEqual({ x: Math.round(slot.x - 84), y: Math.round(slot.y - 63), w: 168, h: 126 })
       expect(k1(qc)).toMatchObject(body)
       expect(undoHistory.size).toBe(0) // not an undoable move
       settle()

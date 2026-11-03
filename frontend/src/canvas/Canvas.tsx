@@ -18,7 +18,7 @@ import { type Exploration, exploreItem, isGenerated, type Item, keys, type PartV
 import { useDemo } from '../demo'
 import { withExploration } from '../explore/logic'
 import { itemVerdict } from '../explore/verdict'
-import { liveSlotCentre, staleDocked } from '../living/dockIn'
+import { staleDocked } from '../living/dockIn'
 import { Edges } from '../living/Edges'
 import { useKonvaBodies } from '../living/useKonvaBodies'
 import { useLiveBoxes } from '../living/useLiveBounds'
@@ -547,12 +547,8 @@ export function Canvas({
       }
       if (dockedIn.current.boardId !== boardId) dockedIn.current = { boardId, done: new Set() }
       const { done } = dockedIn.current
-      const slotOf = (id: string): Point => {
-        const slot = scene.slots.get(id)!
-        const model = scene.flowers.find((f) => f.hubId === slot.hubId)
-        return (model && liveSlotCentre(world, model, slot.index)) ?? world.body(id) ?? centreOf(itemBounds(allItems.find((i) => i.id === id)!))
-      }
-      const stale = staleDocked(scene, allItems, slotOf).filter((t) => !done.has(t.id) && !world.body(t.id)?.pinned)
+      // its slot where its hub comes to rest (the hubs may still be springing in)
+      const stale = staleDocked(scene, allItems, homesAfter(scene, new Map())).filter((t) => !done.has(t.id) && !world.body(t.id)?.pinned)
       if (stale.length === 0) return
       const next = new Map(stale.map(({ id, ...b }) => [id, b]))
       qc.setQueryData<Item[]>(keys.items(boardId), (old) => old?.map((i) => (next.has(i.id) ? { ...i, ...next.get(i.id) } : i)))
