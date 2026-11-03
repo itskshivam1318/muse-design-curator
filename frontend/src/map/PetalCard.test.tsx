@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, type Exploration, type ExploreOption, type Item, keys, type RendererInfo } from '../api'
-import { selectionStore, selection } from '../canvas/selection'
+import { selection } from '../canvas/selection'
 import { railStore, closeRail } from '../shell/tools'
 import { LENS } from '../test/attrs'
 import { makeItem } from '../test/fixtures'
@@ -174,7 +174,7 @@ describe('PetalCard', () => {
     expect(current().status).toBe('open') // put back
   })
 
-  it('More like this explores more from this option; Branch selects the kept item; Dismiss dismisses', async () => {
+  it('More like this explores more from this option; Dismiss dismisses; there is no Branch', async () => {
     const keptOpt = opt({ status: 'kept', kept_item_id: 'k1', takes: ['k1'] })
     const e: Exploration = { id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'src', key: 'hand_style', options: [keptOpt, opt({ id: 'o2', parent_option_id: 'o1' })] }
     vi.mocked(exploreItem).mockResolvedValue(e)
@@ -184,14 +184,8 @@ describe('PetalCard', () => {
     expect(screen.getByText('✓ kept · on the board')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'More like this' }))
     await waitFor(() => expect(exploreItem).toHaveBeenCalledWith('src', { key: 'hand_style', mode: 'more', parent_option_id: 'o1' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Branch' }))
-    expect(selectionStore.get().selected).toEqual(['k1'])
+    expect(screen.queryByRole('button', { name: 'Branch' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
     await waitFor(() => expect(patchOption).toHaveBeenCalledWith('o1', { status: 'dismissed' }))
-  })
-
-  it('Branch waits for a kept result', () => {
-    setup(opt())
-    expect((screen.getByRole('button', { name: 'Branch' }) as HTMLButtonElement).disabled).toBe(true)
   })
 })

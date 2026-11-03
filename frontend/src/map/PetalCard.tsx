@@ -1,7 +1,8 @@
 /**
  * The card a petal opens (Axis card artboard): what the option is and what it changes, one render
  * button named by what will run (or "Connect a renderer"), then the result's check with Keep / Not
- * this, or Retry / Drop when it drifted; always More like this, Branch and Dismiss.
+ * this, or Retry / Drop when it drifted; always More like this and Dismiss. (A kept option has no petal,
+ * so no card: its take is docked in the ring, and selecting it opens its own dimensions.)
  */
 import { useQueryClient } from '@tanstack/react-query'
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
@@ -17,7 +18,6 @@ import {
   type Point,
   visualizeOption,
 } from '../api'
-import { selection } from '../canvas/selection'
 import { visualizeInProgress, withExploration, withOption } from '../explore/logic'
 import { dismissOption } from '../explore/optionActions'
 import { resultCheck } from '../explore/verdict'
@@ -156,12 +156,6 @@ export function PetalCard({ option, dimension, item, keepAt, onClose, locked = f
       qc.setQueryData<Exploration[]>(keys.explorations(boardId), (old) => withExploration(old, e))
     }, 'Could not explore')
 
-  // a kept result is a board item with its own callouts: branching is opening its dimensions
-  const branch = () => {
-    if (live.kept_item_id) selection.select([live.kept_item_id])
-    onClose?.()
-  }
-
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key !== 'Escape') return
     e.stopPropagation()
@@ -256,15 +250,6 @@ export function PetalCard({ option, dimension, item, keepAt, onClose, locked = f
       <div className="petal-more">
         <button type="button" className="btn-quiet small" disabled={locked || busy} onClick={() => void more()}>
           More like this
-        </button>
-        <button
-          type="button"
-          className="btn-quiet small"
-          disabled={!kept}
-          title={kept ? 'Select the kept result to explore it' : 'Keep a result to branch from it'}
-          onClick={branch}
-        >
-          Branch
         </button>
         <button type="button" className="btn-quiet small" disabled={locked || busy} onClick={() => void dismiss()}>
           Dismiss
