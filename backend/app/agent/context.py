@@ -124,6 +124,19 @@ async def require_item(ctx: ToolContext, item_id: str) -> dict[str, Any]:
     return {"error": "ITEM_NOT_ON_BOARD", "message": f"{item_id} is not on the open board."}
 
 
+async def require_option(ctx: ToolContext, option_id: str) -> dict[str, Any]:
+    """The explore option if its exploration is of an item on the open board, else an
+    `OPTION_NOT_ON_BOARD` error."""
+    status, body = await ctx.api.get(f"/api/boards/{ctx.board_id}/explorations")
+    if status != 200:
+        return api_error(status, body)
+    for exploration in body["explorations"]:
+        for option in exploration["options"]:
+            if option["id"] == option_id:
+                return option  # type: ignore[no-any-return]
+    return {"error": "OPTION_NOT_ON_BOARD", "message": f"{option_id} is not on the open board."}
+
+
 def api_error(status: int, body: Any) -> dict[str, Any]:
     """An API refusal as a tool error: `{"error": {"code", "message"}}` → `{"error", "message"}`."""
     err = body.get("error") if isinstance(body, dict) else None

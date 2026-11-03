@@ -17,18 +17,27 @@ from typing import Any
 from app.agent import steps
 from app.agent.context import ToolContext
 from app.agent.tools import (
+    add_dimension,
     add_note,
     add_reference,
+    analyse,
     create_board,
+    explore,
+    get_analysis,
+    keep_option,
     list_boards,
     move_item,
     open_board,
     propose_lens,
     read_board,
     remove_item,
+    run_plugin,
     set_lens,
+    unkeep_option,
     upload_reference,
     visualize_note,
+    visualize_option,
+    wait,
 )
 
 log = logging.getLogger(__name__)
@@ -36,18 +45,27 @@ log = logging.getLogger(__name__)
 SAY_MAX = 200
 
 _MODULES: tuple[ModuleType, ...] = (
+    add_dimension,
     add_note,
     add_reference,
+    analyse,
     create_board,
+    explore,
+    get_analysis,
+    keep_option,
     list_boards,
     move_item,
     open_board,
     propose_lens,
     read_board,
     remove_item,
+    run_plugin,
     set_lens,
+    unkeep_option,
     upload_reference,
     visualize_note,
+    visualize_option,
+    wait,
 )
 
 TOOLS: dict[str, ModuleType] = {m.DEFINITION["name"]: m for m in _MODULES}
