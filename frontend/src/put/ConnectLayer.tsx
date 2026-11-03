@@ -88,6 +88,12 @@ export function ConnectLayer({ boardId, items, view, world, readOnly, selectedId
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [active, cancel])
+  // a source gone (deleted, or removed from another tab) ends the line, drag or card; so does a target gone
+  // under the open card: nothing is left behind, its body included
+  const gone = (state.phase !== 'idle' && !byId.has(state.sourceId)) || (state.phase === 'card' && !byId.has(state.targetId))
+  useEffect(() => {
+    if (gone) cancel()
+  }, [gone, cancel])
 
   const toCanvas = (e: ReactPointerEvent<HTMLElement>): Point => {
     const r = e.currentTarget.parentElement?.getBoundingClientRect()

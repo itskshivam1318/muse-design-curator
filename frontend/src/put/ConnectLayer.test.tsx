@@ -65,7 +65,7 @@ function setup(over: { selectedIds?: string[]; readOnly?: boolean; grabbing?: bo
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   qc.setQueryData(keys.analysis('tgt'), over.analysis ?? analysis)
   const world = fakeWorld(items, over.grabbing)
-  function Harness() {
+  function Harness({ items }: { items: Item[] }) {
     const connect = useConnect()
     const s = connect.state
     return (
@@ -83,13 +83,16 @@ function setup(over: { selectedIds?: string[]; readOnly?: boolean; grabbing?: bo
       </>
     )
   }
-  render(
+  const tree = (list: Item[]) => (
     <QueryClientProvider client={qc}>
       <LivingProvider world={world}>
-        <Harness />
+        <Harness items={list} />
       </LivingProvider>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
+  const { rerender } = render(tree(items))
+  /** The board's items change (e.g. one is deleted here or in another tab). */
+  return { setItems: (list: Item[]) => rerender(tree(list)) }
 }
 
 const dot = () => screen.queryByRole('button', { name: 'Connect to another picture' })
@@ -220,6 +223,34 @@ describe('ConnectLayer', () => {
     expect(phase()).toBe('idle')
     expect(line()).toBeNull()
     expect(screen.queryAllByTestId('region-overlay')).toHaveLength(0)
+  })
+})
+
+describe('ConnectLayer: a picture leaving the board', () => {
+  it('the source removed during a drag ends the line', () => {
+    const { setItems } = setup()
+    dragTo(380, 150)
+    expect(phase()).toBe('drag:tgt:2')
+    setItems([tgt, note])
+    expect(phase()).toBe('idle')
+    expect(line()).toBeNull()
+  })
+
+  it('the target removed while the card is open closes the card, so no body is left behind', () => {
+    const { setItems } = setup()
+    fireEvent.pointerUp(dragTo(380, 150), { pointerId: 1 })
+    expect(phase()).toBe('card:tgt:2')
+    setItems([src, note])
+    expect(phase()).toBe('idle')
+    expect(line()).toBeNull()
+  })
+
+  it('the source removed while the card is open closes it too', () => {
+    const { setItems } = setup()
+    fireEvent.pointerUp(dragTo(380, 150), { pointerId: 1 })
+    expect(phase()).toBe('card:tgt:2')
+    setItems([tgt, note])
+    expect(phase()).toBe('idle')
   })
 })
 
