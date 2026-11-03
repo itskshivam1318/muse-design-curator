@@ -40,9 +40,16 @@ export function noteHeight(text: string | null | undefined): number {
   return h
 }
 
-/** A note item with the size the canvas draws it at (fixed width, height from its text). */
-export const sizedNote = (item: Item): Item =>
-  item.kind === 'note' ? { ...item, w: NOTE_W, h: noteHeight(item.note_text) } : item
+/**
+ * A note item with the size the canvas draws it at: the note width, its height from its text. A kept
+ * take (it docks small and undocks wide) keeps its stored width: it is laid out at the note width and
+ * drawn scaled to it, its height in proportion.
+ */
+export function sizedNote(item: Item): Item {
+  if (item.kind !== 'note') return item
+  const w = item.explore_option_id && item.w > 0 ? item.w : NOTE_W
+  return { ...item, w, h: (noteHeight(item.note_text) * w) / NOTE_W }
+}
 
 /** The highlighted passage's colour (the same yellow as a part's region on an image). */
 export const HIGHLIGHT_FILL = '#ffd166'
