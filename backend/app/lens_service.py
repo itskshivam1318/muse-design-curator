@@ -73,25 +73,29 @@ def _next_version(session: Session, board_id: str, domain: str) -> int:
 
 
 def board_lens_row(session: Session, board: Board) -> Lens | None:
-    """The lens row the board currently points at, else its newest row."""
+    """The lens row the board currently points at, else its newest proposal awaiting confirmation.
+    A lens it was moved off (another domain, or back to Auto) is not returned."""
     if board.lens_id:
         row = lenses_repo.get(session, board.lens_id)
         if row is not None:
             return row
     q = (
         select(Lens)
-        .where(Lens.board_id == board.id)
+        .where(Lens.board_id == board.id, Lens.status == "proposed")
         .order_by(Lens.created_at.desc(), Lens.version.desc())
     )
     return session.scalars(q).first()
 
 
-def ensure_board_lens(session: Session, board_id: str, *, prune: bool = True) -> LensSpec | None:
+def ensure_board_lens(
+    session: Session, board_id: str, *, prune: bool = True, propose: bool = True
+) -> LensSpec | None:
     """The board's lens, attaching the curated one for its domain (or proposing one) if needed.
 
     A curated lens is pruned on the board's images when it is attached; with fewer than
     MIN_PRUNE_IMAGES images (or `prune=False`, for request handlers) it is attached as shipped and
     pruned by a later call, once. Pruning runs SAM through the mask cache the items' parsing uses.
+    With `propose=False` a board with no curated lens gets none (no model call).
     """
     board = _require_board(session, board_id)
     if board.lens_id:
@@ -110,6 +114,8 @@ def ensure_board_lens(session: Session, board_id: str, *, prune: bool = True) ->
             if prune and needs_part_check(curated):
                 spec = _prune_curated(session, board, curated) or curated
             return _attach_curated(session, board, spec, current=None)
+    if not propose:
+        return None
     if lenses_repo.latest(session, board.id, _domain_key(board)) is not None:
         return None  # already proposed, awaiting confirmation
     eligible = _eligible(session, board.id)
@@ -126,12 +132,15 @@ def ensure_board_lens(session: Session, board_id: str, *, prune: bool = True) ->
 
 
 AUTO_MIN_EMBEDDED = 3
+# the winning domain needs most of the board: items that fit no domain count against it
+AUTO_MIN_SHARE = 0.5
 
 
 def auto_attach_domain(session: Session, board_id: str) -> str | None:
     """Give an Auto board (no domain) the curated domain its items clearly vote for.
 
-    A clear winner: not ambiguous, at least AUTO_MIN_EMBEDDED embedded items, and a curated lens.
+    A clear winner: not ambiguous, at least AUTO_MIN_EMBEDDED embedded items, more than
+    AUTO_MIN_SHARE of them voting for it, and a curated lens.
     A domain the user set is never overridden. Returns the new domain, else None.
     """
     board = _require_board(session, board_id)
@@ -144,8 +153,8 @@ def auto_attach_domain(session: Session, board_id: str) -> str | None:
     votes = domain_votes(session, embedded)
     if not votes or ambiguous_candidates(votes):
         return None
-    winner = max(votes.items(), key=lambda kv: (kv[1], kv[0]))[0]
-    if curated_lens(winner) is None:
+    winner, share = max(votes.items(), key=lambda kv: (kv[1], kv[0]))
+    if share <= AUTO_MIN_SHARE or curated_lens(winner) is None:
         return None
     boards_repo.update(session, board.id, domain=winner)
     ensure_board_lens(session, board.id)  # attaches the curated lens, queues pending_lens items

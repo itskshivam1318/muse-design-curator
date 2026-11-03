@@ -43,10 +43,12 @@ def get_board(board_id: str, session: SessionDep) -> dict[str, Any]:
 
 @router.patch("/{board_id}")
 def patch_board(board_id: str, body: BoardPatch, session: SessionDep) -> dict[str, Any]:
-    require_board(session, board_id)
+    current = require_board(session, board_id)
     fields = body.model_dump(exclude_unset=True, exclude_none=True)
     if "domain" in body.model_fields_set:
         fields["domain"] = body.domain
+        if body.domain != current.domain:
+            fields["lens_id"] = None  # the old domain's lens no longer applies
     board = boards_repo.update(session, board_id, **fields)
     assert board is not None
     if fields.get("domain"):

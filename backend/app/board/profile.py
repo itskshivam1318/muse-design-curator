@@ -430,7 +430,8 @@ def recompute(session: Session, board_id: str) -> int | None:
     with _locks[board_id]:
         auto_attach_domain(session, board_id)
         try:
-            lens = ensure_board_lens(session, board_id)
+            # items are analysed without a lens: only a curated one is attached, none proposed
+            lens = ensure_board_lens(session, board_id, propose=False)
         except AppError:
             lens = None
         items = items_repo.list_active(session, board_id, include_staged=False)

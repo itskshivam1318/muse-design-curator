@@ -1,4 +1,5 @@
-"""Domain voting: each embedded board item votes for its nearest curated-domain prototype."""
+"""Domain voting: each embedded board item votes for its nearest curated-domain prototype, when
+that prototype is clearly nearer than the next one."""
 
 from collections import Counter
 from collections.abc import Sequence
@@ -13,6 +14,9 @@ from app.db.models import CorpusItem
 from app.domain.lens import LENS_DIR
 
 AMBIGUOUS_SECOND_SHARE = 0.4
+# An item about as near two domains fits neither (a subject no curated domain covers): it abstains.
+# On real boards an item's best domain leads the next by 0.1-0.25; on a cars board by about 0.01.
+MIN_VOTE_MARGIN = 0.03
 
 
 def _unit(m: np.ndarray) -> np.ndarray:
@@ -43,13 +47,18 @@ def _prototypes(session: Session) -> dict[str, np.ndarray]:
 
 
 def domain_votes(session: Session, items: Sequence[Any]) -> dict[str, float]:
-    """Vote shares per curated domain, or {} when no prototypes/embeddings exist."""
+    """Vote shares per curated domain, or {} when no prototypes/embeddings exist.
+
+    Shares are of every embedded item, abstentions included, so they sum to under 1 when some
+    items fit no domain.
+    """
     protos = _prototypes(session)
     if not protos:
         return {}
     names = sorted(protos)
     proto = np.stack([protos[n] for n in names])
     counts: Counter[str] = Counter()
+    total = 0
     for item in items:
         emb = getattr(item, "embedding_json", None)
         if not emb:
@@ -60,8 +69,11 @@ def domain_votes(session: Session, items: Sequence[Any]) -> dict[str, float]:
         norm = np.linalg.norm(v)
         if norm == 0:
             continue
-        counts[names[int(np.argmax(proto @ (v / norm)))]] += 1
-    total = sum(counts.values())
+        total += 1
+        sims = proto @ (v / norm)
+        ranked = np.sort(sims)[::-1]
+        if len(ranked) == 1 or ranked[0] - ranked[1] >= MIN_VOTE_MARGIN:
+            counts[names[int(np.argmax(sims))]] += 1
     return {d: c / total for d, c in counts.items()} if total else {}
 
 
