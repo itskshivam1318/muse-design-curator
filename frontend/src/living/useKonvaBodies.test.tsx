@@ -22,6 +22,7 @@ function Board({ world }: { world: LivingWorld }) {
         <Group name="deco" body="a" />
         <Rect id="b" x={0} y={0} width={100} height={80} />
         <Line name="living-link" link={['a', 'b']} points={[]} />
+        <Rect id="c" x={0} y={0} width={200} height={160} natW={200} />
       </Layer>
     </Stage>
   )
@@ -31,8 +32,8 @@ function setup() {
   let t = 0
   let cb: FrameRequestCallback | null = null
   const world = createLivingWorld({ reduced: true, now: () => t, schedule: (f) => ((cb = f), 1), cancel: () => {} })
-  world.sync(scene(item('a', 200, 100), item('b', 500, 100)), -1000)
-  world.setPinned(['a', 'b'])
+  world.sync(scene(item('a', 200, 100), item('b', 500, 100), item('c', 200, 400)), -1000)
+  world.setPinned(['a', 'b', 'c'])
   render(<Board world={world} />)
   world.start()
   const frame = () => {
@@ -54,6 +55,14 @@ describe('useKonvaBodies', () => {
     expect(node('#a').scale()).toEqual({ x: 1, y: 1 })
     expect(node('.deco').position()).toEqual({ x: 150, y: 60 })
     expect(node('#b').position()).toEqual({ x: 450, y: 60 })
+  })
+
+  it("a node laid out at another width (natW) is drawn at its body's size, easing with it", () => {
+    const { frame, node } = setup()
+    frame()
+    // laid out 200 wide, its body 100: drawn at half, its top-left where the body's is
+    expect(node('#c').scale()).toEqual({ x: 0.5, y: 0.5 })
+    expect(node('#c').position()).toEqual({ x: 150, y: 360 })
   })
 
   it('redraws a link between two bodies from where they are', () => {

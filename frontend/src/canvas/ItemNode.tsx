@@ -19,6 +19,7 @@ import {
   wantsFull,
 } from './nodeProps'
 import { NoteNode } from './NoteNode'
+import { NOTE_W } from './noteSize'
 import type { CanvasPalette } from './palette'
 import { useImage } from './useImage'
 
@@ -55,6 +56,8 @@ interface NodeProps {
 
 function common(item: Item, draggable: boolean, h: ItemHandlers) {
   return {
+    // the width its content is laid out at: drawn scaled to its body's (a docking take eases in size)
+    natW: item.kind === 'note' ? NOTE_W : item.w || 240,
     draggable,
     onMouseDown: (e: KEvent) => h.onPointerDown(e, item),
     onTap: (e: KEvent<TouchEvent>) => h.onPointerDown(e as unknown as KEvent, item),

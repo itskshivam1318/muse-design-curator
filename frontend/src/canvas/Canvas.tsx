@@ -707,7 +707,7 @@ export function Canvas({
                 // drawn in the item's own frame, which follows its body
                 const b = itemBounds(i)
                 return (
-                  <Group key={i.id} name="item-decor" body={i.id} x={b.x} y={b.y}>
+                  <Group key={i.id} name="item-decor" body={i.id} natW={b.width} x={b.x} y={b.y}>
                     <ItemDecorations
                       item={i}
                       bounds={{ x: 0, y: 0, width: b.width, height: b.height }}

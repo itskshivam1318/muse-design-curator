@@ -12,6 +12,8 @@ const r2 = (n: number) => Math.round(n * 100) / 100
  * a node whose id is a body's (an item), or that names one in its `body` attr (what is drawn around an
  * item), goes to the body's top-left at its grow scale (growing about its centre); a `living-link`
  * line is redrawn between the two bodies in its `link` attr. The node Konva is dragging is left alone.
+ * A node laid out at another width than its body's (its `natW` attr: a take docking or undocking eases
+ * between sizes, a note is laid out at the note width) is scaled to the body's width as it eases.
  */
 export function useKonvaBodies(world: LivingWorld, layerRef: RefObject<Konva.Layer | null>): void {
   useEffect(() => {
@@ -40,9 +42,11 @@ export function useKonvaBodies(world: LivingWorld, layerRef: RefObject<Konva.Lay
         const b = world.body((node.attrs.body as string | undefined) ?? node.id())
         if (!b || node.isDragging()) continue
         // to 0.01: a settled board compares equal and is not redrawn
-        const s = r2(Math.max(growScale(b, now, world.reduced()), 0.001)) // a zero scale cannot be hit-tested
-        const x = r2(b.x - (b.w * s) / 2)
-        const y = r2(b.y - (b.h * s) / 2)
+        const grow = r2(Math.max(growScale(b, now, world.reduced()), 0.001)) // a zero scale cannot be hit-tested
+        const natW = node.attrs.natW as number | undefined
+        const s = natW ? Math.round(((grow * b.w) / natW) * 1e4) / 1e4 : grow
+        const x = r2(b.x - (b.w * grow) / 2)
+        const y = r2(b.y - (b.h * grow) / 2)
         if (node.x() !== x || node.y() !== y || node.scaleX() !== s || node.scaleY() !== s) {
           node.position({ x, y })
           node.scale({ x: s, y: s })
