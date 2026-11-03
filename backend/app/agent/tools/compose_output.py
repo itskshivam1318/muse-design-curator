@@ -1,7 +1,7 @@
 from typing import Any
 
 from app.agent import run_state
-from app.agent.context import ToolContext, api_error, board_items
+from app.agent.context import ToolContext, api_error, board_items, require_option
 
 SHEET_GAP = 80  # between the board's bounding box and the sheet
 ITEM_H = 320  # every item on the sheet is scaled to this height
@@ -39,6 +39,12 @@ DEFINITION = {
                                 },
                                 "required": ["item_id", "why"],
                             },
+                        },
+                        "contrast": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "A deliberate counter-example (a not-this): its items "
+                            "are checked like the rest but left out of the one-design comparison.",
                         },
                     },
                     "required": ["deliverable", "items"],
@@ -80,7 +86,10 @@ def _sections(raw: Any) -> list[dict[str, Any]] | dict[str, Any]:
                     "why": (why.strip() if isinstance(why, str) else "")[:WHY_MAX],
                 }
             )
-        out.append({"deliverable": section["deliverable"].strip(), "items": items})
+        kept: dict[str, Any] = {"deliverable": section["deliverable"].strip(), "items": items}
+        if section.get("contrast") is True:
+            kept["contrast"] = True
+        out.append(kept)
     return out
 
 
@@ -112,6 +121,20 @@ def _validate(
     return None
 
 
+async def _undock(ctx: ToolContext, item: dict[str, Any]) -> None:
+    """A kept explore take is drawn in its option's ring, wherever the item says it is, until
+    it is undocked; undock it so the sheet's position holds (as dragging it out would)."""
+    option_id = item.get("explore_option_id")
+    if not option_id:
+        return
+    option = await require_option(ctx, option_id)
+    if "error" in option or option.get("kept_item_id") != item["id"] or option.get("undocked"):
+        return
+    status, res = await ctx.api.patch(f"/api/options/{option_id}", json={"undocked": True})
+    if status != 200:
+        raise _Refused(api_error(status, res))
+
+
 async def _note(ctx: ToolContext, text: str, x: float, y: float, w: float, h: float) -> str:
     body = {"text": text, "x": x, "y": y, "w": w, "h": h}
     status, res = await ctx.api.post(f"/api/boards/{ctx.board_id}/notes", json=body)
@@ -136,6 +159,7 @@ async def _lay_out(
         x = left + LABEL_W + GAP
         for entry in section["items"]:
             item = live[entry["item_id"]]
+            await _undock(ctx, item)
             w = item["w"] * ITEM_H / item["h"] if item["h"] else ITEM_H
             status, res = await ctx.api.patch(
                 f"/api/items/{item['id']}", json={"x": x, "y": y, "w": w, "h": ITEM_H}

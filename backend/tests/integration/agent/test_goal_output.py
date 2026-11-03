@@ -400,3 +400,28 @@ async def test_tool_failure_without_message_names_the_exception(
     monkeypatch.setattr(read_board, "run", boom)
     res = await tools.run_tool(ctx, "read_board", {})
     assert res == {"error": "TOOL_FAILED", "message": "KeyError"}
+
+
+async def test_a_contrast_section_is_left_out_of_the_one_design_check(
+    ctx: ToolContext, client: TestClient, board: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    a = _image(client, board, 1)
+    b = _image(client, board, 2, x=500)
+    c = _image(client, board, 3, x=1000)
+    compared: list[int] = []
+
+    class Same:
+        def structured(self, images: list[bytes], schema: dict[str, Any], prompt: str) -> Any:
+            compared.append(len(images))
+            return {"one_design": True, "outliers": [], "reason": ""}
+
+    monkeypatch.setattr(checks, "get_reasoning", lambda settings: Same())
+    run_id = await _goal(ctx, "front", "side", "not this")
+    sections = _sections(("front", [a]), ("side", [b]), ("not this", [c]))
+    sections[2]["contrast"] = True
+    res = await tools.run_tool(ctx, "compose_output", {"title": "T", "sections": sections})
+    assert "error" not in res, res
+    assert _run(run_id).output_json["sections"][2]["contrast"] is True
+    res = await tools.run_tool(ctx, "finish", {"summary": "done"})
+    assert res == {"status": "done"}
+    assert compared == [2]  # the counter-example is on the sheet but not compared

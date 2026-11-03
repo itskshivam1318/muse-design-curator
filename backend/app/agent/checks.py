@@ -55,11 +55,14 @@ def _why_failed(check: dict[str, Any]) -> str:
     return f"answer: {check.get('answer') or 'unclear'}"
 
 
-def output_item_ids(run: dict[str, Any]) -> list[str]:
-    """The items on the run's output sheet, in sheet order, each once."""
+def output_item_ids(run: dict[str, Any], *, compared: bool = False) -> list[str]:
+    """The items on the run's output sheet, in sheet order, each once; with `compared`, only
+    those the one-design check compares (not a contrast section's counter-examples)."""
     output = run.get("output") or {}
     seen: list[str] = []
     for section in output.get("sections") or []:
+        if compared and section.get("contrast"):
+            continue
         for entry in section.get("items") or []:
             if entry["item_id"] not in seen:
                 seen.append(entry["item_id"])

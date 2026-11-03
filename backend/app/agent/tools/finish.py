@@ -54,7 +54,7 @@ async def _problems(ctx: ToolContext, run: dict[str, Any]) -> list[str] | dict[s
     problems = checks.deliverable_problems(run, {i["id"]: i for i in items})
     if problems:
         return problems
-    images, shown = await _images(ctx, checks.output_item_ids(run))
+    images, shown = await _images(ctx, checks.output_item_ids(run, compared=True))
     if len(images) < 2:  # nothing to compare
         return []
     try:

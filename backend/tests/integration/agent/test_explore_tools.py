@@ -176,3 +176,24 @@ async def test_run_plugin_colour(ctx: ToolContext, client: TestClient, board: st
         ctx, "run_plugin", {"plugin_id": "palette", "input_item_ids": ["item_nope"]}
     )
     assert missing["error"] == "ITEM_NOT_ON_BOARD"
+
+
+async def test_compose_output_undocks_a_kept_take(
+    wctx: ToolContext, world: dict[str, Any], client: TestClient
+) -> None:
+    """A kept take is drawn in its explore ring unless undocked, so the sheet must undock it."""
+    explored = await tools.run_tool(
+        wctx, "explore", {"item_id": source(world), "dimension": "markers"}
+    )
+    option = explored["options"][0]["id"]
+    await tools.run_tool(wctx, "visualize_option", {"option_id": option})
+    take = (await tools.run_tool(wctx, "wait", {"kind": "option", "id": option}))["result"]
+    await tools.run_tool(wctx, "keep_option", {"option_id": option, "item_id": take["item_id"]})
+    goal = await tools.run_tool(wctx, "set_goal", {"goal": "a take", "deliverables": ["take"]})
+    assert "error" not in goal, goal
+    sections = [{"deliverable": "take", "items": [{"item_id": take["item_id"], "why": "it"}]}]
+    res = await tools.run_tool(wctx, "compose_output", {"title": "Sheet", "sections": sections})
+    assert "error" not in res, res
+    explorations = client.get(f"/api/boards/{world['watch']}/explorations").json()["explorations"]
+    opt = next(o for e in explorations for o in e["options"] if o["id"] == option)
+    assert opt["undocked"] is True and opt["kept_item_id"] == take["item_id"]
