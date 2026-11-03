@@ -241,7 +241,9 @@ describe('FlowerLayer', () => {
     expect(harness.world!.body('hub:e1')!.x).toBe(at.x)
     fireEvent.pointerMove(el, { clientX: 60, clientY: 30 })
     expect([harness.world!.body('hub:e1')!.x, harness.world!.body('hub:e1')!.y]).toEqual([at.x + 50, at.y + 20])
+    expect(el.hasAttribute('data-dragging')).toBe(true) // it shows the grabbing hand
     fireEvent.pointerUp(el, { clientX: 60, clientY: 30 })
+    expect(el.hasAttribute('data-dragging')).toBe(false)
     expect(harness.released).toEqual([new Map([['hub:e1', { x: at.x + 50, y: at.y + 20 }]])])
     fireEvent.click(collapse) // the click that ends the drag does not collapse
     expect(isCollapsed('b1', 'e1')).toBe(false)

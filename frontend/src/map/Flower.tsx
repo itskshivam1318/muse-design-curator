@@ -72,10 +72,12 @@ function useHubDrag(id: string, scale: number, onRelease?: (centres: Map<string,
         world.grab([id])
         // captured only once it is a drag: a plain click still lands on the collapse button
         e.currentTarget.setPointerCapture?.(e.pointerId)
+        e.currentTarget.setAttribute('data-dragging', '') // the grabbing hand
       }
       world.dragBy(dx / scale, dy / scale)
     },
-    onPointerUp: () => {
+    onPointerUp: (e: PointerEvent<HTMLElement>) => {
+      e.currentTarget.removeAttribute('data-dragging')
       const d = drag.current
       drag.current = null
       if (!d?.moved) return
@@ -87,7 +89,8 @@ function useHubDrag(id: string, scale: number, onRelease?: (centres: Map<string,
       onRelease(world.release())
     },
     // a cancelled drag lets go without writing: the hub springs back to its home
-    onPointerCancel: () => {
+    onPointerCancel: (e: PointerEvent<HTMLElement>) => {
+      e.currentTarget.removeAttribute('data-dragging')
       if (drag.current?.moved) world.release()
       drag.current = null
     },

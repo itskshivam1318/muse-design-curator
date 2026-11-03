@@ -1288,6 +1288,13 @@ button.onboarding-step:hover {
   box-shadow: 0 4px 12px rgba(16, 24, 40, 0.2);
   font-family: var(--f-body);
   pointer-events: auto;
+  cursor: grab;
+  touch-action: none; /* a touch drag moves the hub, not the page */
+  will-change: transform;
+}
+.flower-hub[data-dragging],
+.flower-badge[data-dragging] {
+  cursor: grabbing;
 }
 .flower-hub-label {
   max-width: 120px;
@@ -1329,8 +1336,10 @@ button.onboarding-step:hover {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
   pointer-events: auto;
+  will-change: transform;
 }
 .flower-badge:hover,
 .flower-collapse:hover {
@@ -1355,6 +1364,7 @@ button.onboarding-step:hover {
   text-align: left;
   cursor: pointer;
   pointer-events: auto;
+  will-change: transform;
 }
 .petal.is-rendered,
 .petal.is-kept,
@@ -1610,6 +1620,7 @@ button.onboarding-step:hover {
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
   font-family: var(--f-body);
   pointer-events: auto;
+  will-change: transform;
 }
 .callout.is-whole {
   border-style: dashed;
