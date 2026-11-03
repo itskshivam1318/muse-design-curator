@@ -56,6 +56,8 @@ class KeepBody(BaseModel):
     item_id: str
     x: float | None = None
     y: float | None = None
+    w: float | None = Field(default=None, gt=0)
+    h: float | None = Field(default=None, gt=0)
 
 
 def _takes(session: SessionDep, opts: list[ExploreOption]) -> dict[str, list[str]]:
@@ -111,7 +113,8 @@ def visualize_option(
 @router.post("/options/{option_id}/keep")
 def keep_option(option_id: str, body: KeepBody, session: SessionDep) -> dict[str, Any]:
     at = (body.x, body.y) if body.x is not None and body.y is not None else None
-    o = keep.keep_take(session, option_id, body.item_id, at)
+    size = (body.w, body.h) if body.w is not None and body.h is not None else None
+    o = keep.keep_take(session, option_id, body.item_id, at, size)
     return explore_repo.option_to_dict(o, _takes(session, [o])[o.id])
 
 

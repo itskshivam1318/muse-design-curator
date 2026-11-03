@@ -563,10 +563,10 @@ export const visualizeOption = (optionId: string, opts: { at?: Point; renderer_i
   })
 }
 
-export const keepTake = (optionId: string, itemId: string, at?: Point) =>
+export const keepTake = (optionId: string, itemId: string, at?: Point, size?: { w: number; h: number }) =>
   request<ExploreOption>(`/options/${enc(optionId)}/keep`, {
     method: 'POST',
-    json: { item_id: itemId, ...(at ? { x: at.x, y: at.y } : {}) },
+    json: { item_id: itemId, ...(at ? { x: at.x, y: at.y } : {}), ...(size ? { w: size.w, h: size.h } : {}) },
   })
 export const unkeepTake = (optionId: string) =>
   request<ExploreOption>(`/options/${enc(optionId)}/unkeep`, { method: 'POST' })

@@ -1,25 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { rectsIntersect } from '../canvas/geometry'
-import { clampCard, placeBeside } from './layout'
-
-describe('placeBeside', () => {
-  it('puts the box just outside the anchor along dir when the way is clear', () => {
-    const petal = { x: 0, y: 0, width: 88, height: 88 }
-    const b = placeBeside(petal, 0, { width: 200, height: 150 }, [petal])
-    expect(b.x).toBeGreaterThan(petal.x + petal.width)
-    expect(b.y + b.height / 2).toBeCloseTo(44)
-  })
-
-  it('steps around obstacles and never overlaps one', () => {
-    const petal = { x: 0, y: 0, width: 88, height: 88 }
-    const wall = { x: 100, y: -400, width: 300, height: 900 }
-    const b = placeBeside(petal, 0, { width: 200, height: 150 }, [petal, wall])
-    expect(rectsIntersect(b, wall)).toBe(false)
-    expect(rectsIntersect(b, petal)).toBe(false)
-    // deterministic
-    expect(placeBeside(petal, 0, { width: 200, height: 150 }, [petal, wall])).toEqual(b)
-  })
-})
+import { clampCard } from './layout'
 
 describe('clampCard', () => {
   const size = { width: 260, height: 300 }

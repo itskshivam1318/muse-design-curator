@@ -238,6 +238,49 @@ describe('Canvas flowers', () => {
     act(() => selection.select(['k1']))
     expect(screen.getByRole('group', { name: 'Hands' })).toBeTruthy()
   })
+
+  it('a docked take selected shows its callouts and its dimensions open a flower from it', async () => {
+    sized()
+    const src = makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })
+    const kept = makeItem({ id: 'k1', board_id: 'b1', x: 700, y: 0, w: 168, h: 126, explore_option_id: 'o1', origin: 'generated', parent_item_id: 'src' })
+    const e2: Exploration = { id: 'e2', board_id: 'b1', dx: null, dy: null, item_id: 'k1', key: 'hand_style', options: [opt({ id: 'o2', exploration_id: 'e2', name: 'Brass' })] }
+    vi.mocked(exploreItem).mockResolvedValue(e2)
+    const qc = client(
+      [{ id: 'e1', board_id: 'b1', dx: 300, dy: 0, item_id: 'src', key: 'mood', options: [opt({ id: 'o1', status: 'kept', kept_item_id: 'k1', takes: ['k1'] })] }],
+      [src, kept],
+    )
+    qc.setQueryData(keys.analysis('k1'), analysis)
+    renderBoard(qc)
+    expect(document.querySelector('path[data-edge-id="spoke:o1"]')!.classList.contains('is-kept')).toBe(true) // docked
+    act(() => selection.select(['k1']))
+    expect(screen.getByRole('group', { name: 'Hands' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Hand style · syringe' }))
+    await waitFor(() => expect(exploreItem).toHaveBeenCalledWith('k1', { key: 'hand_style', mode: 'initial' }))
+    // the new flower grows from the take: a stem from its callout on to its hub
+    const flower = await screen.findByRole('group', { name: 'Hand style flower' })
+    expect(within(flower).getAllByTestId('petal').map((p) => p.dataset.optionId)).toEqual(['o2'])
+    expect(document.querySelector('path[data-edge-id="stem:e2"]')).toBeTruthy()
+  })
+
+  it('an old full-size kept take docks into its ring once, after the board settles', async () => {
+    sized()
+    const src = makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })
+    const kept = makeItem({ id: 'k1', board_id: 'b1', x: 700, y: 0, w: 400, h: 300, explore_option_id: 'o1', origin: 'generated', parent_item_id: 'src' })
+    const qc = client(
+      [{ id: 'e1', board_id: 'b1', dx: 300, dy: 0, item_id: 'src', key: 'mood', options: [opt({ id: 'o1', status: 'kept', kept_item_id: 'k1', takes: ['k1'] })] }],
+      [src, kept],
+    )
+    renderBoard(qc)
+    expect(patchItem).not.toHaveBeenCalled()
+    await waitFor(() => expect(patchItem).toHaveBeenCalledTimes(1), { timeout: 3000 })
+    const [id, body] = vi.mocked(patchItem).mock.calls[0]
+    expect(id).toBe('k1')
+    expect(body).toMatchObject({ w: 168, h: 126 })
+    expect(qc.getQueryData<Item[]>(keys.items('b1'))!.find((i) => i.id === 'k1')).toMatchObject(body)
+    expect(undoHistory.size).toBe(0) // not an undoable move
+    await new Promise((r) => setTimeout(r, 1300))
+    expect(patchItem).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('Canvas item drag', () => {

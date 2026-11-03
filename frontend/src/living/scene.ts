@@ -117,6 +117,12 @@ export function keptSlot(m: FlowerModel, index: number, offset: Point): Point {
   return polar(petalAngles(Math.atan2(offset.y, offset.x), m.options.length)[index], keptRadius(m))
 }
 
+/** Where that take docks on the board for the hub and its source where they are now (live centres). */
+export function dockedCentre(m: FlowerModel, index: number, hub: Point, source: Point): Point {
+  const p = keptSlot(m, index, { x: hub.x - source.x, y: hub.y - source.y })
+  return { x: hub.x + p.x, y: hub.y + p.y }
+}
+
 export function buildScene(input: SceneInput): Scene {
   const { items, explorations, analyses, labels, collapsed, selectedId, formsOn = () => 0, calloutHeights, toolbar } = input
   const onBoard = items.filter((i) => !i.staged) // staged takes wait in their option's stage

@@ -104,6 +104,16 @@ describe('living world', () => {
     world.place('nope', { x: 0, y: 0 }) // unknown ids are ignored
   })
 
+  it('a pulse for a body not synced yet lands when it arrives, once', () => {
+    const { world } = rig()
+    world.pulse('a') // a kept take: its body comes with the next scene
+    world.sync(scene(item('a', 0, 0)), 1200)
+    expect(world.body('a')!.pulseAt).toBe(1200)
+    world.sync(scene(), 1300)
+    world.sync(scene(item('a', 0, 0)), 1400)
+    expect(world.body('a')!.pulseAt).toBe(-Infinity)
+  })
+
   it('now() is the clock the world steps by', () => {
     const { world, frame } = rig()
     const t0 = world.now()

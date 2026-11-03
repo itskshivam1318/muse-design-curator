@@ -23,7 +23,7 @@ export interface LivingWorld {
   place(id: string, centre: Point): void
   /** The clock the world steps and grows bodies by. */
   now(): number
-  /** The keep swell / "already open" nudge. */
+  /** The keep swell / "already open" nudge. A body not synced yet (a take just kept) swells as it arrives. */
   pulse(id: string): void
   setReduced(r: boolean): void
   reduced(): boolean
@@ -60,6 +60,7 @@ export function createLivingWorld(opts: LivingWorldOpts): LivingWorld {
   let handle: number | null = null
   let last = 0
   let pending = 0 // frames of time not yet stepped
+  const pulses = new Set<string>() // pulsed before their body arrived
 
   const applyPins = (): void => {
     for (const b of world.bodies.values()) b.pinned = grabbed.has(b.id) || selection.has(b.id)
@@ -90,6 +91,12 @@ export function createLivingWorld(opts: LivingWorldOpts): LivingWorld {
   return {
     sync(scene, at = now()) {
       syncWorld(world, scene.specs, at)
+      for (const id of pulses) {
+        const b = world.bodies.get(id)
+        if (!b) continue
+        b.pulseAt = at
+        pulses.delete(id)
+      }
       // Grabbed ids that vanished are dropped; the rest keep the pointer's position.
       for (const id of [...grabbed.keys()]) if (!world.bodies.has(id)) grabbed.delete(id)
       applyPins()
@@ -146,6 +153,7 @@ export function createLivingWorld(opts: LivingWorldOpts): LivingWorld {
     pulse(id) {
       const b = world.bodies.get(id)
       if (b) b.pulseAt = now()
+      else pulses.add(id)
     },
     setReduced(r) {
       reduced = r

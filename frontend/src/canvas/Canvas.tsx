@@ -14,15 +14,17 @@ import {
 } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Group, Layer, Line, Rect, Stage } from 'react-konva'
-import { type Exploration, exploreItem, isGenerated, type Item, keys, type PartView, type Point, type Region, type UploadOrigin } from '../api'
+import { type Exploration, exploreItem, isGenerated, type Item, keys, type PartView, patchItem, type Point, type Region, type UploadOrigin } from '../api'
 import { useDemo } from '../demo'
 import { withExploration } from '../explore/logic'
 import { itemVerdict } from '../explore/verdict'
+import { staleDocked } from '../living/dockIn'
 import { Edges } from '../living/Edges'
 import { useKonvaBodies } from '../living/useKonvaBodies'
 import { useLiveBoxes } from '../living/useLiveBounds'
 import { LivingProvider } from '../living/useLiving'
 import { homesAfter, placeSettled, planRelease } from '../living/release'
+import { dockedCentre } from '../living/scene'
 import { useLivingScene } from '../living/useLivingScene'
 import { createLivingWorld, type LivingWorld } from '../living/world'
 import { Callouts } from '../map/Callouts'
@@ -90,6 +92,8 @@ type Editing = { id: null; at: Point } | { id: string }
 type KEvent<E extends Event = MouseEvent> = Konva.KonvaEventObject<E>
 
 const GRID = 24
+/** Old kept takes dock in once the board has been still (no scene change) this long. */
+const DOCK_IN_SETTLE_MS = 1000
 
 const centreOf = (b: Bounds): Point => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 })
 
@@ -529,6 +533,33 @@ export function Canvas({
     actions.commitRelease(plan, { locked: readOnly })
     placeSettled(world, plan)
   }
+  // kept takes from before they docked in their ring: moved in once per board load, once the board has
+  // settled for a second (each written, no undo step; not while locked). A held or selected one waits.
+  const dockedIn = useRef<{ boardId: string; done: Set<string> }>({ boardId, done: new Set() })
+  useEffect(() => {
+    if (readOnly || !explorations) return
+    const timer = setTimeout(() => {
+      if (dockedIn.current.boardId !== boardId) dockedIn.current = { boardId, done: new Set() }
+      const { done } = dockedIn.current
+      const slotOf = (id: string): Point => {
+        const slot = scene.slots.get(id)!
+        const model = scene.flowers.find((f) => f.hubId === slot.hubId)
+        const hub = world.body(slot.hubId)
+        const source = model && world.body(model.sourceId)
+        if (model && hub && source) return dockedCentre(model, slot.index, hub, source)
+        return world.body(id) ?? centreOf(itemBounds(allItems.find((i) => i.id === id)!))
+      }
+      const stale = staleDocked(scene, allItems, slotOf).filter((t) => !done.has(t.id) && !world.body(t.id)?.pinned)
+      if (stale.length === 0) return
+      const next = new Map(stale.map(({ id, ...b }) => [id, b]))
+      qc.setQueryData<Item[]>(keys.items(boardId), (old) => old?.map((i) => (next.has(i.id) ? { ...i, ...next.get(i.id) } : i)))
+      for (const [id, b] of next) {
+        done.add(id)
+        patchItem(id, b).catch(() => void qc.invalidateQueries({ queryKey: keys.items(boardId) }))
+      }
+    }, DOCK_IN_SETTLE_MS)
+    return () => clearTimeout(timer)
+  }, [boardId, readOnly, explorations, scene, allItems, world, qc])
   useLayoutEffect(() => world.setPinned(selected), [world, selected])
   // a selected item is pinned: when its stored spot changes (an undo, a move elsewhere) it goes there at once
   const storedAt = useRef(new Map<string, Point>())

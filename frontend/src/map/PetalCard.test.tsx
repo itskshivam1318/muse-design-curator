@@ -18,6 +18,8 @@ vi.mock('../api', async (orig) => ({
 }))
 const { visualizeOption, keepTake, patchOption, exploreItem, getRenderers } = await import('../api')
 const { PetalCard } = await import('./PetalCard')
+const { createLivingWorld } = await import('../living/world')
+const { LivingProvider } = await import('../living/useLiving')
 
 const MUSE_IMAGE: RendererInfo = { id: 'muse-image', title: 'Generate image', detail: 'Muse Image · inside the Hands mask', builtin: true }
 
@@ -34,7 +36,7 @@ const source = makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0, w: 200, h: 150 
 const take = (id: string, over: Partial<Item> = {}) =>
   makeItem({ id, board_id: 'b1', origin: 'generated', staged: true, explore_option_id: 'o1', parent_item_id: 'src', w: 200, h: 150, ...over })
 
-function setup(option: ExploreOption, extra: { items?: Item[]; renderers?: RendererInfo[]; keepAt?: (t: Item) => { x: number; y: number } } = {}) {
+function setup(option: ExploreOption, extra: { items?: Item[]; renderers?: RendererInfo[]; keepAt?: (t: Item) => { at?: { x: number; y: number }; size: { w: number; h: number } } } = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   const exploration: Exploration = { id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'src', key: 'hand_style', options: [option] }
   qc.setQueryData(keys.explorations('b1'), [exploration])
@@ -42,19 +44,22 @@ function setup(option: ExploreOption, extra: { items?: Item[]; renderers?: Rende
   qc.setQueryData(keys.lens('b1'), { spec: LENS })
   vi.mocked(getRenderers).mockResolvedValue(extra.renderers ?? [MUSE_IMAGE])
   const onClose = vi.fn()
+  const world = createLivingWorld({ reduced: true })
   render(
     <QueryClientProvider client={qc}>
-      <PetalCard
-        option={option}
-        dimension={{ key: 'hand_style', label: 'Hand style', part: 'Hands' }}
-        item={source}
-        keepAt={extra.keepAt ?? (() => ({ x: 500, y: 40 }))}
-        onClose={onClose}
-      />
+      <LivingProvider world={world}>
+        <PetalCard
+          option={option}
+          dimension={{ key: 'hand_style', label: 'Hand style', part: 'Hands' }}
+          item={source}
+          keepAt={extra.keepAt ?? (() => ({ at: { x: 500, y: 40 }, size: { w: 168, h: 126 } }))}
+          onClose={onClose}
+        />
+      </LivingProvider>
     </QueryClientProvider>,
   )
   const current = () => qc.getQueryData<Exploration[]>(keys.explorations('b1'))![0].options[0]
-  return { qc, onClose, current }
+  return { qc, onClose, current, world }
 }
 
 beforeEach(() => {
@@ -126,21 +131,23 @@ describe('PetalCard', () => {
     expect(await screen.findByRole('button', { name: /^Generate image/ })).toBeTruthy()
   })
 
-  it('a passed result shows its check line, Keep and Not this; Keep places it beside the petal', async () => {
+  it('a passed result shows its check line, Keep and Not this; Keep docks it in its slot at the docked size', async () => {
     const t = take('t1', { check: { target: { answer: 'yes', confidence: 0.9, note: '' }, kept: 3, of: 3, drifted: [] } })
     const kept = opt({ status: 'kept', kept_item_id: 't1', takes: ['t1'] })
     vi.mocked(keepTake).mockResolvedValue(kept)
-    const keepAt = vi.fn(() => ({ x: 500, y: 40 }))
-    const { qc, onClose, current } = setup(opt({ status: 'visualized', takes: ['t1'] }), { items: [t], keepAt })
+    const keepAt = vi.fn(() => ({ at: { x: 500, y: 40 }, size: { w: 168, h: 126 } }))
+    const { qc, onClose, current, world } = setup(opt({ status: 'visualized', takes: ['t1'] }), { items: [t], keepAt })
+    const pulse = vi.spyOn(world, 'pulse')
     expect(screen.getByText('✓ Reads as Copper dauphine · 3 of 3 kept').className).toContain('is-ok')
     expect(screen.getByRole('button', { name: 'Not this' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Keep' }))
-    await waitFor(() => expect(keepTake).toHaveBeenCalledWith('o1', 't1', { x: 500, y: 40 }))
+    await waitFor(() => expect(keepTake).toHaveBeenCalledWith('o1', 't1', { x: 500, y: 40 }, { w: 168, h: 126 }))
     expect(keepAt).toHaveBeenCalledWith(t)
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(current().status).toBe('kept')
-    // un-staged where it was placed: an ordinary board item now
-    expect(qc.getQueryData<Item[]>(keys.items('b1'))!.find((i) => i.id === 't1')).toMatchObject({ staged: false, x: 500, y: 40 })
+    // un-staged where it was placed, at the docked size: an ordinary board item now, swelling as it lands
+    expect(qc.getQueryData<Item[]>(keys.items('b1'))!.find((i) => i.id === 't1')).toMatchObject({ staged: false, x: 500, y: 40, w: 168, h: 126 })
+    expect(pulse).toHaveBeenCalledWith('t1')
   })
 
   it('drifted result shows Retry and no Keep', async () => {

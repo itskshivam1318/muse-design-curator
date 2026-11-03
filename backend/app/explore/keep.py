@@ -53,10 +53,15 @@ def _near_source(session: Session, item: BoardItem) -> tuple[float, float] | Non
 
 
 def keep_take(
-    session: Session, option_id: str, item_id: str, at: tuple[float, float] | None = None
+    session: Session,
+    option_id: str,
+    item_id: str,
+    at: tuple[float, float] | None = None,
+    size: tuple[float, float] | None = None,
 ) -> ExploreOption:
-    """Make `item_id` the option's kept take: un-staged, at `at` when given. Every other
-    take of the option goes back to the stage. Keeping the kept take again changes nothing but `at`."""
+    """Make `item_id` the option's kept take: un-staged, at `at` and `size` when given, docked in
+    its ring. Every other take of the option goes back to the stage. Keeping the kept take again
+    changes nothing but `at`, `size` and the dock."""
     require_enabled()
     o = _option(session, option_id)
     item = session.get(BoardItem, item_id)
@@ -90,11 +95,16 @@ def keep_take(
     for other in others:
         session.refresh(other)
     changed.extend(others)
+    if size is not None and (item.w, item.h) != size:
+        item.w, item.h = size
+        if item not in changed:
+            changed.append(item)
     if item.staged:
         if at is None:
             at = _near_source(session, item)
         item.staged = False
-        changed.append(item)
+        if item not in changed:
+            changed.append(item)
         # a kept take is a normal item now: Muse reads it like any other
         request_analyse(session, item.id, count=False)
     if at is not None and (item.x, item.y) != at:
@@ -102,6 +112,7 @@ def keep_take(
         if item not in changed:
             changed.append(item)
     o.kept_item_id = item.id
+    o.undocked = False  # a keep docks the take in its ring, even after it was dragged out
     if o.status != "visualizing":  # a running job holds its claim in the status; settle ends it
         o.status = "kept"
     session.flush()

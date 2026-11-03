@@ -21,6 +21,7 @@ import { selection } from '../canvas/selection'
 import { visualizeInProgress, withExploration, withOption } from '../explore/logic'
 import { dismissOption } from '../explore/optionActions'
 import { resultCheck } from '../explore/verdict'
+import { useLivingWorld } from '../living/useLiving'
 import { useBoardLens, useExplorations, useItems, useRenderers } from '../queries'
 import { openRail } from '../shell/tools'
 import { changeExcerpt, isKept, resultOf } from './results'
@@ -37,8 +38,8 @@ interface Props {
   dimension: PetalDimension
   /** The item the flower grows from. */
   item: Item
-  /** Where a kept result goes: a free slot beside its petal. */
-  keepAt: (result: Item) => Point
+  /** Where a kept result goes: its slot docked in the ring (top-left; none when the hub is not drawn) and its docked size. */
+  keepAt: (result: Item) => { at?: Point; size: { w: number; h: number } }
   onClose?: () => void
   /** Locked demo: readable, nothing changes. */
   locked?: boolean
@@ -64,6 +65,7 @@ export function ResultPreview({ result, source, alt }: { result: Item; source: I
 export function PetalCard({ option, dimension, item, keepAt, onClose, locked = false }: Props) {
   const boardId = item.board_id
   const qc = useQueryClient()
+  const world = useLivingWorld()
   const allItems = useItems(boardId).data
   const explorations = useExplorations(boardId).data
   const lensAttrs = useBoardLens(boardId).data?.spec.attributes
@@ -125,19 +127,20 @@ export function PetalCard({ option, dimension, item, keepAt, onClose, locked = f
 
   const keep = (take: Item) =>
     act(async () => {
-      const at = keepAt(take)
-      const next = await keepTake(live.id, take.id, at)
+      const { at, size } = keepAt(take)
+      const next = await keepTake(live.id, take.id, at, size)
       setOption(next)
-      // an ordinary board item now, where it was placed; any other kept take of the option goes back
+      // an ordinary board item now, docked where its petal was; any other kept take of the option goes back
       qc.setQueryData<Item[]>(keys.items(boardId), (old) =>
         old?.map((i) =>
           i.id === take.id
-            ? { ...i, staged: false, ...at }
+            ? { ...i, staged: false, ...at, ...size }
             : i.explore_option_id === live.id && !i.staged
               ? { ...i, staged: true }
               : i,
         ),
       )
+      world.pulse(take.id) // the keep swell, once it lands in its ring
       onClose?.()
     }, 'Could not keep')
 

@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useLayoutEffect, useMemo } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type AnalysisView, ApiError, type Exploration, type ExploreOption, type Item, keys, type Point } from '../api'
 import { rectsIntersect } from '../canvas/geometry'
-import { itemBounds } from '../canvas/nodeProps'
+import { KEPT_EXTRA, petalAngles, petalRadius } from '../living/ring'
 import { LENS } from '../test/attrs'
 import { makeItem } from '../test/fixtures'
 import { isCollapsed, setCollapsed } from './collapse'
@@ -284,25 +284,33 @@ describe('FlowerLayer', () => {
     })
   })
 
-  it('a kept result lands in free space beside its petal, clear of the items', async () => {
+  it('keep sends the docked size and slot', async () => {
     const t1 = makeItem({
       id: 't1', board_id: 'b1', origin: 'generated', staged: true, explore_option_id: 'o1', parent_item_id: 'a', w: 200, h: 150,
       check: { target: { answer: 'yes', confidence: 1, note: '' }, kept: 1, of: 1, drifted: [] },
     })
     const o1 = opt({ id: 'o1', name: 'Copper', status: 'visualized', takes: ['t1'] })
     vi.mocked(keepTake).mockResolvedValue({ ...o1, status: 'kept', kept_item_id: 't1' })
-    setup(
-      [
-        { id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'a', key: 'hand_style', options: [o1, opt({ id: 'o2' }), opt({ id: 'o3' })] },
-        { id: 'e2', board_id: 'b1', dx: null, dy: null, item_id: 'b', key: 'hand_style', options: [opt({ id: 'o4', exploration_id: 'e2' })] },
-      ],
+    const qc = setup(
+      [{ id: 'e1', board_id: 'b1', dx: 300, dy: 0, item_id: 'a', key: 'hand_style', options: [o1, opt({ id: 'o2' }), opt({ id: 'o3' })] }],
       { items: [t1] },
     )
+    // the hub has been dragged: the slot follows it where it is now, not its stored home
+    const world = harness.world!
+    act(() => world.place('hub:e1', { x: 400, y: 300 }))
+    const pulse = vi.spyOn(world, 'pulse')
     fireEvent.click(screen.getByRole('button', { name: /Copper/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Keep' }))
     await waitFor(() => expect(keepTake).toHaveBeenCalled())
-    const at = vi.mocked(keepTake).mock.calls[0][2]!
-    const slot = { x: at.x, y: at.y, width: 200, height: 150 }
-    for (const i of [a, b]) expect(rectsIntersect(slot, itemBounds(i))).toBe(false)
+    // o1 is the first of 3 petals: its slot is on the ring past the petals, opening from the source (100, 75) through the hub
+    const src = world.body('a')!
+    const angle = petalAngles(Math.atan2(300 - src.y, 400 - src.x), 3)[0]
+    const r = petalRadius(3) + KEPT_EXTRA
+    const slot = { x: 400 + Math.cos(angle) * r, y: 300 + Math.sin(angle) * r }
+    const at = { x: Math.round(slot.x - 84), y: Math.round(slot.y - 63) }
+    expect(vi.mocked(keepTake).mock.calls[0]).toEqual(['o1', 't1', at, { w: 168, h: 126 }])
+    // on the board at once, docked size, and it swells as it lands
+    await waitFor(() => expect(qc.getQueryData<Item[]>(keys.items('b1'))!.find((i) => i.id === 't1')).toMatchObject({ ...at, w: 168, h: 126, staged: false }))
+    await waitFor(() => expect(pulse).toHaveBeenCalledWith('t1'))
   })
 })

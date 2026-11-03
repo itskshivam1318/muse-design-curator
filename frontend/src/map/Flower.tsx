@@ -7,13 +7,13 @@
 import { type PointerEvent, type WheelEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ExploreOption, Item, Point } from '../api'
 import type { View } from '../canvas/geometry'
-import { itemBounds } from '../canvas/nodeProps'
 import { resultCheck } from '../explore/verdict'
-import type { FlowerModel } from '../living/scene'
+import { dockedSize } from '../living/ring'
+import { dockedCentre, type FlowerModel } from '../living/scene'
 import { useBodyElement, useLivingWorld } from '../living/useLiving'
 import { useItems } from '../queries'
 import { setCollapsed } from './collapse'
-import { clampCard, placeBeside } from './layout'
+import { clampCard } from './layout'
 import { PetalCard, ResultPreview } from './PetalCard'
 import { isKept, resultOf } from './results'
 
@@ -228,14 +228,14 @@ export function FlowerLayer({ boardId, items, view, flowers, locked = false, onW
     return () => document.removeEventListener('mousedown', down)
   }, [open])
 
-  // TEMPORARY until keep docks the take (Task 7): a free slot beside the petal, clear of the items
-  const keepAt = (model: FlowerModel, optionId: string) => (result: Item) => {
-    const petal = world.body(`petal:${optionId}`)
+  // a kept take docks in its ring at once: the slot its petal's option has round the hub where it is now
+  const keepAt = (model: FlowerModel, index: number) => (result: Item) => {
+    const size = dockedSize(result)
     const hub = world.body(model.hubId)
-    const near = petal ? { x: petal.x - petal.w / 2, y: petal.y - petal.h / 2, width: petal.w, height: petal.h } : itemBounds(result)
-    const dir = petal && hub ? Math.atan2(petal.y - hub.y, petal.x - hub.x) : 0
-    const b = placeBeside(near, dir, { width: result.w, height: result.h }, items.map(itemBounds))
-    return { x: Math.round(b.x), y: Math.round(b.y) }
+    const source = world.body(model.sourceId)
+    if (!hub || !source) return { size }
+    const c = dockedCentre(model, index, hub, source)
+    return { at: { x: Math.round(c.x - size.w / 2), y: Math.round(c.y - size.h / 2) }, size }
   }
 
   let card = null
@@ -256,7 +256,7 @@ export function FlowerLayer({ boardId, items, view, flowers, locked = false, onW
             option={model.options[index]}
             dimension={{ key: model.key, label: model.label, part: model.part }}
             item={source}
-            keepAt={keepAt(model, open.optionId)}
+            keepAt={keepAt(model, index)}
             onClose={() => setOpen(null)}
             locked={locked}
           />

@@ -265,3 +265,21 @@ def test_keep_without_a_position_goes_beside_the_source(client: TestClient, worl
     assert src is not None and item.staged is False
     assert (item.x, item.y) != (src.x, src.y)
     assert item.x >= src.x + src.w or item.y >= src.y + src.h or item.x + item.w <= src.x
+
+
+def test_keep_with_a_size_writes_w_and_h(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    oid, (a, _b) = make_takes(client, world)
+    r = keep(client, oid, a, x=300, y=40, w=168, h=112)
+    assert r.status_code == 200, r.json()
+    item = fresh(world, a)
+    assert (item.x, item.y, item.w, item.h) == (300, 40, 168, 112)
+    assert keep(client, oid, a, w=0, h=112).status_code == 400
+
+
+def test_keep_re_docks_an_undocked_option(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    oid, (a, b) = make_takes(client, world)
+    keep(client, oid, a)
+    assert client.patch(f"/api/options/{oid}", json={"undocked": True}).json()["undocked"] is True
+    r = keep(client, oid, b, x=10, y=20, w=168, h=112)
+    assert r.status_code == 200 and r.json()["undocked"] is False
+    assert option_row(world, oid).undocked is False
