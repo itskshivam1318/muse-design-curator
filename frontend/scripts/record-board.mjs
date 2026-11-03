@@ -80,7 +80,12 @@ try {
   let finished = false
   while (Date.now() - t0 < maxMs) {
     await sleep(POLL_MS)
-    const { runs } = await api(`/boards/${boardId}/agent-runs`)
+    // A backend restart mid-recording is a gap in polling, not the end of the film.
+    const runs = await api(`/boards/${boardId}/agent-runs`).then(
+      (r) => r.runs,
+      (err) => (console.warn(`poll failed, retrying: ${err.message}`), null),
+    )
+    if (!runs) continue
     // A run counts if it was created after recording began, or the agent joined one that was
     // already open and has since taken a step (run.updated_at is not bumped by steps, so look).
     const mine = []
