@@ -222,7 +222,8 @@ export function buildScene(input: SceneInput): Scene {
     let shown = 0 // petals grow in one after another; kept options keep their slot but no turn
     model.options.forEach((o, i) => {
       if (isKept(o)) {
-        if (docked.get(o.kept_item_id!)?.hubId === hubId) {
+        // docked or pulled out, a take on the board stays spoked to its hub (the spoke stretches)
+        if (slots.get(o.kept_item_id!)?.hubId === hubId) {
           edges.push({ id: `spoke:${o.id}`, kind: 'spoke', from: { body: hubId }, to: { body: o.kept_item_id! }, kept: true })
         }
         return

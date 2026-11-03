@@ -102,12 +102,12 @@ describe('buildScene', () => {
     expect(s.docked).toEqual(new Map([['t1', { optionId: 'o2', hubId: 'hub:e1' }]]))
   })
 
-  it('an undocked take is an ordinary item', () => {
+  it('an undocked take is an ordinary item, still spoked to its hub', () => {
     const options = [opt('o1'), opt('o2', { kept_item_id: 't1', status: 'kept', undocked: true })]
     const s = scene({ items: [item, take('t1')], explorations: [exp('e1', 'hand_style', options)] })
     expect(spec(s, 't1')).toMatchObject({ kind: 'item', home: { kind: 'abs', x: 684, y: 52.5 } })
     expect(spec(s, 'petal:o2')).toBeUndefined()
-    expect(edge(s, 'spoke:o2')).toBeUndefined()
+    expect(edge(s, 'spoke:o2')).toEqual({ id: 'spoke:o2', kind: 'spoke', from: { body: 'hub:e1' }, to: { body: 't1' }, kept: true })
     expect(s.docked.size).toBe(0)
     // it keeps its ring slot (where it would dock), for a drop back near it to dock it again
     const dockedOpts = [options[0], { ...options[1], undocked: false }]
