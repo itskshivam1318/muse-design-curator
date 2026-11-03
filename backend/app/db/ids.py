@@ -8,6 +8,7 @@ PREFIXES = {
     "lens": "lens_", "corpus": "cx_", "run": "run_", "candidate": "cand_",
     "validation": "val_", "decision": "dec_", "ui_event": "uie_",
     "exploration": "exp_", "option": "opt_", "node": "node_", "prun": "prun_", "part": "part_",
+    "agent_run": "arun_", "agent_step": "astep_",
 }  # fmt: skip
 
 

@@ -75,7 +75,7 @@ def test_upgrade_0009_on_populated_db(tmp_path: Path) -> None:
     run_migrations(engine)
     with engine.begin() as c:
         assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == (
-            "0009_living_board"
+            "0010_board_agent"
         )
         assert c.execute(text("SELECT dx, dy FROM explorations")).fetchall() == [(None, None)]
         assert c.execute(text("SELECT undocked FROM explore_options")).fetchall() == [(0,)]

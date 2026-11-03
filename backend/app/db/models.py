@@ -525,3 +525,43 @@ class PluginRun(Base):
     __table_args__ = (
         CheckConstraint(_in("status", PLUGIN_RUN_STATUS), name="ck_plugin_run_status"),
     )
+
+
+AGENT_SOURCES = ("mcp", "muse")
+AGENT_STATUS = ("running", "needs_input", "done", "paused")
+
+
+class AgentRun(Base):
+    __tablename__ = "agent_runs"
+    id: Mapped[str] = _id("agent_run")
+    board_id: Mapped[str] = mapped_column(ForeignKey("boards.id"), index=True)
+    source: Mapped[str] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String, default="running")
+    goal: Mapped[str] = mapped_column(String)
+    deliverables_json: Mapped[Any] = _json(nullable=False)
+    output_json: Mapped[Any] = _json()
+    finish_refusals: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    note: Mapped[str | None] = mapped_column(String)
+    created_at: Mapped[str] = _created()
+    updated_at: Mapped[str] = mapped_column(String, default=now_iso, onupdate=now_iso)
+    __table_args__ = (
+        CheckConstraint(_in("source", AGENT_SOURCES), name="ck_agent_run_source"),
+        CheckConstraint(_in("status", AGENT_STATUS), name="ck_agent_run_status"),
+    )
+
+
+class AgentStep(Base):
+    __tablename__ = "agent_steps"
+    id: Mapped[str] = _id("agent_step")
+    run_id: Mapped[str] = mapped_column(ForeignKey("agent_runs.id"), index=True)
+    board_id: Mapped[str] = mapped_column(String, index=True)
+    turn: Mapped[int] = mapped_column(Integer)
+    tool: Mapped[str] = mapped_column(String)
+    args_json: Mapped[Any] = _json(nullable=False)
+    say: Mapped[str | None] = mapped_column(String)
+    ok: Mapped[bool] = mapped_column(Boolean, default=True)
+    result_json: Mapped[Any] = _json()
+    item_ids_json: Mapped[Any] = _json(nullable=False)
+    highlight: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
+    created_at: Mapped[str] = _created()
+    __table_args__ = (Index("ix_agent_steps_board_created", "board_id", "created_at"),)
