@@ -361,9 +361,13 @@ function applyToCache(qc: QueryClient, boardId: string, type: string, d: Record<
     case 'agent.step': {
       const step = d as unknown as AgentStep
       if (!step.id || !step.run_id) return
-      qc.setQueryData<AgentRunWithSteps>(keys.agentRun(step.run_id), (old) =>
-        old ? { ...old, steps: mergeSteps(old.steps, step) } : old,
-      )
+      const key = keys.agentRun(step.run_id)
+      if (qc.getQueryData(key) === undefined) {
+        // not loaded yet (or a fetch is in flight that may predate the step): fetch it afresh
+        void qc.invalidateQueries({ queryKey: key })
+        return
+      }
+      qc.setQueryData<AgentRunWithSteps>(key, (old) => (old ? { ...old, steps: mergeSteps(old.steps, step) } : old))
       return
     }
     case 'agent.run': {

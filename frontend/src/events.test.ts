@@ -36,6 +36,14 @@ describe('applyEvent', () => {
     ])
   })
 
+  it('agent.step for a run not in the cache yet refetches that run instead of dropping the step', () => {
+    const qc = new QueryClient()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+    applyEvent(qc, 'b1', 'agent.step', makeStep({ run_id: 'r7' }))
+    expect(spy).toHaveBeenCalledWith({ queryKey: keys.agentRun('r7') })
+    expect(qc.getQueryData(keys.agentRun('r7'))).toBeUndefined()
+  })
+
   it('agent.run puts a new run first and updates a known one in place', () => {
     const qc = new QueryClient()
     qc.setQueryData<AgentRun[]>(keys.agentRuns('b1'), [makeRun({ id: 'r1' })])

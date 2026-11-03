@@ -557,6 +557,11 @@ button.agent-step:hover .agent-say {
 .agent-steps li.refused .agent-call {
   text-decoration: line-through;
 }
+.agent-error {
+  margin: 0;
+  color: var(--bad);
+  font-size: 12.5px;
+}
 .agent-card .agent-star {
   flex: none;
   width: 24px;

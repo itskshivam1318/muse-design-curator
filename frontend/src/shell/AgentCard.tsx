@@ -4,17 +4,22 @@ import { type AgentRunWithSteps, type AgentStep, getAgentRun, getAgentRuns, keys
 import { useSelection } from '../canvas/selection'
 import { useDemo } from '../demo'
 import { useActivity } from './activity'
-import { agentName, deliverableStatus, mergeSteps, STATUS_TEXT, toolCall } from './agentRun'
+import { agentName, deliverableStatus, mergeFetched, mergeSteps, STATUS_TEXT, toolCall } from './agentRun'
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
 /** The board's latest agent run and its steps (both kept live by the board's events). */
 function useLatestRun(boardId: string) {
+  const qc = useQueryClient()
   const runs = useQuery({ queryKey: keys.agentRuns(boardId), queryFn: () => getAgentRuns(boardId) })
   const run = runs.data?.[0]
   const detail = useQuery({
     queryKey: keys.agentRun(run?.id ?? ''),
-    queryFn: () => getAgentRun(run!.id),
+    // steps that arrived as events during the fetch are kept, not overwritten by an older snapshot
+    queryFn: async () => {
+      const fresh = await getAgentRun(run!.id)
+      return mergeFetched(fresh, qc.getQueryData<AgentRunWithSteps>(keys.agentRun(fresh.id)))
+    },
     enabled: run !== undefined,
   })
   return { run, steps: detail.data?.steps ?? [] }
@@ -121,6 +126,11 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
                   )
                 })}
               </ol>
+            )}
+            {star.isError && (
+              <p className="agent-error" role="alert">
+                Could not highlight that step.
+              </p>
             )}
           </div>
         ) : (

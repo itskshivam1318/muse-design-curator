@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type AgentRun, type AgentStep, keys } from '../api'
 import { selection } from '../canvas/selection'
-import { boardActivity } from '../events'
+import { applyEvent, boardActivity } from '../events'
 import { setBoard, track } from '../telemetry'
 import { makeRun, makeStep } from '../test/fixtures'
 import { AgentCard } from './AgentCard'
@@ -185,6 +185,29 @@ describe('AgentCard, an agent run', () => {
     expect(String(url)).toContain('/api/agent-steps/s1')
     expect(init?.method).toBe('PATCH')
     expect(JSON.parse(String(init?.body))).toEqual({ highlight: true })
+  })
+
+  it('says so when the highlight cannot be saved', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{}', { status: 500 }))
+    renderCard({ run: makeRun(), steps })
+    fireEvent.click(screen.getByRole('button', { name: 'Show activity' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Highlight step' })[0])
+    expect((await screen.findByRole('alert')).textContent).toBe('Could not highlight that step.')
+  })
+
+  it('a step that arrives while the run is being fetched is kept', async () => {
+    let resolve: (r: Response) => void = () => undefined
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise<Response>((r) => (resolve = r)))
+    const qc = renderCard({ run: makeRun(), steps: [steps[0]] })
+    const refetch = qc.refetchQueries({ queryKey: keys.agentRun('r1') })
+    act(() => applyEvent(qc, 'b1', 'agent.step', makeStep({ id: 's3', turn: 3, say: 'Adding a note' })))
+    // the fetch was answered before s3 was written: it only has s1
+    await act(async () => {
+      resolve(new Response(JSON.stringify({ ...makeRun(), steps: [steps[0]] }), { status: 200 }))
+      await refetch
+    })
+    expect(await screen.findByText('Adding a note')).toBeTruthy()
+    expect(qc.getQueryData<{ steps: AgentStep[] }>(keys.agentRun('r1'))!.steps.map((s) => s.id)).toEqual(['s1', 's3'])
   })
 
   it('star hidden when locked', () => {

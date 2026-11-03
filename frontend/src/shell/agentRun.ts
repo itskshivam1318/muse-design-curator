@@ -1,5 +1,5 @@
 /** Pure helpers for showing an agent run in the agent card. */
-import type { AgentRun, AgentRunStatus, AgentStep } from '../api'
+import type { AgentRun, AgentRunStatus, AgentRunWithSteps, AgentStep } from '../api'
 
 /** The step list with `incoming` in it: a known id is replaced in place, the rest stay in turn order. */
 export function mergeSteps(prev: AgentStep[], incoming: AgentStep): AgentStep[] {
@@ -10,6 +10,17 @@ export function mergeSteps(prev: AgentStep[], incoming: AgentStep): AgentStep[] 
     return next
   }
   return [...prev, incoming].sort((a, b) => a.turn - b.turn)
+}
+
+/**
+ * A freshly fetched run, keeping any cached step it does not have yet (one that arrived as an event
+ * while the fetch was in flight). For a step in both, the fetched copy wins.
+ */
+export function mergeFetched(fresh: AgentRunWithSteps, held: AgentRunWithSteps | undefined): AgentRunWithSteps {
+  if (!held) return fresh
+  const known = new Set(fresh.steps.map((s) => s.id))
+  const extra = held.steps.filter((s) => !known.has(s.id))
+  return extra.length ? { ...fresh, steps: extra.reduce(mergeSteps, fresh.steps) } : fresh
 }
 
 /** Each deliverable, done once the output has a section for it with at least one item. */
