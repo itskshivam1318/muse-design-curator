@@ -5,9 +5,11 @@
 //
 // Writes reports/demo/<slug>/: a .webm (Chromium, 1920x1080), run.json (the run with its steps) and
 // steps.md (one line per step with its time since the recording began, so a snippet can be found in
-// the video). Stops 5 s after the board has a run that started after recording began and reached
-// done, needs_input or paused; or at --max-min. Exits non-zero if the board does not load.
-import { mkdirSync, renameSync, writeFileSync } from 'node:fs'
+// the video). Follows the board's newest run that started, or took a step, after recording began
+// (a run the agent joined counts) and stops 5 s after it reached done, needs_input or paused with no
+// newer such run; or at --max-min. Refuses (exit 2) if reports/demo/<slug>/ already holds a video or
+// run.json: use another slug (e.g. outerwear-2). Exits 1 if the board does not load.
+import { existsSync, mkdirSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
@@ -16,6 +18,7 @@ import { chromium } from '@playwright/test'
 const POLL_MS = 5000
 const HOLD_MS = 5000
 const STOPPED = new Set(['done', 'needs_input', 'paused'])
+const OPEN = new Set(['running', 'needs_input'])
 
 const { values: args } = parseArgs({
   options: {
@@ -37,6 +40,12 @@ if (!(maxMs > 0)) {
 }
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const outDir = join(root, 'reports', 'demo', args.slug)
+for (const name of [`${args.slug}.webm`, 'run.json']) {
+  if (existsSync(join(outDir, name))) {
+    console.error(`${join(outDir, name)} already exists; a new recording would overwrite it. Use another --slug (e.g. ${args.slug}-2) or move the files first.`)
+    process.exit(2)
+  }
+}
 mkdirSync(outDir, { recursive: true })
 
 const boardId = encodeURIComponent(args.board)
@@ -72,8 +81,19 @@ try {
   while (Date.now() - t0 < maxMs) {
     await sleep(POLL_MS)
     const { runs } = await api(`/boards/${boardId}/agent-runs`)
-    const mine = runs.filter((r) => Date.parse(r.created_at) >= t0)
-    const run = mine.find((r) => r.id === runId) ?? mine[0]
+    // A run counts if it was created after recording began, or the agent joined one that was
+    // already open and has since taken a step (run.updated_at is not bumped by steps, so look).
+    const mine = []
+    for (const r of runs) {
+      let counts = Date.parse(r.created_at) >= t0
+      if (!counts && (OPEN.has(r.status) || Date.parse(r.updated_at) >= t0)) {
+        const full = await api(`/agent-runs/${r.id}`)
+        counts = full.steps.some((s) => Date.parse(s.created_at) >= t0)
+      }
+      if (counts) mine.push(r)
+    }
+    // Follow the newest such run: a paused run does not end the recording while a newer one exists.
+    const run = mine.reduce((a, b) => (!a || Date.parse(b.created_at) > Date.parse(a.created_at) ? b : a), null)
     if (!run) continue
     runId = run.id
     if (STOPPED.has(run.status)) {
@@ -92,7 +112,7 @@ try {
       '',
       `Goal: ${full.goal ?? ''}`,
       '',
-      'Time is mm:ss since the recording began (the video starts at 00:00).',
+      'Time is mm:ss since the recording began (the video starts at 00:00). A step\'s time is when its call returned: a long render_view shows the time its picture appeared, not when it started.',
       '',
     ]
     full.steps.forEach((s, i) => {

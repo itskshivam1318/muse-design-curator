@@ -4,22 +4,30 @@ Four boards, one brief each. Claude Code works the board over MCP while a script
 
 ## Run a board
 
+0. Once, before the first recording: `cd frontend && npx playwright install chromium`.
 1. Start Muse with the MCP endpoint on: `MCP_ENABLED=1 make dev`.
 2. Connect Claude Code (once, then restart Claude Code so it picks the server up):
    `claude mcp add --transport http muse http://localhost:8000/mcp`
 3. Create the board in the app at http://localhost:5173 and note its id (the last part of
    `/boards/<id>`).
-4. Start the recording: `make demo-record BOARD=<id> SLUG=<car|ui|room|outerwear>`. It opens
+4. If the board has a run still open (running or needs input), press "Stop run" on it first, so the
+   agent starts a fresh run. Then start the recording: `make demo-record BOARD=<id> SLUG=<car|ui|room|outerwear>`. It opens
    Chromium at 1920x1080, films the board, and stops 5 s after the board's next agent run is
    done, needs input or paused (or after 60 minutes; `MAX_MIN=<n>` changes that). Pass
    `APP=` / `API=` if the servers are not on 5173 / 8000.
 5. Paste the brief below into Claude Code, with the board id (and the reference folder, for the car).
+   The working rules below apply to every brief, so the run exists (and the recording follows
+   it) from the first call.
 6. When the script exits, `reports/demo/<slug>/` holds `<slug>.webm` (stays local, git ignores it),
    `run.json` (the run with its steps) and `steps.md`. `steps.md` lists each step with its time
    since the recording began, so a snippet is found by step time in the video. Commit `run.json`
    and `steps.md`.
 
 ## Briefs
+
+Working rules, applying to every brief ("Same working rules" means these and the car brief's
+closing sentence): Start with set_goal using the deliverables above. Narrate every call with say,
+mark the moments that best show how with highlight, then compose_output and finish.
 
 ### Car (`SLUG=car`)
 
@@ -47,10 +55,10 @@ Session 1:
 Fashion (session 1): Work the Muse board "<id>". Goal: an autumn outerwear capsule. Deliverables: 3 looks in range and a note naming the range. Same working rules.
 ```
 
-Session 2, a later run on the same board (record it again with the same slug after moving or
-keeping the first recording's files; it overwrites `run.json` and `steps.md`, so rename the
-session 1 files first):
+Session 2, a later run on the same board. Record it with `SLUG=outerwear-2`: the recorder refuses
+to start if `reports/demo/<slug>/` already holds a video or `run.json`, so session 1's files are
+never overwritten.
 
 ```
-Fashion (session 2, a later run on the same board): Goal: extend the capsule to 5 looks that stay in range; reproduce look 1 in a second colour. Deliverables: 2 new looks, look 1 in a second colour. Read the board and the first run's output before starting.
+Fashion (session 2, a later run on the same board): Start with set_goal(replace: true) so this is its own run. Goal: extend the capsule to 5 looks that stay in range; reproduce look 1 in a second colour. Deliverables: 2 new looks, look 1 in a second colour. Read the board and the first run's output before starting.
 ```
