@@ -2,6 +2,9 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { useSyncExternalStore } from 'react'
 import {
+  type AgentRun,
+  type AgentRunWithSteps,
+  type AgentStep,
   API_ORIGIN,
   type Board,
   type Exploration,
@@ -12,6 +15,7 @@ import {
   type PluginRun,
   type ProfileSnapshot,
 } from './api'
+import { mergeSteps } from './shell/agentRun'
 
 export const EVENT_TYPES = [
   'item.added',
@@ -34,6 +38,8 @@ export const EVENT_TYPES = [
   'plugin_run.progress',
   'plugin_run.done',
   'plugin_run.failed',
+  'agent.step',
+  'agent.run',
 ] as const
 
 export type BoardEventType = (typeof EVENT_TYPES)[number]
@@ -352,6 +358,25 @@ function applyToCache(qc: QueryClient, boardId: string, type: string, d: Record<
       void qc.invalidateQueries({ queryKey: keys.lens(boardId) })
       void qc.invalidateQueries({ queryKey: keys.board(boardId) })
       return
+    case 'agent.step': {
+      const step = d as unknown as AgentStep
+      if (!step.id || !step.run_id) return
+      qc.setQueryData<AgentRunWithSteps>(keys.agentRun(step.run_id), (old) =>
+        old ? { ...old, steps: mergeSteps(old.steps, step) } : old,
+      )
+      return
+    }
+    case 'agent.run': {
+      const run = d as unknown as AgentRun
+      if (!run.id || run.board_id !== boardId) return
+      // newest first: a run we have not seen is the board's latest
+      qc.setQueryData<AgentRun[]>(keys.agentRuns(boardId), (old) => {
+        const list = old ?? []
+        return list.some((r) => r.id === run.id) ? list.map((r) => (r.id === run.id ? run : r)) : [run, ...list]
+      })
+      qc.setQueryData<AgentRunWithSteps>(keys.agentRun(run.id), (old) => (old ? { ...old, ...run } : old))
+      return
+    }
     case 'run.progress':
     case 'run.completed':
       if (typeof d.run_id === 'string') void qc.invalidateQueries({ queryKey: keys.run(d.run_id) })

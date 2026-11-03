@@ -251,6 +251,50 @@ export interface NodesResponse {
   runs: Record<string, PluginRun>
 }
 
+export type AgentSource = 'mcp' | 'muse'
+export type AgentRunStatus = 'running' | 'needs_input' | 'done' | 'paused'
+
+export interface AgentOutput {
+  title: string
+  sections: { deliverable: string; items: { item_id: string; why: string }[] }[]
+  note_ids: string[]
+}
+
+/** One agent working on a board toward a goal (from Claude Code over MCP, or Muse's own). */
+export interface AgentRun {
+  id: string
+  board_id: string
+  source: AgentSource
+  status: AgentRunStatus
+  goal: string
+  deliverables: string[]
+  output: AgentOutput | null
+  finish_refusals: number
+  note: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** One tool call of an agent run; `ok` false is a refused call. */
+export interface AgentStep {
+  id: string
+  run_id: string
+  turn: number
+  tool: string
+  args: Record<string, unknown>
+  say: string | null
+  ok: boolean
+  result: Record<string, unknown>
+  item_ids: string[]
+  highlight: boolean
+  created_at: string
+}
+
+export interface AgentRunWithSteps extends AgentRun {
+  /** In turn order. */
+  steps: AgentStep[]
+}
+
 export interface Board {
   id: string
   title: string
@@ -468,6 +512,8 @@ export const keys = {
   renderers: (itemId: string, key: string) => ['renderers', itemId, key] as const,
   boardContext: (boardId: string) => ['boardContext', boardId] as const,
   attributeHistory: (itemId: string, key: string) => ['attributeHistory', itemId, key] as const,
+  agentRuns: (boardId: string) => ['agentRuns', boardId] as const,
+  agentRun: (runId: string) => ['agentRun', runId] as const,
 }
 
 /** The API origin with no trailing slash; empty means same origin (the dev proxy). */
@@ -599,6 +645,13 @@ export const patchNode = (
 ) => request<PluginNode>(`/nodes/${enc(nodeId)}`, { method: 'PATCH', json: body })
 export const deleteNode = (nodeId: string) => request<void>(`/nodes/${enc(nodeId)}`, { method: 'DELETE' })
 export const runNode = (nodeId: string) => request<PluginRun>(`/nodes/${enc(nodeId)}/run`, { method: 'POST' })
+
+/** Newest first. */
+export const getAgentRuns = (boardId: string) =>
+  request<{ runs: AgentRun[] }>(`/boards/${enc(boardId)}/agent-runs`).then((r) => r.runs)
+export const getAgentRun = (runId: string) => request<AgentRunWithSteps>(`/agent-runs/${enc(runId)}`)
+export const patchAgentStep = (stepId: string, body: { highlight: boolean }) =>
+  request<AgentStep>(`/agent-steps/${enc(stepId)}`, { method: 'PATCH', json: body })
 
 export const pairCode = () =>
   request<{ code: string; expires_at: string }>('/extension/pair-code', { method: 'POST' })

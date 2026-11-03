@@ -40,6 +40,11 @@ export function BoardShell({ boardId, items, header, canvas, library, overlays, 
     onFocusItem(item)
     stage.current?.focus()
   }
+  // an agent step names items by id
+  const focusItemById = (id: string) => {
+    const item = items.find((i) => i.id === id)
+    if (item) focusItem(item)
+  }
 
   // tool shortcuts: n note, Escape select (never while typing)
   useEffect(() => {
@@ -88,7 +93,7 @@ export function BoardShell({ boardId, items, header, canvas, library, overlays, 
               {add}
             </div>
           </div>
-          <AgentCard boardId={boardId} />
+          <AgentCard boardId={boardId} onFocusItem={focusItemById} />
         </section>
       </div>
       <RightDrawer boardId={boardId} />

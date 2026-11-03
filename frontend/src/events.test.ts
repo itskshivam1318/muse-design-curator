@@ -1,9 +1,9 @@
 import { QueryClient } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
-import { type Exploration, type Item, keys, type NodesResponse, type PluginNode, type PluginRun } from './api'
+import { type AgentRun, type AgentRunWithSteps, type Exploration, type Item, keys, type NodesResponse, type PluginNode, type PluginRun } from './api'
 import { applyEvent, connectBoardEvents, boardActivity, type DescribeContext, describeEvent, noteVisualizeStore, seedVisualizing } from './events'
 import { countedItems, visibleItems } from './queries'
-import { makeItem } from './test/fixtures'
+import { makeItem, makeRun, makeStep } from './test/fixtures'
 
 function qcWith(items: Item[]) {
   const qc = new QueryClient()
@@ -23,6 +23,37 @@ const exploration = (over: Partial<Exploration> = {}): Exploration => ({
 })
 
 describe('applyEvent', () => {
+  it('agent.step merges the step into its run in the cache', () => {
+    const qc = new QueryClient()
+    const a = makeStep({ id: 'a', turn: 1 })
+    qc.setQueryData<AgentRunWithSteps>(keys.agentRun('r1'), { ...makeRun(), steps: [a] })
+    applyEvent(qc, 'b1', 'agent.step', makeStep({ id: 'b', turn: 2, say: 'Reading the board' }))
+    applyEvent(qc, 'b1', 'agent.step', { ...a, highlight: true })
+    const run = qc.getQueryData<AgentRunWithSteps>(keys.agentRun('r1'))!
+    expect(run.steps.map((s) => [s.id, s.highlight])).toEqual([
+      ['a', true],
+      ['b', false],
+    ])
+  })
+
+  it('agent.run puts a new run first and updates a known one in place', () => {
+    const qc = new QueryClient()
+    qc.setQueryData<AgentRun[]>(keys.agentRuns('b1'), [makeRun({ id: 'r1' })])
+    qc.setQueryData<AgentRunWithSteps>(keys.agentRun('r1'), { ...makeRun({ id: 'r1' }), steps: [makeStep()] })
+    applyEvent(qc, 'b1', 'agent.run', makeRun({ id: 'r1', status: 'done' }))
+    expect(qc.getQueryData<AgentRun[]>(keys.agentRuns('b1'))!.map((r) => [r.id, r.status])).toEqual([['r1', 'done']])
+    const held = qc.getQueryData<AgentRunWithSteps>(keys.agentRun('r1'))!
+    expect([held.status, held.steps.length]).toEqual(['done', 1])
+    applyEvent(qc, 'b1', 'agent.run', makeRun({ id: 'r2' }))
+    expect(qc.getQueryData<AgentRun[]>(keys.agentRuns('b1'))!.map((r) => r.id)).toEqual(['r2', 'r1'])
+  })
+
+  it('agent.run for another board is ignored', () => {
+    const qc = new QueryClient()
+    applyEvent(qc, 'b1', 'agent.run', makeRun({ board_id: 'other' }))
+    expect(qc.getQueryData(keys.agentRuns('b1'))).toBeUndefined()
+  })
+
   it('explore.updated upserts the exploration by id', () => {
     const qc = new QueryClient()
     applyEvent(qc, 'b', 'explore.updated', exploration())
@@ -269,7 +300,7 @@ describe('connectBoardEvents', () => {
     expect(noteVisualizeStore.get().ids.has('nx')).toBe(true)
     listeners['note.visualized']({ data: JSON.stringify({ note_id: 'nx' }) } as MessageEvent<string>)
     expect(noteVisualizeStore.get().ids.has('nx')).toBe(false)
-    for (const t of ['plugin_run.queued', 'plugin_run.progress', 'plugin_run.done', 'plugin_run.failed', 'note.visualize_failed'])
+    for (const t of ['agent.step', 'agent.run', 'plugin_run.queued', 'plugin_run.progress', 'plugin_run.done', 'plugin_run.failed', 'note.visualize_failed'])
       expect(listeners[t]).toBeTypeOf('function')
     stop()
   })

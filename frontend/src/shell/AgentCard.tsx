@@ -1,24 +1,62 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { type AgentRunWithSteps, type AgentStep, getAgentRun, getAgentRuns, keys, patchAgentStep } from '../api'
 import { useSelection } from '../canvas/selection'
+import { useDemo } from '../demo'
 import { useActivity } from './activity'
+import { agentName, deliverableStatus, mergeSteps, STATUS_TEXT, toolCall } from './agentRun'
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
+/** The board's latest agent run and its steps (both kept live by the board's events). */
+function useLatestRun(boardId: string) {
+  const runs = useQuery({ queryKey: keys.agentRuns(boardId), queryFn: () => getAgentRuns(boardId) })
+  const run = runs.data?.[0]
+  const detail = useQuery({
+    queryKey: keys.agentRun(run?.id ?? ''),
+    queryFn: () => getAgentRun(run!.id),
+    enabled: run !== undefined,
+  })
+  return { run, steps: detail.data?.steps ?? [] }
+}
+
 /**
- * Floating bottom-right: "Muse", the latest thing that happened on the board, and the agent's input
- * (a shell this round: visible, disabled). Gives way to the right drawer.
+ * Floating bottom-right: who is working ("Muse", or "Claude Code" during an agent run), the latest
+ * thing that happened (the run's latest step, else the board's activity), and the agent's input (a
+ * shell this round: visible, disabled). Gives way to the right drawer.
  */
-export function AgentCard({ boardId }: { boardId: string }) {
+export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusItem: (itemId: string) => void }) {
   const entries = useActivity()
   const { drawer } = useSelection()
+  const { locked } = useDemo()
+  const { run, steps } = useLatestRun(boardId)
+  const qc = useQueryClient()
+  const star = useMutation({
+    mutationFn: (step: AgentStep) => patchAgentStep(step.id, { highlight: !step.highlight }),
+    onSuccess: (step) =>
+      qc.setQueryData<AgentRunWithSteps>(keys.agentRun(step.run_id), (old) =>
+        old ? { ...old, steps: mergeSteps(old.steps, step) } : old,
+      ),
+  })
   const [expanded, setExpanded] = useState(false)
   if (drawer) return null
   const latest = entries.at(-1)
+  const lastStep = steps.at(-1)
   const inputId = `agent-input-${boardId}`
+  const placeholder = run?.source === 'mcp' && run.status === 'running' ? 'Claude Code is working' : 'Agent coming soon'
   return (
     <aside className="agent-card" aria-label="Muse agent">
       <div className="agent-head">
-        <span className="agent-name">Muse</span>
+        {run ? (
+          <span className="agent-who">
+            <span className="agent-name">{agentName(run)}</span>
+            <span className="agent-status" data-status={run.status}>
+              {STATUS_TEXT[run.status]}
+            </span>
+          </span>
+        ) : (
+          <span className="agent-name">Muse</span>
+        )}
         <button
           type="button"
           className="icon-btn"
@@ -31,7 +69,66 @@ export function AgentCard({ boardId }: { boardId: string }) {
           </svg>
         </button>
       </div>
-      {expanded ? (
+      {run ? (
+        expanded ? (
+          <div className="agent-run">
+            <p className="agent-goal">{run.goal}</p>
+            {run.deliverables.length > 0 && (
+              <ul className="agent-deliverables" aria-label="Deliverables">
+                {deliverableStatus(run).map((d) => (
+                  <li key={d.name}>
+                    <label>
+                      <input type="checkbox" checked={d.done} readOnly disabled /> {d.name}
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {steps.length > 0 && (
+              <ol className="agent-log agent-steps" aria-label="Steps">
+                {[...steps].reverse().map((step) => {
+                  const body = (
+                    <>
+                      {step.say && <span className="agent-say">{step.say}</span>}
+                      <code className="agent-call">{toolCall(step)}</code>
+                      {!step.ok && <span className="agent-refused">refused</span>}
+                    </>
+                  )
+                  const first = step.item_ids[0]
+                  return (
+                    <li key={step.id} className={step.ok ? undefined : 'refused'}>
+                      {first ? (
+                        <button type="button" className="agent-step" onClick={() => onFocusItem(first)}>
+                          {body}
+                        </button>
+                      ) : (
+                        <div className="agent-step">{body}</div>
+                      )}
+                      {!locked && (
+                        <button
+                          type="button"
+                          className="icon-btn agent-star"
+                          aria-label="Highlight step"
+                          aria-pressed={step.highlight}
+                          onClick={() => star.mutate(step)}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 14 14" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" fill={step.highlight ? 'currentColor' : 'none'} aria-hidden="true">
+                            <path d="M7 1.8l1.6 3.3 3.6.5-2.6 2.5.6 3.6L7 10l-3.2 1.7.6-3.6-2.6-2.5 3.6-.5z" />
+                          </svg>
+                        </button>
+                      )}
+                    </li>
+                  )
+                })}
+              </ol>
+            )}
+          </div>
+        ) : (
+          <p className="agent-latest" aria-live="polite">
+            {lastStep ? (lastStep.say ?? lastStep.tool) : run.goal}
+          </p>
+        )
+      ) : expanded ? (
         entries.length > 0 ? (
           <ol className="agent-log" aria-label="Activity">
             {[...entries].reverse().map((e, i) => (
@@ -52,7 +149,7 @@ export function AgentCard({ boardId }: { boardId: string }) {
         <label htmlFor={inputId} className="sr-only">
           Message Muse
         </label>
-        <input id={inputId} type="text" placeholder="Agent coming soon" disabled />
+        <input id={inputId} type="text" placeholder={placeholder} disabled />
         <button type="button" className="agent-send" aria-label="Send" disabled>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
             <path d="M7 11.5v-9M3 6.5l4-4 4 4" />

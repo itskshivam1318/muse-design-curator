@@ -1,4 +1,4 @@
-import type { BoardProfile, Item } from '../api'
+import type { AgentRun, AgentStep, BoardProfile, Item } from '../api'
 
 export function makeItem(over: Partial<Item> = {}): Item {
   return {
@@ -22,3 +22,33 @@ export function makeProfile(over: Partial<BoardProfile> = {}): BoardProfile {
     ...over,
   }
 }
+
+export const makeStep = (over: Partial<AgentStep> = {}): AgentStep => ({
+  id: 's1',
+  run_id: 'r1',
+  turn: 1,
+  tool: 'read_board',
+  args: {},
+  say: null,
+  ok: true,
+  result: {},
+  item_ids: [],
+  highlight: false,
+  created_at: '2026-11-03T10:00:00Z',
+  ...over,
+})
+
+export const makeRun = (over: Partial<AgentRun> = {}): AgentRun => ({
+  id: 'r1',
+  board_id: 'b1',
+  source: 'mcp',
+  status: 'running',
+  goal: 'Pick a palette',
+  deliverables: [],
+  output: null,
+  finish_refusals: 0,
+  note: null,
+  created_at: '2026-11-03T10:00:00Z',
+  updated_at: '2026-11-03T10:00:00Z',
+  ...over,
+})
