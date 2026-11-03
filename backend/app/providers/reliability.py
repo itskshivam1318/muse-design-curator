@@ -17,6 +17,20 @@ CODES = frozenset({
     "PROVIDER_MISCONFIGURED",
 })  # fmt: skip
 RETRYABLE = frozenset({"MODEL_TIMEOUT", "MODEL_UNAVAILABLE", "MODEL_RATE_LIMITED"})
+# a gateway timeout is often a passing overload: tried once more, after a pause, never more
+# (each try already waited the gateway out)
+GATEWAY_RETRY_DELAY = 2.0
+
+# what a person is told when a model call fails: never the provider's raw payload
+_USER_MESSAGES = {
+    "MODEL_TIMEOUT": "The model took too long. Try again in a moment.",
+    "GATEWAY_TIMEOUT": "The model took too long. Try again in a moment.",
+    "MODEL_UNAVAILABLE": "The model is unavailable right now. Try again in a moment.",
+    "MODEL_RATE_LIMITED": "The model is busy. Try again in a moment.",
+    "PAYLOAD_TOO_LARGE": "This is too large for the model.",
+    "BILLING_NOT_CONFIGURED": "The model's billing is not set up.",
+    "PROVIDER_MISCONFIGURED": "The model is not set up on this server.",
+}
 
 
 class ModelError(Exception):
@@ -25,6 +39,13 @@ class ModelError(Exception):
         self.code = code
         self.retry_after = retry_after
         self.message = message or code
+
+
+def user_message(err: ModelError) -> str:
+    """A model failure in words a person can act on (the code stays in the error body)."""
+    return _USER_MESSAGES.get(
+        err.code, "The model gave an answer that could not be used. Try again."
+    )
 
 
 def _retry_after(headers: Any) -> float | None:
@@ -75,12 +96,17 @@ def with_timeout[T](fn: Callable[[], T], seconds: float) -> T:
 
 
 def with_retry[T](fn: Callable[[], T], max_retries: int = 2, base_delay: float = 0.25) -> T:
-    """Retry TIMEOUT / UNAVAILABLE / RATE_LIMITED only; every other error propagates at once."""
+    """Retry TIMEOUT / UNAVAILABLE / RATE_LIMITED, and GATEWAY_TIMEOUT once; every other error
+    propagates at once."""
     attempt = 0
     while True:
         try:
             return fn()
         except ModelError as err:
+            if err.code == "GATEWAY_TIMEOUT" and attempt == 0 and max_retries > 0:
+                time.sleep(GATEWAY_RETRY_DELAY)
+                attempt += 1
+                continue
             if err.code not in RETRYABLE or attempt >= max_retries:
                 raise
             delay = err.retry_after if err.retry_after is not None else base_delay * 2**attempt

@@ -245,11 +245,16 @@ def test_model_error_is_502(client: TestClient, world, monkeypatch) -> None:  # 
 
     class Down(FakeReasoning):
         def explore_options(self, images: list[bytes], prompt: str) -> dict[str, Any]:
-            raise ModelError("MODEL_UNAVAILABLE", message="down")
+            raise ModelError("GATEWAY_TIMEOUT", message="Error code: 504 - {'error': {}}")
 
     monkeypatch.setattr(service, "get_reasoning", lambda _s: Down())
     r = explore(client, source(world))
-    assert r.status_code == 502 and error(r) == "MODEL_UNAVAILABLE"
+    assert r.status_code == 502 and error(r) == "GATEWAY_TIMEOUT"
+    # the provider's payload stays out of what the person reads
+    assert (
+        r.json()["error"]["message"]
+        == "Could not explore. The model took too long. Try again in a moment."
+    )
 
 
 def test_options_are_capped_at_ten(client: TestClient, world, monkeypatch) -> None:  # type: ignore[no-untyped-def]

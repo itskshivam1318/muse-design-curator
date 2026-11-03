@@ -26,7 +26,7 @@ from app.plugins.manifest import Manifest
 from app.plugins.registry import Plugin, status
 from app.providers import get_image_provider, get_reasoning
 from app.providers.reasoning import MAX_STRUCTURED_IMAGES
-from app.providers.reliability import ModelError
+from app.providers.reliability import ModelError, user_message
 
 SHIM = Path(__file__).parent / "shim.py"
 SHIM_BAD_RESULT_EXIT = 3  # shim.py: run() returned something json.dumps cannot encode
@@ -416,7 +416,7 @@ def _run_llm(
     try:
         raw = get_reasoning(settings).structured(images, m.output_schema, prompt)
     except ModelError as e:
-        raise PluginError("PLUGIN_MODEL_FAILED", f"the model failed: {e.message}") from None
+        raise PluginError("PLUGIN_MODEL_FAILED", f"the model failed: {user_message(e)}") from None
     return map_llm_output(m, raw)
 
 
@@ -463,7 +463,9 @@ def _run_model(
                 progress(f"Editing image {n} of {len(jobs)}")
                 images.append(provider.edit(src, prompt))
     except ModelError as e:
-        raise PluginError("PLUGIN_MODEL_FAILED", f"the image model failed: {e.message}") from None
+        raise PluginError(
+            "PLUGIN_MODEL_FAILED", f"the image model failed: {user_message(e)}"
+        ) from None
     caption = prompt if len(prompt) <= 200 else prompt[:199] + "…"
     return {"images": [{"data_b64": base64.b64encode(b).decode(), "caption": caption}
                        for b in images]}  # fmt: skip
