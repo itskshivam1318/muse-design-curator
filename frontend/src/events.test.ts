@@ -294,6 +294,19 @@ describe('connectBoardEvents', () => {
     stop()
   })
 
+  it('refetches the agent runs on a reopen (steps may have been missed while away)', () => {
+    const src = { addEventListener: () => undefined, close: () => undefined } as unknown as EventSource
+    const qc = new QueryClient()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+    const stop = connectBoardEvents('b4', qc, { makeSource: () => src })
+    src.onopen?.(new Event('open'))
+    expect(spy).not.toHaveBeenCalledWith({ queryKey: keys.agentRuns('b4') })
+    src.onopen?.(new Event('open'))
+    expect(spy).toHaveBeenCalledWith({ queryKey: keys.agentRuns('b4') })
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['agentRun'] })
+    stop()
+  })
+
   it('routes the round 2 event types into the cache and clears activity for a new board', () => {
     const listeners: Record<string, (e: MessageEvent<string>) => void> = {}
     const src = {

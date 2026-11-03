@@ -25,4 +25,5 @@ async def run(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     if status != 201:
         return api_error(status, res)
     ctx.board_id = res["id"]
+    ctx.run_id = None  # a new board has no run yet; the previous board's run stays there
     return {"board_id": res["id"]}

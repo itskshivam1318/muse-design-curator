@@ -20,6 +20,10 @@ CONSISTENCY_SCHEMA: dict[str, Any] = {
 }
 
 
+class CheckUnavailable(Exception):
+    """The consistency check could not get an answer from the model; worth trying again."""
+
+
 def check_passed(check: dict[str, Any] | None) -> bool | None:
     """True/False for an item's result check, None when it was never checked (not blocking).
 
@@ -95,7 +99,8 @@ def consistency_problems(
 ) -> list[str]:
     """[] when the images read as one design, else one problem per outlier (named by its item id
     from `item_ids`, else by its position) with the model's reason. Blocking: one model call on
-    at most the first 12 images. A model failure is a problem too."""
+    at most the first 12 images. Raises `CheckUnavailable` when the model gives no usable answer
+    (that says nothing about the output)."""
     images = images[:MAX_STRUCTURED_IMAGES]
     names = list(item_ids or [])[: len(images)]
     names += [f"image {i + 1}" for i in range(len(names), len(images))]
@@ -104,9 +109,9 @@ def consistency_problems(
             images, CONSISTENCY_SCHEMA, _prompt(len(images), goal)
         )
     except ModelError as e:
-        return [f"consistency check unavailable: {e.code}"]
+        raise CheckUnavailable(e.code) from e
     if not isinstance(answer, dict):
-        return ["consistency check unavailable: BAD_ANSWER"]
+        raise CheckUnavailable("BAD_ANSWER")
     if answer.get("one_design") is True:
         return []
     reason = " ".join(str(answer.get("reason") or "").split()) or "no reason given"

@@ -27,6 +27,7 @@ DEFINITION = {
 }
 
 _Probe = tuple[bool, str, dict[str, Any]]  # busy, state, result
+_FOCUS = ("item_id", "note_id")  # the result key naming the item to focus, first found
 
 
 def clamp_timeout(value: Any) -> float:
@@ -143,7 +144,9 @@ async def run(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
             return seen
         busy, state, result = seen
         if not busy:
-            return {"state": state, "result": result, "timed_out": False}
+            done = {"state": state, "result": result, "timed_out": False}
+            focus = next((result[k] for k in _FOCUS if result.get(k)), None)
+            return {**done, "item_ids": [focus]} if focus else done
         if time.monotonic() >= deadline:
             return {"state": state, "result": None, "timed_out": True}
         await asyncio.sleep(POLL_S)

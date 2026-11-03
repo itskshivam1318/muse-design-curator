@@ -64,10 +64,11 @@ async def test_visualize_then_wait_returns_item_and_check(
     )
     option = explored["options"][0]["id"]
     queued = await tools.run_tool(wctx, "visualize_option", {"option_id": option})
-    assert queued == {"queued": True, "option_id": option}
+    assert queued == {"queued": True, "option_id": option, "item_ids": [source(world)]}
     done = await tools.run_tool(wctx, "wait", {"kind": "option", "id": option, "timeout_s": 5})
     assert done["timed_out"] is False and done["state"] == "visualized"
     assert done["result"]["item_id"] and "check" in done["result"]
+    assert done["item_ids"] == [done["result"]["item_id"]]
     again = await tools.run_tool(wctx, "wait", {"kind": "item", "id": done["result"]["item_id"]})
     assert again["state"] == "completed" or again["state"] == "failed"
 
@@ -138,6 +139,7 @@ async def test_wait_note_returns_idle_when_not_visualizing(ctx: ToolContext) -> 
     result = await tools.run_tool(ctx, "wait", {"kind": "note", "id": note})
     assert result["state"] == "idle" and result["timed_out"] is False
     assert result["result"] == {"note_id": note, "item_id": None, "check": None}
+    assert result["item_ids"] == [note]  # nothing made yet: the note itself is the focus
 
 
 def test_wait_clamps_timeout() -> None:

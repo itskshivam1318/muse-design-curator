@@ -4,7 +4,9 @@
   `highlight`: the registry adds both to every tool);
 - `async def run(ctx: ToolContext, args: dict) -> dict` — returns a result, or a refusal
   `{"error": CODE, "message": ...}`; a result may carry `"item_ids"` for the panel to focus;
-- optionally `MCP_ONLY = True` (offered only over MCP) and `NEEDS_BOARD = False` (default True).
+- optionally `MCP_ONLY = True` (offered only over MCP) and `NEEDS_BOARD = False` (default True);
+- optionally `def step_args(args: dict) -> dict` — the args as stored on the step, when they
+  hold something the step should not keep (the tool itself still gets the full args).
 
 Add a tool by importing its module into `_MODULES`.
 """
@@ -124,12 +126,14 @@ async def run_tool(ctx: ToolContext, name: str, args: dict[str, Any] | None) -> 
         result: dict[str, Any] = await module.run(ctx, args)
     except Exception as e:
         log.exception("agent tool %s failed", name)
-        result = {"error": "TOOL_FAILED", "message": str(e)}
+        result = {"error": "TOOL_FAILED", "message": str(e) or type(e).__name__}
 
     run_id = ctx.run_id  # read after the call: a tool may have opened the run
     if run_id is not None:
+        stored = getattr(module, "step_args", None)
         try:
-            await steps.record(run_id, name, args, say, highlight, result)
+            stored_args = stored(args) if stored is not None else args
+            await steps.record(run_id, ctx.board_id, name, stored_args, say, highlight, result)
         except Exception:
             log.exception("could not record agent step for %s", name)
     return result

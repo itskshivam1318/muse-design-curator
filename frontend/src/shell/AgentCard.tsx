@@ -1,8 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { type AgentRunWithSteps, type AgentStep, getAgentRun, getAgentRuns, keys, patchAgentStep } from '../api'
+import {
+  type AgentRunWithSteps,
+  type AgentStep,
+  getAgentRun,
+  getAgentRuns,
+  keys,
+  patchAgentRun,
+  patchAgentStep,
+} from '../api'
 import { useSelection } from '../canvas/selection'
 import { useDemo } from '../demo'
+import { applyEvent } from '../events'
 import { useActivity } from './activity'
 import { agentName, deliverableStatus, mergeFetched, mergeSteps, STATUS_TEXT, toolCall } from './agentRun'
 
@@ -43,12 +52,18 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
         old ? { ...old, steps: mergeSteps(old.steps, step) } : old,
       ),
   })
+  // the person ends an open run; the answer goes in the cache the way the board's agent.run event would
+  const stop = useMutation({
+    mutationFn: (runId: string) => patchAgentRun(runId, { status: 'paused' }),
+    onSuccess: (paused) => applyEvent(qc, boardId, 'agent.run', paused),
+  })
   const [expanded, setExpanded] = useState(false)
   if (drawer) return null
   const latest = entries.at(-1)
   const lastStep = steps.at(-1)
   const inputId = `agent-input-${boardId}`
-  const placeholder = run?.source === 'mcp' && run.status === 'running' ? 'Claude Code is working' : 'Agent coming soon'
+  const open = run?.status === 'running' || run?.status === 'needs_input'
+  const placeholder =run?.source === 'mcp' && run.status === 'running' ? 'Claude Code is working' : 'Agent coming soon'
   return (
     <aside className="agent-card" aria-label="Muse agent">
       <div className="agent-head">
@@ -58,6 +73,11 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
             <span className="agent-status" data-status={run.status}>
               {STATUS_TEXT[run.status]}
             </span>
+            {open && !locked && (
+              <button type="button" className="agent-stop" disabled={stop.isPending} onClick={() => stop.mutate(run.id)}>
+                Stop run
+              </button>
+            )}
           </span>
         ) : (
           <span className="agent-name">Muse</span>
@@ -74,6 +94,11 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
           </svg>
         </button>
       </div>
+      {stop.isError && (
+        <p className="agent-error agent-stop-error" role="alert">
+          Could not stop the run.
+        </p>
+      )}
       {run ? (
         expanded ? (
           <div className="agent-run">

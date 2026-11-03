@@ -565,6 +565,21 @@ button.agent-step:hover .agent-say {
   color: var(--bad);
   font-size: 12.5px;
 }
+.agent-stop {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 11.5px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.agent-stop:hover {
+  color: var(--ink-2);
+}
+.agent-stop-error {
+  padding: 4px 14px 0;
+}
 .agent-card .agent-star {
   flex: none;
   width: 24px;

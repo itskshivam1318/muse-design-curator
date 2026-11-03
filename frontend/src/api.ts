@@ -650,7 +650,10 @@ export const runNode = (nodeId: string) => request<PluginRun>(`/nodes/${enc(node
 export const getAgentRuns = (boardId: string) =>
   request<{ runs: AgentRun[] }>(`/boards/${enc(boardId)}/agent-runs`).then((r) => r.runs)
 export const getAgentRun = (runId: string) => request<AgentRunWithSteps>(`/agent-runs/${enc(runId)}`)
-export const patchAgentStep = (stepId: string, body: { highlight: boolean }) =>
+export const patchAgentRun = (runId: string, body: { status: 'paused' }) =>
+  request<AgentRun>(`/agent-runs/${enc(runId)}`, { method: 'PATCH', json: body })
+
+export const patchAgentStep =(stepId: string, body: { highlight: boolean }) =>
   request<AgentStep>(`/agent-steps/${enc(stepId)}`, { method: 'PATCH', json: body })
 
 export const pairCode = () =>

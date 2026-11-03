@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 PROTOCOL = "2025-06-18"
 ACCEPT = "application/json, text/event-stream"
+HOST = "localhost:8000"  # /mcp answers local hosts only (DNS rebinding protection)
 
 
 class McpSession:
@@ -34,7 +35,7 @@ class McpSession:
         assert notified.status_code == 202, notified.text
 
     def _headers(self) -> dict[str, str]:
-        headers = {"accept": ACCEPT, "mcp-protocol-version": PROTOCOL}
+        headers = {"accept": ACCEPT, "mcp-protocol-version": PROTOCOL, "host": HOST}
         if getattr(self, "session_id", None):
             headers["mcp-session-id"] = self.session_id
         return headers
@@ -89,9 +90,7 @@ def test_mcp_lists_tools(client: TestClient, mcp_on: None) -> None:
         assert "highlight" in tool["inputSchema"]["properties"], tool["name"]
 
 
-def test_mcp_call_creates_board_and_note_in_one_session(
-    client: TestClient, mcp_on: None
-) -> None:
+def test_mcp_call_creates_board_and_note_in_one_session(client: TestClient, mcp_on: None) -> None:
     session = McpSession(client)
     created = session.tool("create_board", {"title": "Over MCP", "say": "Starting a board."})
     board_id = created["board_id"]
@@ -142,8 +141,45 @@ def test_mcp_discover_points_clients_at_sessions(client: TestClient, mcp_on: Non
             "accept": ACCEPT,
             "mcp-protocol-version": "2026-07-28",
             "mcp-method": "server/discover",
+            "host": HOST,
         },
     )
     message = _message(response.headers.get("content-type", ""), response.text)
     assert "2026-07-28" not in message["result"]["supportedVersions"], message
     assert PROTOCOL in message["result"]["supportedVersions"]
+
+
+def _initialize(client: TestClient, **headers: str) -> Any:
+    body = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": PROTOCOL,
+            "capabilities": {},
+            "clientInfo": {"name": "test", "version": "0"},
+        },
+    }
+    return client.post(
+        "/mcp", json=body, headers={"accept": ACCEPT, "mcp-protocol-version": PROTOCOL, **headers}
+    )
+
+
+def test_mcp_rejects_foreign_host_and_origin(client: TestClient, mcp_on: None) -> None:
+    assert _initialize(client, host="evil.example").status_code == 421
+    assert _initialize(client, host="evil.example:8000").status_code == 421
+    assert _initialize(client, host=HOST, origin="http://evil.example").status_code == 403
+    assert _initialize(client, host="127.0.0.1:8000").status_code == 200
+    assert _initialize(client, host=HOST, origin="http://localhost:5173").status_code == 200
+
+
+def test_mcp_allows_the_public_app_host() -> None:
+    from app.agent.mcp_server import transport_security
+    from app.config import Settings
+
+    allowed = transport_security(Settings(PUBLIC_APP_URL="https://muse.example.app"))
+    assert allowed.enable_dns_rebinding_protection is True
+    assert "muse.example.app" in allowed.allowed_hosts
+    assert {"localhost:*", "127.0.0.1:*"} <= set(allowed.allowed_hosts)
+    assert "https://muse.example.app" in allowed.allowed_origins
+    assert {"http://localhost:*", "http://127.0.0.1:*"} <= set(allowed.allowed_origins)

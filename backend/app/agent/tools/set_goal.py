@@ -11,7 +11,8 @@ DEFINITION = {
     "name": "set_goal",
     "description": "Start a run on the open board: the goal, and the deliverables the output must "
     "show (names such as 'front view'). Call this first; finish checks the output against these "
-    "deliverables. If a run is already open on the board you join it instead.",
+    "deliverables. If a run is already open on the board you join it instead, unless replace is "
+    "true: then the open run is paused and a new one starts.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -23,6 +24,12 @@ DEFINITION = {
                 "maxItems": DELIVERABLES_MAX,
                 "description": f"1 to {DELIVERABLES_MAX} distinct names, each up to "
                 f"{DELIVERABLE_LEN} characters.",
+            },
+            "replace": {
+                "type": "boolean",
+                "default": False,
+                "description": "Pause the board's open run and start this one instead of "
+                "joining it.",
             },
         },
         "required": ["goal", "deliverables"],
@@ -52,13 +59,15 @@ async def run(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
             f"{DELIVERABLE_LEN} characters.",
         }
     assert ctx.board_id is not None
-    data, created = await run_state.start(ctx.board_id, ctx.source, goal, deliverables)
+    replace = args.get("replace") is True
+    data, created = await run_state.start(ctx.board_id, ctx.source, goal, deliverables, replace)
     ctx.run_id = data["id"]
     if not created:
         return {
             "error": "RUN_ALREADY_OPEN",
             "message": f"A run is already open on this board ({data['status']}); you have "
-            "joined it. Its goal and deliverables stand.",
+            "joined it. Its goal and deliverables stand (set_goal with replace true pauses it "
+            "and starts a new run).",
             "run_id": data["id"],
             "goal": data["goal"],
             "deliverables": data["deliverables"],

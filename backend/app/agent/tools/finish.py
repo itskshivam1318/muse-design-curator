@@ -30,14 +30,15 @@ DEFINITION = {
 
 
 async def _images(ctx: ToolContext, item_ids: list[str]) -> tuple[list[bytes], list[str]]:
-    """The images of the output items that have one (notes do not), with their ids; at most
-    the first MAX_STRUCTURED_IMAGES, as many as the consistency check looks at."""
+    """The thumbnails of the output items that have one (notes do not), with their ids; at most
+    the first MAX_STRUCTURED_IMAGES, as many as the consistency check looks at. Thumbnails
+    are enough to tell one design from another and keep the model call small."""
     images: list[bytes] = []
     shown: list[str] = []
     for item_id in item_ids:
         if len(images) >= MAX_STRUCTURED_IMAGES:
             break
-        response = await ctx.api.get_bytes(f"/api/items/{item_id}/image?size=full")
+        response = await ctx.api.get_bytes(f"/api/items/{item_id}/image?size=thumb")
         if response is not None:
             images.append(response)
             shown.append(item_id)
@@ -56,7 +57,13 @@ async def _problems(ctx: ToolContext, run: dict[str, Any]) -> list[str] | dict[s
     images, shown = await _images(ctx, checks.output_item_ids(run))
     if len(images) < 2:  # nothing to compare
         return []
-    return await run_in_threadpool(checks.consistency_problems, images, run["goal"], shown)
+    try:
+        return await run_in_threadpool(checks.consistency_problems, images, run["goal"], shown)
+    except checks.CheckUnavailable as e:  # not the output's fault: no refusal is used up
+        return {
+            "error": "CHECK_UNAVAILABLE",
+            "message": f"The consistency check could not run ({e}); call finish again.",
+        }
 
 
 async def run(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
@@ -77,7 +84,7 @@ async def run(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
         await run_state.update(current["id"], status="done", note=summary)
         return {"status": "done"}
     if current["finish_refusals"] >= REFUSALS_MAX:  # already waiting for the person
-        return {"status": "needs_input", "problems": problems}
+        return _waiting(problems)
     refusals = current["finish_refusals"] + 1
     if refusals < REFUSALS_MAX:
         await run_state.update(current["id"], finish_refusals=refusals)
@@ -87,4 +94,15 @@ async def run(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
             "problems": problems,
         }
     await run_state.update(current["id"], finish_refusals=refusals, status="needs_input")
-    return {"status": "needs_input", "problems": problems}
+    return _waiting(problems)
+
+
+def _waiting(problems: list[str]) -> dict[str, Any]:
+    """Refused for good: the run waits for the person. Still an error, so its step reads failed."""
+    return {
+        "error": "OUTPUT_NOT_READY",
+        "message": f"The output is not ready after {REFUSALS_MAX} refusals; the run waits for "
+        "the person.",
+        "status": "needs_input",
+        "problems": problems,
+    }

@@ -75,6 +75,42 @@ def test_patch_highlight_locked_in_demo(
     assert client.get(f"/api/agent-runs/{run_id}").json()["steps"][0]["highlight"] is False
 
 
+def test_patch_run_paused_publishes(client: TestClient, board: str) -> None:
+    run_id, _ = seed(board)
+    with events.subscribe(board) as sub:
+        r = client.patch(f"/api/agent-runs/{run_id}", json={"status": "paused"})
+        ev = sub.get(timeout=2)
+    assert r.status_code == 200 and r.json()["status"] == "paused"
+    assert ev and ev["type"] == "agent.run" and ev["data"]["status"] == "paused"
+    assert client.get(f"/api/agent-runs/{run_id}").json()["status"] == "paused"
+    again = client.patch(f"/api/agent-runs/{run_id}", json={"status": "paused"})
+    assert again.status_code == 200 and again.json()["status"] == "paused"
+    with deps._factory()() as s:
+        done = agent_repo.create_run(s, board, "mcp", "g", ["board"])
+        done.status = "done"
+        s.commit()
+        done_id = done.id
+    closed = client.patch(f"/api/agent-runs/{done_id}", json={"status": "paused"})
+    assert closed.status_code == 409 and closed.json()["error"]["code"] == "RUN_NOT_OPEN"
+    for bad in ({"status": "done"}, {"status": "running"}, {}):
+        assert client.patch(f"/api/agent-runs/{run_id}", json=bad).status_code in (400, 422)
+    missing = client.patch("/api/agent-runs/agent_run_nope", json={"status": "paused"})
+    assert missing.status_code == 404 and missing.json()["error"]["code"] == "RUN_NOT_FOUND"
+
+
+def test_patch_run_locked_in_demo(
+    client: TestClient, board: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_id, _ = seed(board)
+    demo.reset()
+    monkeypatch.setenv("DEMO_MODE", "1")
+    monkeypatch.setenv("DEMO_PASSCODE", PASSCODE)
+    monkeypatch.setenv("DEMO_SECRET", SECRET)
+    r: Any = client.patch(f"/api/agent-runs/{run_id}", json={"status": "paused"})
+    assert locked(r)
+    assert client.get(f"/api/agent-runs/{run_id}").json()["status"] == "running"
+
+
 def test_unknown_run_404(client: TestClient) -> None:
     r = client.get("/api/agent-runs/agent_run_nope")
     assert r.status_code == 404 and r.json()["error"]["code"] == "RUN_NOT_FOUND"

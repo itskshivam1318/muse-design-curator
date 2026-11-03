@@ -216,6 +216,37 @@ describe('AgentCard, an agent run', () => {
     expect(screen.queryByRole('button', { name: 'Highlight step' })).toBeNull()
   })
 
+  it('stop run pauses an open run', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => new Response(JSON.stringify(makeRun({ status: 'paused' })), { status: 200 }))
+    const qc = renderCard({ run: makeRun({ status: 'needs_input' }), steps })
+    fireEvent.click(screen.getByRole('button', { name: 'Stop run' }))
+    await waitFor(() => expect(qc.getQueryData<AgentRun[]>(keys.agentRuns('b1'))![0].status).toBe('paused'))
+    const [url, init] = fetchSpy.mock.calls.at(-1)!
+    expect(String(url)).toContain('/api/agent-runs/r1')
+    expect(init?.method).toBe('PATCH')
+    expect(JSON.parse(String(init?.body))).toEqual({ status: 'paused' })
+    expect(screen.queryByRole('button', { name: 'Stop run' })).toBeNull()
+  })
+
+  it('stop run is offered only on an open run, and not when locked', () => {
+    renderCard({ run: makeRun({ status: 'running' }), steps, locked: true })
+    expect(screen.queryByRole('button', { name: 'Stop run' })).toBeNull()
+    cleanup()
+    renderCard({ run: makeRun({ status: 'done' }), steps })
+    expect(screen.queryByRole('button', { name: 'Stop run' })).toBeNull()
+    cleanup()
+    renderCard({ run: makeRun({ status: 'running' }), steps })
+    expect(screen.getByRole('button', { name: 'Stop run' })).toBeTruthy()
+  })
+
+  it('says so when the run cannot be stopped', async () => {
+    renderCard({ run: makeRun({ status: 'running' }), steps })
+    fireEvent.click(screen.getByRole('button', { name: 'Stop run' }))
+    expect((await screen.findByRole('alert')).textContent).toBe('Could not stop the run.')
+  })
+
   it('placeholder says Claude Code is working', () => {
     renderCard({ run: makeRun({ source: 'mcp', status: 'running' }), steps })
     const input = screen.getByLabelText('Message Muse') as HTMLInputElement

@@ -140,8 +140,21 @@ results, lay out an output sheet and finish. The endpoint is off by default (`/m
    sheet the card shows **done**; if a result check fails it refuses, says why, and after three
    refusals the run waits for you (**needs input**).
 
-Each MCP session keeps its own open board and run, so two clients do not step on each other.
-Muse Code connects to the same URL. With `DEMO_MODE` on and locked, write tools are refused.
+Each MCP session keeps its own open board and run. Two clients on different boards do not step
+on each other; on the same board they share its one open run (the second `set_goal` joins it,
+or pauses it and starts a new one with `replace: true`). **Stop run** in the agent card pauses an
+open run.
+
+- Muse Code, like any other MCP client that speaks streamable HTTP, connects to the same URL.
+- An MCP session expires after about 30 minutes without a call. The client then gets a new
+  session with no board open: call `open_board` again (the board's open run is picked up).
+- Under mock providers (no model key) the result check on each generated image is a made-up
+  answer, so `finish` may refuse an output by chance (an item "failed its result check"):
+  visualize that item again, or swap it for another.
+- `upload_reference` reads image files from the machine Muse runs on, so `/mcp` only accepts
+  requests addressed to `localhost`/`127.0.0.1` (or the host of `PUBLIC_APP_URL`) and from pages
+  on those origins; anything else is refused.
+- With `DEMO_MODE` on and locked, write tools are refused.
 
 ## Keys
 

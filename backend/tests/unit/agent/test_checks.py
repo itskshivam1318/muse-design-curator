@@ -119,9 +119,8 @@ def test_consistency_problems_caps_images(monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_consistency_problems_model_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     _provide(monkeypatch, _Reasoning(ModelError("MODEL_TIMEOUT")))
-    assert checks.consistency_problems([b"a", b"b"], "g", ["itm_a", "itm_b"]) == [
-        "consistency check unavailable: MODEL_TIMEOUT"
-    ]
+    with pytest.raises(checks.CheckUnavailable, match="MODEL_TIMEOUT"):
+        checks.consistency_problems([b"a", b"b"], "g", ["itm_a", "itm_b"])
 
 
 def test_consistency_problems_without_valid_outliers(monkeypatch: pytest.MonkeyPatch) -> None:

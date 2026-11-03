@@ -1,9 +1,14 @@
+import threading
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import AgentRun, AgentStep
+
+# Held while a step's turn is numbered and committed, and while a run is started: parallel tool
+# calls would otherwise read the same max turn, or both find no open run and start two.
+WRITE_LOCK = threading.Lock()
 
 
 def open_run(session: Session, board_id: str) -> AgentRun | None:

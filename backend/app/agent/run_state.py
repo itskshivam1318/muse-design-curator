@@ -15,24 +15,32 @@ OPEN = ("running", "needs_input")
 
 
 def _start(
-    board_id: str, source: str, goal: str, deliverables: list[str]
+    board_id: str, source: str, goal: str, deliverables: list[str], replace: bool
 ) -> tuple[dict[str, Any], bool]:
-    with new_session() as session:
+    paused: dict[str, Any] | None = None
+    with agent_repo.WRITE_LOCK, new_session() as session:
         existing = agent_repo.open_run(session, board_id)
-        if existing is not None:
+        if existing is not None and not replace:
             return agent_repo.run_to_dict(existing), False
+        if existing is not None:
+            existing.status = "paused"
+            session.flush()
+            paused = agent_repo.run_to_dict(existing)
         run = agent_repo.create_run(session, board_id, source, goal, deliverables)
         session.commit()
         data = agent_repo.run_to_dict(run)
+    if paused is not None:
+        events.publish(board_id, "agent.run", paused)
     events.publish(board_id, "agent.run", data)
     return data, True
 
 
 async def start(
-    board_id: str, source: str, goal: str, deliverables: list[str]
+    board_id: str, source: str, goal: str, deliverables: list[str], replace: bool = False
 ) -> tuple[dict[str, Any], bool]:
-    """A new run on the board, or the one already open there; `True` when it was created."""
-    return await run_in_threadpool(_start, board_id, source, goal, deliverables)
+    """A new run on the board, or the one already open there; `True` when it was created.
+    With `replace`, an open run is paused and a new one started in its place."""
+    return await run_in_threadpool(_start, board_id, source, goal, deliverables, replace)
 
 
 def _current(board_id: str, run_id: str | None) -> dict[str, Any] | None:

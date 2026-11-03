@@ -25,10 +25,17 @@ DEFINITION = {
 MCP_ONLY = True
 
 
+def step_args(args: dict[str, Any]) -> dict[str, Any]:
+    """The step keeps the file's name only, not where it lives on this machine."""
+    if "path" not in args:
+        return args
+    return {**args, "path": Path(str(args["path"])).name}
+
+
 def _read(path: str) -> tuple[bytes, str] | dict[str, Any]:
     p = Path(path).expanduser()
     if not p.is_file():
-        return {"error": "FILE_NOT_FOUND", "message": f"No file at {path}."}
+        return {"error": "FILE_NOT_FOUND", "message": f"No file {p.name!r} at that path."}
     limit = get_settings().MAX_UPLOAD_BYTES
     if p.stat().st_size > limit:
         return {"error": "FILE_TOO_LARGE", "message": f"The file is over {limit} bytes."}

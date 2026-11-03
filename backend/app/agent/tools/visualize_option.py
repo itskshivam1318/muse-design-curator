@@ -22,4 +22,4 @@ async def run(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     status, res = await ctx.api.post(f"/api/options/{option_id}/visualize")
     if status != 202:
         return api_error(status, res)
-    return {"queued": True, "option_id": option_id}
+    return {"queued": True, "option_id": option_id, "item_ids": [option["exploration_item_id"]]}

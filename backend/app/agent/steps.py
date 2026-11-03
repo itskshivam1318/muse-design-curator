@@ -34,6 +34,7 @@ def _size(value: Any) -> int:
 
 def _record(
     run_id: str,
+    board_id: str | None,
     tool: str,
     args: dict[str, Any],
     say: str | None,
@@ -41,7 +42,11 @@ def _record(
     result: dict[str, Any],
 ) -> None:
     item_ids = result.get("item_ids")
-    with new_session() as session:
+    with agent_repo.WRITE_LOCK, new_session() as session:
+        run = agent_repo.get_run(session, run_id)
+        if run is None or run.board_id != board_id:  # the run is another board's: not this call's
+            return
+        board = run.board_id
         step = agent_repo.add_step(
             session,
             run_id,
@@ -54,17 +59,19 @@ def _record(
             highlight=highlight,
         )
         session.commit()
-        board_id, data = step.board_id, agent_repo.step_to_dict(step)
-    events.publish(board_id, "agent.step", data)
+        data = agent_repo.step_to_dict(step)
+    events.publish(board, "agent.step", data)
 
 
 async def record(
     run_id: str,
+    board_id: str | None,
     tool: str,
     args: dict[str, Any],
     say: str | None,
     highlight: bool,
     result: dict[str, Any],
 ) -> None:
-    """Store the step (its own session, committed) then publish `agent.step` for the board."""
-    await run_in_threadpool(_record, run_id, tool, args, say, highlight, result)
+    """Store the step (its own session, committed) then publish `agent.step` for the board.
+    Nothing is stored when the run is not on `board_id` (the board the call was made on)."""
+    await run_in_threadpool(_record, run_id, board_id, tool, args, say, highlight, result)

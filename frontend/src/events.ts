@@ -420,7 +420,12 @@ export function connectBoardEvents(
       // events may have been missed before the stream opened (a job that ended between the page's
       // items fetch and now) or while we were away: refetch the items every time it opens
       void qc.invalidateQueries({ queryKey: keys.items(boardId) })
-      if (everOpened) void qc.invalidateQueries({ queryKey: keys.lens(boardId) })
+      if (everOpened) {
+        void qc.invalidateQueries({ queryKey: keys.lens(boardId) })
+        // agent runs and steps that changed while the stream was down
+        void qc.invalidateQueries({ queryKey: keys.agentRuns(boardId) })
+        void qc.invalidateQueries({ queryKey: ['agentRun'] })
+      }
       everOpened = true
       attempt = 0
     }

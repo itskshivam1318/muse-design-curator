@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 import pytest
@@ -6,10 +7,11 @@ from fastapi.testclient import TestClient
 from app import events
 from app.agent import checks, tools
 from app.agent.context import ApiClient, ToolContext
-from app.agent.tools import compose_output
+from app.agent.tools import compose_output, read_board
 from app.api.deps import new_session
 from app.db.models import AgentRun, BoardItem
 from app.db.repos import agent as agent_repo
+from app.providers.reliability import ModelError
 from tests.media import image_bytes
 
 
@@ -268,7 +270,9 @@ async def test_third_refusal_needs_input(ctx: ToolContext, client: TestClient, b
     with events.subscribe(board) as sub:
         res = await tools.run_tool(ctx, "finish", {"summary": "done"})
         seen = _drain(sub)
-    assert res == {"status": "needs_input", "problems": ["'front' has no item"]}
+    assert res["status"] == "needs_input" and res["error"] == "OUTPUT_NOT_READY"
+    assert res["problems"] == ["'front' has no item"]
+    assert _steps(run_id)[-1].ok is False
     run = _run(run_id)
     assert (run.status, run.finish_refusals) == ("needs_input", 3)
     assert any(e["type"] == "agent.run" and e["data"]["status"] == "needs_input" for e in seen)
@@ -296,3 +300,103 @@ async def test_finish_refuses_inconsistent_output(
     assert res["error"] == "OUTPUT_NOT_READY"
     assert res["problems"] == [f"{b} does not show the same design as the rest: a different roof"]
     assert _run(run_id).finish_refusals == 1
+
+
+def _steps(run_id: str) -> list[Any]:
+    with new_session() as s:
+        found = agent_repo.steps(s, run_id)
+        for st in found:
+            s.expunge(st)
+        return found
+
+
+async def test_create_board_leaves_the_previous_boards_run(ctx: ToolContext) -> None:
+    first_run = await _goal(ctx, "front")
+    created = await tools.run_tool(ctx, "create_board", {"title": "Second"})
+    assert ctx.board_id == created["board_id"] and ctx.run_id is None
+    await tools.run_tool(ctx, "read_board", {})
+    assert [st.tool for st in _steps(first_run)] == ["set_goal"]
+
+
+async def test_step_not_recorded_on_another_boards_run(
+    ctx: ToolContext, client: TestClient
+) -> None:
+    first_run = await _goal(ctx, "front")
+    ctx.board_id = client.post("/api/boards", json={"title": "Other"}).json()["id"]
+    await tools.run_tool(ctx, "read_board", {})
+    assert [st.tool for st in _steps(first_run)] == ["set_goal"]
+
+
+async def test_set_goal_replace_pauses_the_open_run(ctx: ToolContext) -> None:
+    first = await _goal(ctx, "front")
+    res = await tools.run_tool(
+        ctx, "set_goal", {"goal": "a bigger cabin", "deliverables": ["side"], "replace": True}
+    )
+    assert "error" not in res, res
+    assert res["run_id"] != first and ctx.run_id == res["run_id"]
+    assert _run(first).status == "paused"
+    new = _run(res["run_id"])
+    assert (new.status, new.goal, new.deliverables_json) == ("running", "a bigger cabin", ["side"])
+
+
+async def test_finish_check_unavailable_keeps_refusals(
+    ctx: ToolContext, client: TestClient, board: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    a = _image(client, board, 1)
+    b = _image(client, board, 2, x=500)
+
+    class Down:
+        def structured(self, images: list[bytes], schema: dict[str, Any], prompt: str) -> Any:
+            raise ModelError("MODEL_TIMEOUT")
+
+    monkeypatch.setattr(checks, "get_reasoning", lambda settings: Down())
+    run_id = await _goal(ctx, "front", "side")
+    await tools.run_tool(
+        ctx,
+        "compose_output",
+        {"title": "T", "sections": _sections(("front", [a]), ("side", [b]))},
+    )
+    res = await tools.run_tool(ctx, "finish", {"summary": "done"})
+    assert res["error"] == "CHECK_UNAVAILABLE" and "MODEL_TIMEOUT" in res["message"]
+    run = _run(run_id)
+    assert (run.status, run.finish_refusals) == ("running", 0)
+
+
+async def test_finish_checks_thumbnails(
+    ctx: ToolContext, client: TestClient, board: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    a = _image(client, board, 1)
+    b = _image(client, board, 2, x=500)
+    fetched: list[str] = []
+    real = ctx.api.get_bytes
+
+    async def spy(path: str) -> bytes | None:
+        fetched.append(path)
+        return await real(path)
+
+    monkeypatch.setattr(ctx.api, "get_bytes", spy)
+    await _goal(ctx, "front", "side")
+    await tools.run_tool(
+        ctx,
+        "compose_output",
+        {"title": "T", "sections": _sections(("front", [a]), ("side", [b]))},
+    )
+    await tools.run_tool(ctx, "finish", {"summary": "done"})
+    assert fetched == [f"/api/items/{a}/image?size=thumb", f"/api/items/{b}/image?size=thumb"]
+
+
+async def test_parallel_steps_get_distinct_turns(ctx: ToolContext) -> None:
+    run_id = await _goal(ctx, "front")
+    await asyncio.gather(*(tools.run_tool(ctx, "read_board", {}) for _ in range(8)))
+    assert sorted(st.turn for st in _steps(run_id)) == list(range(1, 10))
+
+
+async def test_tool_failure_without_message_names_the_exception(
+    ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def boom(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
+        raise KeyError()
+
+    monkeypatch.setattr(read_board, "run", boom)
+    res = await tools.run_tool(ctx, "read_board", {})
+    assert res == {"error": "TOOL_FAILED", "message": "KeyError"}

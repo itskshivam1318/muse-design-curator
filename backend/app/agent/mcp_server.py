@@ -15,12 +15,14 @@ from collections import OrderedDict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
+from urllib.parse import urlsplit
 
 import mcp_types as types
 from fastapi import FastAPI
 from mcp.server import Server, ServerRequestContext
 from mcp.server.streamable_http import MCP_SESSION_ID_HEADER
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+from mcp.server.transport_security import TransportSecuritySettings
 from mcp_types.version import HANDSHAKE_PROTOCOL_VERSIONS
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -28,11 +30,11 @@ from starlette.types import Receive, Scope, Send
 
 from app.agent import tools
 from app.agent.context import ApiClient, ToolContext
-from app.config import get_settings
+from app.config import Settings, get_settings
 
 log = logging.getLogger(__name__)
 
-MAX_SESSIONS = 256  # contexts kept; the least recently used is dropped past this
+MAX_SESSIONS = 256  # sessions open at once (more get 503) and contexts kept (LRU dropped past)
 
 
 class Sessions:
@@ -122,6 +124,21 @@ def build_mcp(sessions: Sessions) -> Server[Any]:
     return server
 
 
+def transport_security(settings: Settings) -> TransportSecuritySettings:
+    """Only this machine and the app's own public address may reach `/mcp`: a web page on some
+    other host (DNS rebinding) must not drive the tools, `upload_reference` reads local files.
+    A `name:*` entry matches that name on any port."""
+    public = urlsplit(settings.PUBLIC_APP_URL)
+    hosts = ["localhost", "localhost:*", "127.0.0.1", "127.0.0.1:*"]
+    origins = ["http://localhost", "http://localhost:*", "http://127.0.0.1", "http://127.0.0.1:*"]
+    if public.netloc:
+        hosts.append(public.netloc)
+        origins.append(f"{public.scheme}://{public.netloc}")
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True, allowed_hosts=hosts, allowed_origins=origins
+    )
+
+
 class McpEndpoint:
     """The ASGI app at `/mcp`. `run()` (in the app's lifespan) starts a fresh session manager:
     a manager runs only once, and the app's lifespan may run more than once (tests)."""
@@ -132,7 +149,12 @@ class McpEndpoint:
 
     @asynccontextmanager
     async def run(self) -> AsyncIterator[None]:
-        manager = StreamableHTTPSessionManager(app=build_mcp(self.sessions), json_response=True)
+        manager = StreamableHTTPSessionManager(
+            app=build_mcp(self.sessions),
+            json_response=True,
+            security_settings=transport_security(get_settings()),
+            max_sessions=MAX_SESSIONS,
+        )
         async with manager.run():
             self._manager = manager
             try:

@@ -76,6 +76,24 @@ async def test_upload_reference_local_file(
     ]
 
 
+async def test_upload_reference_step_keeps_only_the_file_name(
+    ctx: ToolContext, tmp_path: Path
+) -> None:
+    from app.api.deps import new_session
+    from app.db.repos import agent as agent_repo
+
+    run = await tools.run_tool(ctx, "set_goal", {"goal": "g", "deliverables": ["a"]})
+    path = tmp_path / "private" / "chair.png"
+    path.parent.mkdir()
+    path.write_bytes(image_bytes())
+    result = await tools.run_tool(ctx, "upload_reference", {"path": str(path), "x": 1, "y": 2})
+    assert "error" not in result, result
+    with new_session() as s:
+        step = agent_repo.steps(s, run["run_id"])[-1]
+        assert step.tool == "upload_reference"
+        assert step.args_json == {"path": "chair.png", "x": 1, "y": 2}
+
+
 async def test_upload_reference_rejects_non_image(ctx: ToolContext, tmp_path: Path) -> None:
     path = tmp_path / "notes.txt"
     path.write_text("not an image")
