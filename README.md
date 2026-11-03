@@ -70,6 +70,12 @@ there. **Extract** cuts a part out as a linked item. **Notes**: press `N` and cl
 board. **Plugins** are nodes you add from the rail and place from the toolbar's Nodes menu; see
 [Plugins](#plugins) and [docs/plugins.md](docs/plugins.md).
 
+**Put one picture into another.** Select a picture and drag from the dot on its right edge onto
+another: the parts you aim at light up (every part of the same kind, or just the spot under the
+line), let go, add a few words if you like, and **Put in**. A "Putting in…" box holds the place
+until a new picture of the target arrives with the source put in; both originals stay as they
+were, and the result keeps a line back to each.
+
 **The board floats.** Items, flowers, petals and callouts drift gently and nudge aside as you drag
 or add things; a new item grows in and its neighbours make room. The positions you save are *homes*:
 what the board drifts around. Drift and pushes are never saved; only a release (a drag, a hub drag)

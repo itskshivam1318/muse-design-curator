@@ -509,3 +509,40 @@ describe('Canvas part callouts', () => {
     expect(screen.queryAllByRole('group').filter((g) => g.closest('.callout-layer'))).toHaveLength(0)
   })
 })
+
+describe('Canvas lineage lines', () => {
+  const board = () => {
+    stubCanvasContext()
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1600)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(1200)
+    const source = makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })
+    const target = makeItem({ id: 'tgt', board_id: 'b1', x: 400, y: 0 })
+    const result = makeItem({ id: 'res', board_id: 'b1', x: 400, y: 400, origin: 'generated', parent_item_id: 'tgt', put_source_item_id: 'src' })
+    renderBoard(client([], [source, target, result]))
+    const links = () =>
+      Konva.stages
+        .at(-1)!
+        .find<Konva.Line>('Line')
+        .filter((l) => l.getAttr('link') && l.name() !== 'note-lineage')
+        .map((l) => (l.getAttr('link') as string[]).join('>'))
+        .sort()
+    return links
+  }
+
+  it('a put-in result selected draws a line to its target and one to its source', () => {
+    const links = board()
+    act(() => selection.select(['res']))
+    expect(links()).toEqual(['src>res', 'tgt>res'])
+  })
+
+  it('its source selected draws the line from the source', () => {
+    const links = board()
+    act(() => selection.select(['src']))
+    expect(links()).toEqual(['src>res'])
+  })
+
+  it('neither selected draws no lineage line', () => {
+    const links = board()
+    expect(links()).toEqual([])
+  })
+})

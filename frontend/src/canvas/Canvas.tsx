@@ -544,12 +544,15 @@ export function Canvas({
     extras,
   })
   useLayoutEffect(() => world.sync(scene), [world, scene])
-  // a take of a flower is already linked by its spoke to the hub its source grew: no second line
+  // a take of a flower is already linked by its spoke to the hub its source grew: no second line.
+  // A put-in result has two: from the picture it was made from, and from the picture put into it.
   const lineage = visible.flatMap((child) => {
-    const parent = child.parent_item_id ? byId.get(child.parent_item_id) : undefined
-    if (!parent || fromNote(child) || scene.slots.has(child.id)) return []
-    if (!(selected.includes(child.id) || selected.includes(parent.id))) return []
-    return [{ id: child.id, parent: parent.id, points: lineagePoints(itemBounds(parent), itemBounds(child)) }]
+    if (fromNote(child) || scene.slots.has(child.id)) return []
+    return [child.parent_item_id, child.put_source_item_id].flatMap((from) => {
+      const parent = from ? byId.get(from) : undefined
+      if (!parent || !(selected.includes(child.id) || selected.includes(parent.id))) return []
+      return [{ id: child.id, parent: parent.id, points: lineagePoints(itemBounds(parent), itemBounds(child)) }]
+    })
   })
   // a pointer release (items, docked takes, hubs): every change it makes, written as one undo step
   const commitDrag = (centres: Map<string, Point>) => {
@@ -701,7 +704,7 @@ export function Canvas({
               ))}
               {lineage.map((l) => (
                 <Line
-                  key={l.id}
+                  key={`${l.parent}>${l.id}`}
                   link={[l.parent, l.id]}
                   points={l.points}
                   bezier
