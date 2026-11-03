@@ -95,6 +95,38 @@ def run_migrations(engine: Engine, revision: str = "head") -> None:
 
 
 _PENDING = "_after_commit_callbacks"
+_ON_ROLLBACK = "_after_rollback_callbacks"
+
+
+def _listen(session: Session) -> None:
+    """Hook the session once: commit runs the queued callbacks, rollback drops them and
+    runs the rollback callbacks."""
+    if _PENDING in session.info:
+        return
+    session.info[_PENDING] = []
+
+    def _commit(sess: Session) -> None:
+        callbacks = sess.info.get(_PENDING, [])
+        sess.info[_PENDING] = []
+        sess.info[_ON_ROLLBACK] = []
+        for cb in callbacks:
+            try:
+                cb()
+            except Exception:
+                log.exception("after_commit callback failed")
+
+    def _rollback(sess: Session) -> None:
+        sess.info[_PENDING] = []
+        undo = sess.info.get(_ON_ROLLBACK, [])
+        sess.info[_ON_ROLLBACK] = []
+        for cb in undo:
+            try:
+                cb()
+            except Exception:
+                log.exception("on_rollback callback failed")
+
+    event.listen(session, "after_commit", _commit)
+    event.listen(session, "after_rollback", _rollback)
 
 
 def after_commit(session: Session, fn: Callable[[], None]) -> None:
@@ -105,22 +137,15 @@ def after_commit(session: Session, fn: Callable[[], None]) -> None:
     if not session.in_transaction():
         fn()
         return
-    pending: list[Callable[[], None]] | None = session.info.get(_PENDING)
-    if pending is None:
-        pending = session.info[_PENDING] = []
+    _listen(session)
+    session.info[_PENDING].append(fn)
 
-        def _commit(sess: Session) -> None:
-            callbacks = sess.info.get(_PENDING, [])
-            sess.info[_PENDING] = []
-            for cb in callbacks:
-                try:
-                    cb()
-                except Exception:
-                    log.exception("after_commit callback failed")
 
-        def _rollback(sess: Session) -> None:
-            sess.info[_PENDING] = []
-
-        event.listen(session, "after_commit", _commit)
-        event.listen(session, "after_rollback", _rollback)
-    pending.append(fn)
+def on_rollback(session: Session, fn: Callable[[], None]) -> None:
+    """Run fn if the current transaction rolls back (dropped once it commits). Use it to
+    undo something done outside the database that a queued after_commit job would have owned.
+    With no active transaction there is nothing to undo."""
+    if not session.in_transaction():
+        return
+    _listen(session)
+    session.info.setdefault(_ON_ROLLBACK, []).append(fn)

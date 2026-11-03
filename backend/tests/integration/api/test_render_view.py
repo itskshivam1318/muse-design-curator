@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app import demo, events, jobs
+from app.analysis import extract
 from app.db.models import BoardItem
 from app.providers.reliability import ModelError
 from app.views import service
@@ -193,3 +194,56 @@ def test_view_is_demo_locked(client: TestClient, world, monkeypatch) -> None:  #
     r = post(client, anchor, view="from above")
     assert r.status_code == 403 and r.json()["error"]["code"] == "DEMO_LOCKED"
     assert children(world, anchor) == []
+
+
+def held(world: dict[str, Any]) -> dict[str, Any]:
+    return extract._reserved.get(world["watch"], {})
+
+
+def test_queued_views_reserve_their_slots_until_the_job_ends(
+    client: TestClient, world, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    queued: list[dict[str, Any]] = []
+    monkeypatch.setattr(jobs, "enqueue", lambda name, **kw: queued.append(kw))
+    anchor = anchor_of(world)
+    a = post(client, anchor, view="from above").json()
+    b = post(client, anchor, view="from below").json()  # the first picture does not exist yet
+    assert (a["x"], a["y"]) != (b["x"], b["y"]) and len(held(world)) == 2
+    service.render_view_job(**queued[0])  # success releases
+    assert set(held(world)) == {queued[1]["job_id"]}
+    assert len(children(world, anchor)) == 1
+    monkeypatch.setattr(service, "get_image_provider", lambda _s: Timeout())
+    service.render_view_job(**queued[1])  # a model failure releases
+    assert held(world) == {}
+
+
+def test_unexpected_failure_and_refusal_leave_no_reservation(
+    client: TestClient, world, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    anchor = anchor_of(world)
+    assert post(client, anchor, view="").status_code == 400
+    assert held(world) == {}  # a refused request reserves nothing
+
+    def boom(*_a: Any, **_k: Any) -> Any:
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(service, "_stamped", boom)
+    assert post(client, anchor, view="from above").status_code == 202
+    assert held(world) == {}  # the catch-all wrapper released it
+
+
+def test_a_failed_request_releases_its_reservation(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    s = world["session"]
+    service.request_render_view(s, anchor_of(world), "from above", None)
+    assert len(held(world)) == 1
+    s.rollback()  # the request's transaction did not commit
+    assert held(world) == {}
+
+
+def test_a_queue_failure_releases_its_reservation(client: TestClient, world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def boom(name: str, **kw: Any) -> None:
+        raise RuntimeError("no pool")
+
+    monkeypatch.setattr(jobs, "enqueue", boom)
+    post(client, anchor_of(world), view="from above")
+    assert held(world) == {}

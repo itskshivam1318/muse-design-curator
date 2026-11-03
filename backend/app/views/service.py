@@ -16,11 +16,11 @@ from sqlalchemy.orm import Session
 
 from app import events, jobs
 from app.analysis import limits
-from app.analysis.extract import Bounds, free_slot
+from app.analysis.extract import Bounds, release_slot, reserve_slot
 from app.api.schemas import item_to_dict
 from app.config import get_settings
 from app.db.models import BoardItem
-from app.db.session import after_commit
+from app.db.session import after_commit, on_rollback
 from app.errors import AppError
 from app.extraction.service import _image_for, _require_item
 from app.ingest.common import ItemMeta, create_item, default_size
@@ -53,6 +53,15 @@ def _anchor(session: Session, anchor_id: str) -> BoardItem:
     return anchor
 
 
+def _enqueue(board_id: str, name: str, **kwargs: Any) -> None:
+    """Queue the job; if that fails nothing will ever release its slot, so release it here."""
+    try:
+        jobs.enqueue(name, **kwargs)
+    except Exception:
+        release_slot(board_id, kwargs["job_id"])
+        raise
+
+
 def request_render_view(
     session: Session, anchor_id: str, view: str, words: str | None
 ) -> dict[str, Any]:
@@ -60,18 +69,20 @@ def request_render_view(
     request costs no render."""
     anchor = _anchor(session, anchor_id)
     limits.check_and_count(anchor.board_id, "render")
+    job_id = "view_" + uuid.uuid4().hex
     try:
         w, h = default_size(anchor.width or 1, anchor.height or 1)
         near = Bounds(anchor.x, anchor.y, anchor.w, anchor.h)
-        x, y = free_slot(session, anchor.board_id, near, (w, h))
+        x, y = reserve_slot(session, anchor.board_id, near, (w, h), job_id)
     except Exception:
         limits.refund(anchor.board_id, "render")
         raise
-    job_id = "view_" + uuid.uuid4().hex
+    board_id = anchor.board_id
+    on_rollback(session, partial(release_slot, board_id, job_id))  # the request itself failed
     after_commit(
         session,
         partial(
-            jobs.enqueue, JOB, job_id=job_id, anchor_id=anchor.id, view=view, words=words,
+            _enqueue, board_id, JOB, job_id=job_id, anchor_id=anchor.id, view=view, words=words,
             x=x, y=y,
         ),
     )  # fmt: skip
@@ -150,13 +161,16 @@ def render_view_job(
     from app.api import deps
 
     with deps._factory()() as session:
+        board_id: str | None = None
         try:
+            board_id = _board_of(session, anchor_id)
             render_view(session, job_id, anchor_id, view, words, x, y)
         except Exception:
             session.rollback()
             log.exception("render view of %s (job %s) failed", anchor_id, job_id)
-            board_id = _board_of(session, anchor_id)
             _failed(session, board_id, job_id, "VIEW_ERROR", "Could not make this view")
+        finally:
+            release_slot(board_id, job_id)
 
 
 jobs.register(JOB, render_view_job)

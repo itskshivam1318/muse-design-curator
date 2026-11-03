@@ -22,13 +22,13 @@ from sqlalchemy.orm import Session
 
 from app import events, jobs
 from app.analysis import limits
-from app.analysis.extract import Bounds, free_slot
+from app.analysis.extract import Bounds, release_slot, reserve_slot
 from app.analysis.locate import locate
 from app.analysis.types import Region
 from app.api.schemas import item_to_dict
 from app.config import get_settings
 from app.db.models import BoardItem, ItemPart
-from app.db.session import after_commit
+from app.db.session import after_commit, on_rollback
 from app.errors import AppError
 from app.extraction.service import _image_for, _require_item
 from app.ingest.common import ItemMeta, create_item, default_size
@@ -88,6 +88,15 @@ def _check_spots(session: Session, target: BoardItem, spots: list[dict[str, Any]
             _live_part(session, target.id, spot["part"])
 
 
+def _enqueue(board_id: str, name: str, **kwargs: Any) -> None:
+    """Queue the job; if that fails nothing will ever release its slot, so release it here."""
+    try:
+        jobs.enqueue(name, **kwargs)
+    except Exception:
+        release_slot(board_id, kwargs["job_id"])
+        raise
+
+
 def request_put_into(
     session: Session, target_id: str, source_id: str, spots: list[dict[str, Any]],
     words: str | None,
@@ -97,18 +106,20 @@ def request_put_into(
     target, source = _pictures(session, target_id, source_id)
     _check_spots(session, target, spots)
     limits.check_and_count(target.board_id, "render")
+    job_id = "put_" + uuid.uuid4().hex
     try:
         w, h = default_size(target.width or 1, target.height or 1)
         near = Bounds(target.x, target.y, target.w, target.h)
-        x, y = free_slot(session, target.board_id, near, (w, h))
+        x, y = reserve_slot(session, target.board_id, near, (w, h), job_id)
     except Exception:
         limits.refund(target.board_id, "render")
         raise
-    job_id = "put_" + uuid.uuid4().hex
+    board_id = target.board_id
+    on_rollback(session, partial(release_slot, board_id, job_id))  # the request itself failed
     after_commit(
         session,
         partial(
-            jobs.enqueue, JOB, job_id=job_id, target_id=target.id, source_id=source.id,
+            _enqueue, board_id, JOB, job_id=job_id, target_id=target.id, source_id=source.id,
             spots=spots, words=words, x=x, y=y,
         ),
     )  # fmt: skip
@@ -326,13 +337,16 @@ def put_into_job(
     from app.api import deps
 
     with deps._factory()() as session:
+        board_id: str | None = None
         try:
+            board_id = _board_of(session, target_id)
             put_into(session, job_id, target_id, source_id, spots, words, x, y)
         except Exception:
             session.rollback()
             log.exception("put into %s (job %s) failed", target_id, job_id)
-            board_id = _board_of(session, target_id)
             _failed(session, board_id, job_id, "PUT_ERROR", "Could not make this picture")
+        finally:
+            release_slot(board_id, job_id)
 
 
 jobs.register(JOB, put_into_job)

@@ -9,7 +9,7 @@ from PIL import Image
 from sqlalchemy import select
 
 from app import demo, events, jobs
-from app.analysis import limits
+from app.analysis import extract, limits
 from app.db.models import BoardItem, ItemPart
 from app.providers.reliability import ModelError
 from app.put import render, service
@@ -275,3 +275,48 @@ def test_a_part_spot_is_located_and_named(client: TestClient, world) -> None:  #
     assert put(client, target, source, spots=[{"part": "front_wheel"}]).status_code == 202
     (item,) = results(world, target)
     assert "Front wheel" in item.generation_json["prompt"]
+
+
+def held(world: dict[str, Any]) -> dict[str, Any]:
+    return extract._reserved.get(world["watch"], {})
+
+
+def test_queued_puts_reserve_their_slots_until_the_job_ends(
+    client: TestClient, world, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    queued: list[dict[str, Any]] = []
+    monkeypatch.setattr(jobs, "enqueue", lambda name, **kw: queued.append(kw))
+    target, source = two(world)
+    a = put(client, target, source).json()
+    b = put(client, target, source).json()  # the first picture does not exist yet
+    assert (a["x"], a["y"]) != (b["x"], b["y"]) and len(held(world)) == 2
+    service.put_into_job(**queued[0])  # success releases
+    assert set(held(world)) == {queued[1]["job_id"]}
+    assert len(results(world, target)) == 1
+    monkeypatch.setattr(service, "get_image_provider", lambda _s: Timeout())
+    service.put_into_job(**queued[1])  # a model failure releases
+    assert held(world) == {}
+
+
+def test_unexpected_failure_and_refusal_leave_no_put_reservation(
+    client: TestClient, world, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    target, source = two(world)
+    assert put(client, target, target).status_code == 422
+    assert held(world) == {}  # a refused request reserves nothing
+
+    def boom(*_a: Any, **_k: Any) -> Any:
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(service, "paste_into", boom)
+    assert put(client, target, source).status_code == 202
+    assert held(world) == {}  # the catch-all wrapper released it
+
+
+def test_a_failed_put_request_releases_its_reservation(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    s = world["session"]
+    target, source = two(world)
+    service.request_put_into(s, target, source, CENTRE, None)
+    assert len(held(world)) == 1
+    s.rollback()  # the request's transaction did not commit
+    assert held(world) == {}

@@ -1,6 +1,8 @@
 """Pull one part out of an item into an item of its own, placed beside its source."""
 
 import io
+import threading
+import time
 import uuid
 from dataclasses import dataclass
 from functools import partial
@@ -39,10 +41,49 @@ def _hits(a: Bounds, b: Bounds) -> bool:
     return a.x < b.x + b.w and b.x < a.x + a.w and a.y < b.y + b.h and b.y < a.y + a.h
 
 
+# Slots promised to queued jobs whose picture does not exist yet: board -> job -> (bounds, when).
+RESERVATION_TTL_S = 600.0  # a job that never reports back must not hold its slot forever
+_reserved: dict[str, dict[str, tuple[Bounds, float]]] = {}
+_reserved_lock = threading.RLock()
+
+
+def _reserved_on(board_id: str) -> list[Bounds]:
+    with _reserved_lock:
+        held = _reserved.get(board_id, {})
+        now = time.monotonic()
+        for job_id in [j for j, (_b, t) in held.items() if now - t > RESERVATION_TTL_S]:
+            del held[job_id]
+        return [b for b, _t in held.values()]
+
+
+def release_slot(board_id: str | None, job_id: str) -> None:
+    """Give a reserved slot back (the picture arrived, or the job failed). Safe to repeat."""
+    if board_id is None:
+        return
+    with _reserved_lock:
+        held = _reserved.get(board_id)
+        if held is not None:
+            held.pop(job_id, None)
+            if not held:
+                del _reserved[board_id]
+
+
+def reserve_slot(
+    session: Session, board_id: str, near: Bounds, size: tuple[float, float], job_id: str
+) -> tuple[float, float]:
+    """free_slot, then hold that spot for `job_id` until release_slot, so a second request
+    made before the first picture exists lands elsewhere. Atomic across threads."""
+    with _reserved_lock:
+        x, y = free_slot(session, board_id, near, size)
+        _reserved.setdefault(board_id, {})[job_id] = (Bounds(x, y, *size), time.monotonic())
+    return x, y
+
+
 def free_slot(
     session: Session, board_id: str, near: Bounds, size: tuple[float, float], gap: float = GAP
 ) -> tuple[float, float]:
-    """The first spot right of `near`, else below, else left, that no shown item covers.
+    """The first spot right of `near`, else below, else left, that no shown item covers and
+    no queued job has reserved.
 
     Each side is scanned in steps of `gap`, moving away from `near`; the result is deterministic.
     """
@@ -50,7 +91,7 @@ def free_slot(
     taken = [
         Bounds(i.x, i.y, i.w, i.h)
         for i in items_repo.list_active(session, board_id, include_staged=False)
-    ]
+    ] + _reserved_on(board_id)
     right = (near.x + near.w + gap, near.y)
     below = (near.x, near.y + near.h + gap)
     left = (near.x - gap - w, near.y)
@@ -173,4 +214,4 @@ def _extract(session: Session, source: BoardItem, item_id: str, part_key: str) -
     return child
 
 
-__all__ = ["Bounds", "extract", "free_slot"]
+__all__ = ["Bounds", "extract", "free_slot", "release_slot", "reserve_slot"]

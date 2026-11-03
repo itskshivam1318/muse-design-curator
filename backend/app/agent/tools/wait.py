@@ -16,12 +16,17 @@ DEFINITION = {
     "(analysis), a visualized option (option), a visualized note (note) or a plugin run "
     "(plugin_run) or a render_view / put_into job that timed out (job, id = its job_id). Polls "
     "until it is no longer busy or timeout_s passes. For option, note and job the "
-    "result has the new item's id and its check.",
+    "result has the new item's id and its check. A failed job never reads as done here (the "
+    "render_view / put_into call itself already returned the failure), so after one timeout "
+    "stop waiting.",
     "parameters": {
         "type": "object",
         "properties": {
             "kind": {"type": "string", "enum": list(KINDS)},
-            "id": {"type": "string", "description": "The item, option or plugin run id."},
+            "id": {
+                "type": "string",
+                "description": "The item, option, note or plugin run id, or the job_id for kind job.",
+            },
             "timeout_s": {"type": "number", "default": 60, "description": "1 to 120 seconds."},
         },
         "required": ["kind", "id"],
