@@ -1,7 +1,7 @@
 """board agent: agent runs and their recorded steps"""
 
-revision = "0010_board_agent"
-down_revision = "0009_living_board"
+revision = "0011_board_agent"
+down_revision = "0010_put_into"
 
 import sqlalchemy as sa
 

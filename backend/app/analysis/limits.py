@@ -33,7 +33,8 @@ def check_and_count(board_id: str, kind: Kind, settings: Settings | None = None)
 
 
 def refund(board_id: str, kind: Kind) -> None:
-    """Give the slot back: the work failed before any model was called."""
+    """Give the slot back: the work failed before any model was called, or (put into) the
+    model call itself failed and the person got nothing."""
     demo.windows.remove_last(_key(board_id, kind))
 
 

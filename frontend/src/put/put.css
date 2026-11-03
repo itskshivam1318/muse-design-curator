@@ -1,0 +1,175 @@
+/* "Put into": the connect dot, the line dragged from it, and what its end aims at */
+.put-dot {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+  transform: translate(-50%, -50%);
+  cursor: crosshair;
+  touch-action: none;
+  z-index: 6;
+}
+.put-dot:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.put-line-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 6;
+}
+.put-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6px;
+  stroke-linecap: round;
+}
+.put-ring {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #ffd166;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 3;
+}
+.put-count {
+  position: absolute;
+  transform: translate(12px, 8px);
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 6;
+}
+
+/* the card on a let-go line (screen units, centred on its body) */
+.put-card-anchor {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  z-index: 7;
+}
+.put-card {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--raised);
+  color: var(--ink);
+  box-shadow: 0 12px 32px rgba(16, 24, 40, 0.16);
+  font: 12.5px/1.45 var(--f-body);
+}
+.put-card p {
+  margin: 0;
+}
+.put-card-title {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.put-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.put-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--ink);
+  font: 12px/18px var(--f-body);
+  cursor: pointer;
+}
+.put-chip.is-off {
+  border-color: var(--rule);
+  background: transparent;
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.put-chip:disabled {
+  cursor: default;
+}
+.put-words {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--ink);
+  font: 12.5px var(--f-body);
+}
+.put-words:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.put-card-row {
+  display: flex;
+  gap: 6px;
+}
+.put-card button:disabled,
+.put-ghost button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+/* where a put-in result will land while it is made; a failed one keeps its place as a small error tile */
+.put-ghost {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px dashed var(--accent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--raised) 55%, transparent);
+  pointer-events: none;
+  z-index: 3;
+}
+.put-ghost-label {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--raised);
+  color: var(--muted);
+  font: 12px/18px var(--f-body);
+}
+.put-ghost.is-failed {
+  border-color: var(--bad);
+  pointer-events: auto;
+}
+.put-ghost-error {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 220px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--bad);
+  font: 12px/1.4 var(--f-body);
+}
+.put-ghost-error p {
+  margin: 0;
+}

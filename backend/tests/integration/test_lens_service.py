@@ -111,6 +111,16 @@ def test_ensure_proposes_at_five_and_not_twice(session: Session, reasoning: SpyR
     assert lenses_repo.latest(session, board.id, "custom").status == "proposed"  # type: ignore[union-attr]
 
 
+def test_profile_recompute_never_proposes_a_lens(session: Session, reasoning: SpyReasoning) -> None:
+    # an Auto board whose items fit no curated domain: the profile still computes, with no model call
+    from app.board import profile
+
+    board, _ = make_board(session, 6)
+    assert profile.recompute(session, board.id) is not None
+    assert reasoning.calls == []
+    assert lenses_repo.latest(session, board.id, "custom") is None
+
+
 def test_proposal_sampled_from_board_items_max_20(
     session: Session, reasoning: SpyReasoning
 ) -> None:

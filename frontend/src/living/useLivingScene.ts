@@ -9,6 +9,7 @@ import { type AnalysisView, getAnalysis, type Item, keys } from '../api'
 import { useDemo } from '../demo'
 import { collapsedVersion, isCollapsed, subscribeCollapsed } from '../map/collapse'
 import { useBoardLens, useExplorations } from '../queries'
+import type { BodySpec } from './physics'
 import { buildScene, type Scene } from './scene'
 
 /**
@@ -19,18 +20,20 @@ const dataOf = (results: { data?: AnalysisView; isPending: boolean }[]): (Analys
   results.map((r) => r.data ?? (r.isPending ? undefined : null))
 
 const NO_HEIGHTS: Readonly<Record<string, number>> = {}
+const NO_EXTRAS: readonly BodySpec[] = []
 
 /**
  * `selectedId` is the item whose callouts show (null: none). `calloutHeights` are its cards' drawn
- * heights and `toolbar` the selection toolbar's size (both canvas units), see `SceneInput`.
+ * heights and `toolbar` the selection toolbar's size (both canvas units); `extras` other bodies to
+ * add as they are (see `SceneInput`).
  */
 export function useLivingScene(
   boardId: string,
   items: readonly Item[],
   selectedId: string | null,
-  extra: { calloutHeights?: Readonly<Record<string, number>>; toolbar?: { w: number; h: number } } = {},
+  extra: { calloutHeights?: Readonly<Record<string, number>>; toolbar?: { w: number; h: number }; extras?: readonly BodySpec[] } = {},
 ): Scene {
-  const { calloutHeights = NO_HEIGHTS, toolbar } = extra
+  const { calloutHeights = NO_HEIGHTS, toolbar, extras = NO_EXTRAS } = extra
   const { exploreEnabled } = useDemo()
   const explorations = useExplorations(boardId).data
   const lensAttrs = useBoardLens(boardId).data?.spec.attributes
@@ -63,6 +66,7 @@ export function useLivingScene(
       selectedId,
       calloutHeights: new Map(Object.entries(calloutHeights)),
       toolbar,
+      extras,
     })
-  }, [items, shown, analyses, labels, boardId, version, selectedId, calloutHeights, toolbar])
+  }, [items, shown, analyses, labels, boardId, version, selectedId, calloutHeights, toolbar, extras])
 }

@@ -15,6 +15,7 @@ import {
   type PluginRun,
   type ProfileSnapshot,
 } from './api'
+import { failGhost, removeGhost } from './put/ghosts'
 import { mergeSteps } from './shell/agentRun'
 
 export const EVENT_TYPES = [
@@ -40,6 +41,8 @@ export const EVENT_TYPES = [
   'plugin_run.failed',
   'agent.step',
   'agent.run',
+  'put.done',
+  'put.failed',
 ] as const
 
 export type BoardEventType = (typeof EVENT_TYPES)[number]
@@ -271,6 +274,12 @@ export function applyEvent(qc: QueryClient, boardId: string, type: string, data:
 
 function applyToCache(qc: QueryClient, boardId: string, type: string, d: Record<string, unknown>): void {
   switch (type) {
+    case 'put.done':
+      removeGhost(String(d.job_id))
+      return
+    case 'put.failed':
+      failGhost(String(d.job_id), String(d.message ?? ''))
+      return
     case 'note.visualizing':
       setVisualizing(String(d.note_id), true)
       return

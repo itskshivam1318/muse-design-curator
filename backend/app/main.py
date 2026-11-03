@@ -22,6 +22,7 @@ from app.api import (
     media,
     notes,
     plugins,
+    put,
     runs,
     ui_events,
 )
@@ -114,6 +115,7 @@ app.include_router(attributes.router)
 app.include_router(runs.router)
 app.include_router(decisions.router)
 app.include_router(explore.router)
+app.include_router(put.router)
 app.include_router(plugins.router)
 app.include_router(ui_events.router)
 app.include_router(demo_api.router)
