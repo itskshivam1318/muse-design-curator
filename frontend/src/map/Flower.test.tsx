@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { useLayoutEffect, useMemo } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type AnalysisView, ApiError, type Exploration, type ExploreOption, type Item, keys, type Point } from '../api'
-import { rectsIntersect } from '../canvas/geometry'
+import { type Bounds, rectsIntersect } from '../canvas/geometry'
 import { KEPT_EXTRA, petalAngles, petalRadius } from '../living/ring'
 import { LENS } from '../test/attrs'
 import { makeItem } from '../test/fixtures'
@@ -25,10 +25,14 @@ const { Edges } = await import('../living/Edges')
 const { useItems } = await import('../queries')
 
 /** What the harness exposes to a test: its world, and the hub releases it was handed. */
-const harness = { world: null as ReturnType<typeof createLivingWorld> | null, released: [] as Map<string, Point>[] }
+const harness = {
+  world: null as ReturnType<typeof createLivingWorld> | null,
+  released: [] as Map<string, Point>[],
+  rerender: null as ((viewport?: Bounds) => void) | null,
+}
 
 /** The canvas in small: the scene over the items, synced into a world, the layer drawing it. */
-function Harness() {
+function Harness({ viewport }: { viewport?: Bounds }) {
   const all = useItems('b1').data
   const items = useMemo(() => (all ?? []).filter((i) => !i.staged), [all])
   const world = useMemo(() => createLivingWorld({ reduced: true }), [])
@@ -40,7 +44,7 @@ function Harness() {
   return (
     <LivingProvider world={world}>
       <Edges scene={scene} view={view} />
-      <FlowerLayer boardId="b1" items={items} view={view} flowers={scene.flowers} onRelease={(c) => harness.released.push(c)} />
+      <FlowerLayer boardId="b1" items={items} view={view} flowers={scene.flowers} viewport={viewport} onRelease={(c) => harness.released.push(c)} />
     </LivingProvider>
   )
 }
@@ -68,7 +72,7 @@ const view = { x: 0, y: 0, scale: 1 }
 
 function setup(
   explorations: Exploration[],
-  extra: { items?: Item[]; analysed?: string[] } = {},
+  extra: { items?: Item[]; analysed?: string[]; viewport?: Bounds } = {},
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   qc.setQueryData(keys.demo, { demo_mode: false, explore_enabled: true })
@@ -78,11 +82,13 @@ function setup(
   const analysed = extra.analysed ?? ['a', 'b']
   if (analysed.includes('a')) qc.setQueryData(keys.analysis('a'), analysis('Hand style'))
   if (analysed.includes('b')) qc.setQueryData(keys.analysis('b'), analysis('Hand shape'))
-  render(
+  const tree = (viewport?: Bounds) => (
     <QueryClientProvider client={qc}>
-      <Harness />
-    </QueryClientProvider>,
+      <Harness viewport={viewport} />
+    </QueryClientProvider>
   )
+  const { rerender } = render(tree(extra.viewport))
+  harness.rerender = (viewport) => rerender(tree(viewport))
   return qc
 }
 
@@ -106,6 +112,23 @@ describe('FlowerLayer', () => {
     expect(within(hub('Hand shape')).getByText('1 options · 0 kept')).toBeTruthy()
     // a stem from each item to its hub
     expect(document.querySelectorAll('path[data-edge-kind="stem"]')).toHaveLength(2)
+  })
+
+  it('only flowers near the viewport mount; panning to one mounts it', () => {
+    const exps: Exploration[] = [
+      { id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'a', key: 'hand_style', options: [opt({ id: 'o1' })] },
+      { id: 'e2', board_id: 'b1', dx: null, dy: null, item_id: 'b', key: 'hand_style', options: [opt({ id: 'o2', exploration_id: 'e2' })] },
+    ]
+    // around item a; item b and its hub sit 1200 below, past half a viewport's margin
+    setup(exps, { viewport: { x: -100, y: -100, width: 600, height: 400 } })
+    expect(screen.queryByRole('group', { name: 'Hand style flower' })).toBeTruthy()
+    expect(screen.queryByRole('group', { name: 'Hand shape flower' })).toBeNull()
+    act(() => harness.rerender!({ x: -100, y: 1100, width: 600, height: 400 }))
+    expect(screen.queryByRole('group', { name: 'Hand shape flower' })).toBeTruthy()
+    expect(screen.queryByRole('group', { name: 'Hand style flower' })).toBeNull()
+    // freshly mounted, it is placed at once
+    const p = document.querySelector<HTMLElement>('[data-option-id="o2"]')!
+    expect(p.style.transform).toMatch(/translate/)
   })
 
   it('petals show their state: note, rendering, rendered, kept and drifted', () => {

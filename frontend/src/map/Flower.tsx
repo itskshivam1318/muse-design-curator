@@ -6,7 +6,8 @@
  */
 import { type PointerEvent, type WheelEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ExploreOption, Item, Point } from '../api'
-import type { View } from '../canvas/geometry'
+import { type Bounds, rectsIntersect, type View } from '../canvas/geometry'
+import { itemBounds } from '../canvas/nodeProps'
 import { resultCheck } from '../explore/verdict'
 import { liveDockedAt } from '../living/dockIn'
 import { dockedSize } from '../living/ring'
@@ -206,10 +207,15 @@ interface LayerProps {
   onWheel?: (e: WheelEvent) => void
   /** A hub drag ended (see Flower). */
   onRelease?: (centres: Map<string, Point>) => void
+  /**
+   * The visible canvas rect (canvas units): only flowers whose hub or source is near it (within half a
+   * viewport) mount. Without it (or unmeasured) every flower mounts.
+   */
+  viewport?: Bounds
 }
 
 /** Every flower on the board, and the one open petal card. */
-export function FlowerLayer({ boardId, items, view, flowers, locked = false, onWheel, onRelease }: LayerProps) {
+export function FlowerLayer({ boardId, items, view, flowers, locked = false, onWheel, onRelease, viewport }: LayerProps) {
   const world = useLivingWorld()
   const allItems = useItems(boardId).data
   const byId = useMemo(() => new Map((allItems ?? items).map((i) => [i.id, i])), [allItems, items])
@@ -289,6 +295,21 @@ export function FlowerLayer({ boardId, items, view, flowers, locked = false, onW
     return () => ro.disconnect()
   })
 
+  // re-read on every render (the view changing re-renders the layer); a new mount is placed at once
+  const near = (f: FlowerModel) => {
+    if (!viewport || viewport.width <= 0) return true
+    const v = viewport
+    const zone = { x: v.x - v.width / 2, y: v.y - v.height / 2, width: v.width * 2, height: v.height * 2 }
+    const rect = (id: string) => {
+      const b = world.body(id)
+      return b && { x: b.x - b.w / 2, y: b.y - b.h / 2, width: b.w, height: b.h }
+    }
+    const src = byId.get(f.sourceId)
+    const sourceRect = rect(f.sourceId) ?? (src && itemBounds(src))
+    const hubRect = rect(f.hubId)
+    return [hubRect, sourceRect].some((r) => r && rectsIntersect(r, zone))
+  }
+
   if (flowers.length === 0) return null
   return (
     <div
@@ -300,7 +321,7 @@ export function FlowerLayer({ boardId, items, view, flowers, locked = false, onW
       }}
     >
       <div className="flower-world" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}>
-        {flowers.map((f) => (
+        {flowers.filter(near).map((f) => (
           <Flower
             key={f.id}
             model={f}

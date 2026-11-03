@@ -738,7 +738,7 @@ export function Canvas({
 
         <Edges scene={scene} view={view} />
         {exploreEnabled && (
-          <FlowerLayer boardId={boardId} items={visible} view={view} flowers={scene.flowers} locked={readOnly} onWheel={onOverlayWheel} onRelease={commitDrag} />
+          <FlowerLayer boardId={boardId} items={visible} view={view} flowers={scene.flowers} viewport={viewport} locked={readOnly} onWheel={onOverlayWheel} onRelease={commitDrag} />
         )}
         <NodeLayer boardId={boardId} items={visible} view={view} size={size} readOnly={readOnly} onWheel={onOverlayWheel} world={world} />
         {hoveredItem && hoveredItem.kind !== 'link' && hoveredItem.kind !== 'note' && hoveredItem.parse_status !== 'completed' && (
