@@ -151,6 +151,9 @@ on each other; on the same board they share its one open run (the second `set_go
 or pauses it and starts a new one with `replace: true`). **Stop run** in the agent card pauses an
 open run.
 
+- `render_view` draws a picture again from another viewpoint ("from the rear") as a new picture
+  beside it; `wait(kind="job")` picks it up if it is slow.
+- `put_into` puts one picture's subject into another at part keys or points; it waits the same way.
 - Muse Code, like any other MCP client that speaks streamable HTTP, connects to the same URL.
 - An MCP session expires after about 30 minutes without a call. The client then gets a new
   session with no board open: call `open_board` again (the board's open run is picked up).

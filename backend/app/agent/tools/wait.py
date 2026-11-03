@@ -5,15 +5,17 @@ from typing import Any
 
 from app.agent.context import ToolContext, api_error, board_items, require_option
 
-KINDS = ("item", "analysis", "option", "note", "plugin_run")
+KINDS = ("item", "analysis", "option", "note", "plugin_run", "job")
 POLL_S = 1.0
 TIMEOUT_MIN, TIMEOUT_MAX, TIMEOUT_DEFAULT = 1.0, 120.0, 60.0
+TIMEOUT_DEFAULT_JOB = 90.0  # render_view and put_into: a real render takes 20-30 s
 
 DEFINITION = {
     "name": "wait",
     "description": "Wait for something queued to finish: an item being read (item), an analysis "
     "(analysis), a visualized option (option), a visualized note (note) or a plugin run "
-    "(plugin_run). Polls until it is no longer busy or timeout_s passes. For option and note the "
+    "(plugin_run) or a render_view / put_into job that timed out (job, id = its job_id). Polls "
+    "until it is no longer busy or timeout_s passes. For option, note and job the "
     "result has the new item's id and its check.",
     "parameters": {
         "type": "object",
@@ -122,12 +124,25 @@ async def _plugin_run(ctx: ToolContext, run_id: str) -> _Probe | dict[str, Any]:
     return res["status"] in ("queued", "running"), res["status"], res
 
 
+async def _job(ctx: ToolContext, job_id: str) -> _Probe | dict[str, Any]:
+    """Done when an item carries the job id. A failed job leaves no item: it reads as busy."""
+    items = await board_items(ctx)
+    if isinstance(items, dict):
+        return items
+    for item in items:
+        gen = item.get("generation") or {}
+        if job_id in (gen.get("view_job"), gen.get("put_job")):
+            return False, "done", _produced(item)
+    return True, "busy", {"item_id": None, "check": None}
+
+
 _PROBES = {
     "item": _item,
     "analysis": _analysis,
     "option": _option,
     "note": _note,
     "plugin_run": _plugin_run,
+    "job": _job,
 }
 
 

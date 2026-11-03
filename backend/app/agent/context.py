@@ -4,10 +4,13 @@ Tools never touch the database directly; they call the same `/api/...` routes th
 every guard (validation, demo lock, daily caps) applies to the agent too.
 """
 
+import time
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 
 import httpx
+
+from app import events
 
 
 class ApiResult(NamedTuple):
@@ -151,3 +154,50 @@ def api_error(status: int, body: Any) -> dict[str, Any]:
             "message": str(err.get("message") or ""),
         }
     return {"error": f"HTTP_{status}", "message": str(body or "")[:200]}
+
+
+async def _await_job(
+    sub: events.AsyncSubscription, job_id: str, done: str, failed: str, timeout_s: float
+) -> dict[str, Any] | None:
+    """The finishing event's result for `job_id` (`done` or `failed`), or None on timeout."""
+    deadline = time.monotonic() + timeout_s
+    while (left := deadline - time.monotonic()) > 0:
+        event = await sub.aget(left)
+        if event is None:
+            return None
+        data = event["data"]
+        if data.get("job_id") != job_id:
+            continue
+        if event["type"] == done:
+            return {"job_id": job_id, "item_id": data["item_id"], "item_ids": [data["item_id"]]}
+        if event["type"] == failed:
+            return {
+                "error": str(data.get("code") or "JOB_FAILED"),
+                "message": str(data.get("message") or ""),
+                "job_id": job_id,
+            }
+    return None
+
+
+async def queue_and_wait(
+    ctx: ToolContext, path: str, body: dict[str, Any], done: str, failed: str, timeout_s: float
+) -> dict[str, Any]:
+    """Post a job that answers 202 `{"job_id"}` and wait for its `done`/`failed` board event.
+
+    Subscribes before posting: under JOBS_SYNC (and on a fast mock) the job finishes inside the
+    POST, so its events are already queued when we start listening. On timeout the job id comes
+    back with a hint to `wait(kind="job")`.
+    """
+    assert ctx.board_id is not None
+    sub = events.subscribe_async(ctx.board_id)
+    try:
+        status, res = await ctx.api.post(path, json=body)
+        if status != 202:
+            return api_error(status, res)
+        job_id = str(res["job_id"])
+        seen = await _await_job(sub, job_id, done, failed, timeout_s)
+    finally:
+        sub.close()
+    if seen is None:
+        return {"job_id": job_id, "timed_out": True, "hint": "wait(kind='job', id=job_id)"}
+    return seen
