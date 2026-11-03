@@ -40,6 +40,11 @@ class ApiClient:
     async def get(self, path: str) -> ApiResult:
         return await self._send("GET", path)
 
+    async def get_bytes(self, path: str) -> bytes | None:
+        """The raw body of a 200 response (e.g. an image), else None."""
+        response = await self._http().request("GET", path)
+        return response.content if response.status_code == 200 else None
+
     async def post(
         self, path: str, json: Any = None, files: Any = None, data: Any = None
     ) -> ApiResult:

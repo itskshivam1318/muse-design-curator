@@ -439,6 +439,8 @@ class MockReasoningProvider:
             return _mock_item_analysis(images, prompt)
         if schema.get("title") == "passage_rewrite":
             return _mock_rewrite(prompt)
+        if schema.get("title") == "output_consistency":
+            return {"one_design": True, "outliers": [], "reason": ""}
         return self._make(images, schema, prompt)
 
     def _make(self, images: list[bytes], schema: dict[str, Any], prompt: str) -> dict[str, Any]:
