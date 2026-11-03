@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { type AnalysisView, type Item, keys, type PartView } from '../api'
 import type { LivingWorld } from '../living/world'
@@ -11,13 +11,17 @@ vi.mock('../api', async (orig) => ({
   ...(await orig<typeof import('../api')>()),
   getRegion: vi.fn(() => new Promise(() => {})),
   getAnalysis: vi.fn(() => new Promise(() => {})),
+  putInto: vi.fn(),
 }))
-const { getRegion } = await import('../api')
+const { getRegion, putInto } = await import('../api')
+const { ghostStore, removeGhost } = await import('./ghosts')
 const { ConnectLayer } = await import('./ConnectLayer')
+const { putBodies } = await import('./bodies')
 const { itemUnder, useConnect } = await import('./useConnect')
 
 afterEach(() => {
   cleanup()
+  ghostStore.get().ghosts.forEach((g) => removeGhost(g.jobId))
   vi.clearAllMocks()
 })
 
@@ -66,6 +70,7 @@ function setup(over: { selectedIds?: string[]; readOnly?: boolean; grabbing?: bo
     return (
       <>
         <ConnectLayer
+          boardId="b1"
           items={items}
           view={{ x: 0, y: 0, scale: 1 }}
           world={world}
@@ -166,6 +171,47 @@ describe('ConnectLayer', () => {
     expect(line()).toBeNull()
   })
 
+  it('the card: Put in sends the spots left on and the words, adds a ghost, and closes the line and card', async () => {
+    vi.mocked(putInto).mockResolvedValue({ job_id: 'j1', x: 760, y: 0, w: 400, h: 200 })
+    setup()
+    const d = dragTo(380, 150)
+    fireEvent.pointerUp(d, { pointerId: 1, clientX: 380, clientY: 150 })
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '✓ Rear wheel' }))
+    fireEvent.change(screen.getByPlaceholderText('Anything to add? (optional)'), { target: { value: '  keep the blur ' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Put in' }))
+    })
+    expect(putInto).toHaveBeenCalledWith('tgt', { source_id: 'src', spots: [{ part: 'front_wheel' }], words: 'keep the blur' })
+    expect(ghostStore.get().ghosts).toEqual([
+      {
+        jobId: 'j1', boardId: 'b1', targetId: 'tgt', x: 760, y: 0, w: 400, h: 200, error: null,
+        request: { targetId: 'tgt', body: { source_id: 'src', spots: [{ part: 'front_wheel' }], words: 'keep the blur' } },
+      },
+    ])
+    expect(phase()).toBe('idle')
+    expect(line()).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByText('Putting in…')).toBeTruthy()
+  })
+
+  it('the card: a refused Put in keeps the card open with the message; Cancel closes it', async () => {
+    vi.mocked(putInto).mockRejectedValue(new Error('Daily limit reached'))
+    setup()
+    const d = dragTo(380, 150)
+    fireEvent.pointerUp(d, { pointerId: 1, clientX: 380, clientY: 150 })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Put in' }))
+    })
+    expect(putInto).toHaveBeenCalledWith('tgt', { source_id: 'src', spots: [{ part: 'front_wheel' }, { part: 'rear_wheel' }] })
+    expect(screen.getByRole('alert').textContent).toBe('Daily limit reached')
+    expect(phase()).toBe('card:tgt:2')
+    expect(ghostStore.get().ghosts).toHaveLength(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(phase()).toBe('idle')
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
   it('Esc during a drag cancels it', () => {
     setup()
     dragTo(380, 150)
@@ -173,6 +219,18 @@ describe('ConnectLayer', () => {
     expect(phase()).toBe('idle')
     expect(line()).toBeNull()
     expect(screen.queryAllByTestId('region-overlay')).toHaveLength(0)
+  })
+})
+
+describe('putBodies', () => {
+  it('the open card is an obstacle its screen size at the zoom, each ghost an item at its centre', () => {
+    const g = { jobId: 'j1', boardId: 'b1', targetId: 'tgt', x: 760, y: 0, w: 400, h: 200, error: null,
+      request: { targetId: 'tgt', body: { source_id: 'src', spots: [] } } }
+    expect(putBodies({ x: 450, y: 125 }, [g], 2)).toEqual([
+      { id: 'put-card', kind: 'obstacle', w: 130, h: 85, home: { kind: 'abs', x: 450, y: 125 } },
+      { id: 'ghost:j1', kind: 'item', w: 400, h: 200, home: { kind: 'abs', x: 960, y: 100 } },
+    ])
+    expect(putBodies(null, [], 1)).toEqual([])
   })
 })
 

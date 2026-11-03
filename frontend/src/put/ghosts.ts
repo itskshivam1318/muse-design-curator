@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 import type { putInto } from '../api'
 
 /** A placeholder shown on the board while a put-into job runs (client only). */
@@ -68,5 +68,6 @@ export function removeGhost(jobId: string): void {
 
 export function useGhosts(boardId: string): Ghost[] {
   const all = useSyncExternalStore(ghostStore.subscribe, () => ghosts)
-  return all.filter((g) => g.boardId === boardId)
+  // the same list while nothing changes, so the bodies built from it are not rebuilt every render
+  return useMemo(() => all.filter((g) => g.boardId === boardId), [all, boardId])
 }

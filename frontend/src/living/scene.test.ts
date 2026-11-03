@@ -212,6 +212,16 @@ describe('buildScene', () => {
     expect(s.edges.some((e) => e.from.body === 'toolbar:a' || e.to.body === 'toolbar:a')).toBe(false)
   })
 
+  it('extra bodies (the put-in card, its ghosts) are added to the specs unchanged', () => {
+    const extras = [
+      { id: 'put-card', kind: 'obstacle' as const, w: 260, h: 170, home: { kind: 'abs' as const, x: 400, y: 80 } },
+      { id: 'ghost:j1', kind: 'item' as const, w: 200, h: 150, home: { kind: 'abs' as const, x: 700, y: 75 } },
+    ]
+    const s = scene({ explorations: [], extras })
+    expect(s.specs.slice(-2)).toEqual(extras)
+    expect(spec(s, 'a')).toMatchObject({ kind: 'item' })
+  })
+
   it("a callout's measured height wins over the estimate", () => {
     const s = scene({ explorations: [], selectedId: 'a', calloutHeights: new Map([['hands', 140]]) })
     expect(spec(s, 'callout:a:hands')!.h).toBe(140)

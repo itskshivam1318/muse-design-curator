@@ -33,7 +33,9 @@ import { RegionOverlay } from '../map/RegionOverlay'
 import { regionOf } from '../map/regions'
 import { useNodeDrop } from '../plugins/nodeDrop'
 import { NodeLayer } from '../plugins/NodeLayer'
+import { putBodies } from '../put/bodies'
 import { ConnectLayer } from '../put/ConnectLayer'
+import { useGhosts } from '../put/ghosts'
 import { useConnect } from '../put/useConnect'
 import { useAnalysis, useBoardLens, useExplorations, useRegion, visibleItems } from '../queries'
 import { setTool, useTool } from '../shell/tools'
@@ -522,9 +524,14 @@ export function Canvas({
         : undefined,
     [toolbarSize, view.scale],
   )
+  // the put-in card and its ghosts: bodies too, so nothing overlaps them
+  const ghosts = useGhosts(boardId)
+  const putCardAt = connect.state.phase === 'card' ? connect.state.cardAt : null
+  const extras = useMemo(() => putBodies(putCardAt, ghosts, view.scale), [putCardAt, ghosts, view.scale])
   const scene = useLivingScene(boardId, visible, calloutItem && showCallouts ? calloutItem.id : null, {
     calloutHeights,
     toolbar,
+    extras,
   })
   useLayoutEffect(() => world.sync(scene), [world, scene])
   // a take of a flower is already linked by its spoke to the hub its source grew: no second line
@@ -758,7 +765,7 @@ export function Canvas({
           <FlowerLayer boardId={boardId} items={visible} view={view} flowers={scene.flowers} viewport={viewport} locked={readOnly} onWheel={onOverlayWheel} onRelease={commitDrag} />
         )}
         <NodeLayer boardId={boardId} items={visible} view={view} size={size} readOnly={readOnly} onWheel={onOverlayWheel} world={world} />
-        <ConnectLayer items={visible} view={view} world={world} readOnly={readOnly} selectedIds={selected} connect={connect} />
+        <ConnectLayer boardId={boardId} items={visible} view={view} world={world} readOnly={readOnly} selectedIds={selected} connect={connect} />
         {hoveredItem && hoveredItem.kind !== 'link' && hoveredItem.kind !== 'note' && hoveredItem.parse_status !== 'completed' && (
           <Live items={[hoveredItem]}>{(b) => <StatusTip item={hoveredItem} screen={toScreenBounds(b, view)} />}</Live>
         )}

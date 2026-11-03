@@ -1,11 +1,13 @@
 /**
  * "Put into", on the board: the connect dot on a selected picture's right edge, the line dragged from it,
  * and the spots its end aims at on another picture (each part's region, or a ring at a point), with a
- * count by the line's end. HTML over the canvas; only the dot takes the pointer.
+ * count by the line's end. Let go on a target, the line stays and its card opens on it; once put in,
+ * a ghost holds the result's place until it lands. HTML over the canvas; only the dot, the card and a
+ * failed ghost take the pointer.
  */
 import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { type AnalysisView, type Item, keys, type PartView, type Point } from '../api'
+import { type AnalysisView, type Item, keys, type PartView, type Point, putInto } from '../api'
 import { type Bounds, toCanvasPoint, toScreenPoint, type View } from '../canvas/geometry'
 import { itemBounds } from '../canvas/nodeProps'
 import { useLiveBounds } from '../living/useLiveBounds'
@@ -13,11 +15,16 @@ import type { LivingWorld } from '../living/world'
 import { RegionOverlay } from '../map/RegionOverlay'
 import { regionOf } from '../map/regions'
 import { useAnalysis, useRegion } from '../queries'
-import { aimAt, type Spot } from './spots'
-import { itemUnder, type useConnect } from './useConnect'
+import { PUT_CARD_ID, PUT_CARD_W } from './bodies'
+import { GhostTile } from './GhostTile'
+import { addGhost, useGhosts } from './ghosts'
+import { PutCard } from './PutCard'
+import { aimAt, type Spot, toBody } from './spots'
+import { type Connect, itemUnder, type Placed, type useConnect } from './useConnect'
 import './put.css'
 
 interface Props {
+  boardId: string
   items: readonly Item[]
   view: View
   world: LivingWorld
@@ -28,7 +35,7 @@ interface Props {
 
 const SPOKE_SAG = 22
 
-export function ConnectLayer({ items, view, world, readOnly, selectedIds, connect }: Props) {
+export function ConnectLayer({ boardId, items, view, world, readOnly, selectedIds, connect }: Props) {
   const qc = useQueryClient()
   const { state } = connect
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items])
@@ -96,9 +103,28 @@ export function ConnectLayer({ items, view, world, readOnly, selectedIds, connec
     last.current = p
     connect.move(p, aim(p))
   }
+  // the card opens on the line, midway, and stays there; the line's end keeps to its spot on the target
+  const place = (line: { sourceId: string; targetId: string; at: Point }): Placed | null => {
+    const s = liveBounds(line.sourceId)
+    const t = liveBounds(line.targetId)
+    if (!s || !t) return null
+    const from = { x: s.x + s.width, y: s.y + s.height / 2 }
+    return {
+      cardAt: { x: (from.x + line.at.x) / 2, y: (from.y + line.at.y) / 2 },
+      endOn: { fx: (line.at.x - t.x) / t.width, fy: (line.at.y - t.y) / t.height },
+    }
+  }
 
+  const ghosts = useGhosts(boardId)
+  const targetBox = useLiveBounds(targetId ?? '') ?? (target ? itemBounds(target) : null)
   const start = sourceBox && toScreenPoint({ x: sourceBox.x + sourceBox.width, y: sourceBox.y + sourceBox.height / 2 }, view)
-  const endAt = state.phase === 'drag' ? state.at : state.phase === 'card' ? state.end : null
+  const cardEnd =
+    state.phase === 'card'
+      ? state.endOn && targetBox
+        ? { x: targetBox.x + state.endOn.fx * targetBox.width, y: targetBox.y + state.endOn.fy * targetBox.height }
+        : state.end
+      : null
+  const endAt = state.phase === 'drag' ? state.at : cardEnd
   const end = endAt && toScreenPoint(endAt, view)
   const spots = state.phase === 'idle' ? [] : state.spots
   const off = state.phase === 'card' ? state.off : null
@@ -131,11 +157,53 @@ export function ConnectLayer({ items, view, world, readOnly, selectedIds, connec
           style={{ left: start.x, top: start.y }}
           onPointerDown={onDown}
           onPointerMove={onMove}
-          onPointerUp={() => connect.release()}
+          onPointerUp={() => connect.release(place)}
           onPointerCancel={() => connect.cancel()}
         />
       )}
+      {state.phase === 'card' && source && target && (
+        <CardOnLine key={`${state.sourceId}>${state.targetId}`} boardId={boardId} source={source} target={target} state={state} view={view} connect={connect} />
+      )}
+      {ghosts.map((g) => (
+        <GhostTile key={g.jobId} ghost={g} view={view} />
+      ))}
     </>
+  )
+}
+
+type CardState = Extract<Connect, { phase: 'card' }>
+
+/** The card where its body is (it never moves: it is placed when the line is let go). */
+function CardOnLine({ boardId, source, target, state, view, connect }: {
+  boardId: string
+  source: Item
+  target: Item
+  state: CardState
+  view: View
+  connect: ReturnType<typeof useConnect>
+}) {
+  const live = useLiveBounds(PUT_CARD_ID)
+  const centre = live ? { x: live.x + live.width / 2, y: live.y + live.height / 2 } : (state.cardAt ?? state.end)
+  const at = toScreenPoint(centre, view)
+  const submit = async (words: string) => {
+    const w = words.trim()
+    const body = { source_id: source.id, spots: toBody(state.spots, state.off), ...(w ? { words: w } : {}) }
+    const r = await putInto(target.id, body)
+    addGhost({ jobId: r.job_id, boardId, targetId: target.id, x: r.x, y: r.y, w: r.w, h: r.h, request: { targetId: target.id, body }, error: null })
+    connect.cancel()
+  }
+  return (
+    <div className="put-card-anchor" style={{ left: at.x, top: at.y, width: PUT_CARD_W }}>
+      <PutCard
+        source={source}
+        target={target}
+        spots={state.spots}
+        off={state.off}
+        onToggle={connect.toggle}
+        onCancel={connect.cancel}
+        onSubmit={submit}
+      />
+    </div>
   )
 }
 

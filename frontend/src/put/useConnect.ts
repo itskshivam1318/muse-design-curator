@@ -8,9 +8,23 @@ import type { Spot } from './spots'
 export type Connect =
   | { phase: 'idle' }
   | { phase: 'drag'; sourceId: string; at: Point; targetId: string | null; spots: Spot[] }
-  | { phase: 'card'; sourceId: string; targetId: string; end: Point; spots: Spot[]; off: Set<number> }
+  | {
+      phase: 'card'
+      sourceId: string
+      targetId: string
+      end: Point
+      spots: Spot[]
+      off: Set<number>
+      /** The card's centre, fixed when it opens (it holds its place; the board moves round it). */
+      cardAt: Point | null
+      /** Where the line ends on the target (fractions of it), so the end follows it when it moves. */
+      endOn: { fx: number; fy: number } | null
+    }
 
 const IDLE: Connect = { phase: 'idle' }
+
+/** Where a card opening on a line goes, worked out from the line as it is let go. */
+export type Placed = { cardAt: Point; endOn: { fx: number; fy: number } }
 
 export function useConnect() {
   const [state, setState] = useState<Connect>(IDLE)
@@ -22,11 +36,12 @@ export function useConnect() {
   )
   // a card only when the line ends on a target with a spot; anything else leaves nothing behind
   const release = useCallback(
-    () =>
+    (place?: (line: { sourceId: string; targetId: string; at: Point }) => Placed | null) =>
       setState((s) => {
         if (s.phase !== 'drag') return s
         if (!s.targetId || s.spots.length === 0) return IDLE
-        return { phase: 'card', sourceId: s.sourceId, targetId: s.targetId, end: s.at, spots: s.spots, off: new Set() }
+        const { cardAt = null, endOn = null } = place?.({ sourceId: s.sourceId, targetId: s.targetId, at: s.at }) ?? {}
+        return { phase: 'card', sourceId: s.sourceId, targetId: s.targetId, end: s.at, spots: s.spots, off: new Set(), cardAt, endOn }
       }),
     [],
   )

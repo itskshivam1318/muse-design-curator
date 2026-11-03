@@ -78,6 +78,8 @@ export interface SceneInput {
    * just above the selected item, and nothing may sit under it.
    */
   toolbar?: { w: number; h: number }
+  /** Bodies from elsewhere on the board (the put-in card, its ghosts), added as they are. */
+  extras?: readonly BodySpec[]
 }
 
 interface Card {
@@ -138,7 +140,7 @@ function beyondCards(b: Bounds, sizes: ReadonlyMap<string, { w: number; h: numbe
 }
 
 export function buildScene(input: SceneInput): Scene {
-  const { items, explorations, analyses, labels, collapsed, selectedId, formsOn = () => 0, calloutHeights, toolbar } = input
+  const { items, explorations, analyses, labels, collapsed, selectedId, formsOn = () => 0, calloutHeights, toolbar, extras = [] } = input
   const onBoard = items.filter((i) => !i.staged) // staged takes wait in their option's stage
   const byId = new Map(onBoard.map((i) => [i.id, i]))
   const cardCache = new Map<string, Map<string, Card> | null>()
@@ -273,6 +275,7 @@ export function buildScene(input: SceneInput): Scene {
     const home = rel(selected.id, { x: 0, y: -(b.height / 2 + toolbar.h / 2) })
     specs.push({ id: `toolbar:${selected.id}`, kind: 'obstacle', w: toolbar.w, h: toolbar.h, home, yieldTo: selected.id })
   }
+  specs.push(...extras)
 
   return { specs, edges, flowers: flowers.map((f) => f.model), docked, slots }
 }
