@@ -6,7 +6,7 @@
 import type { Exploration, Item, Point } from '../api'
 import type { Move } from '../canvas/history'
 import type { Home } from './physics'
-import { dockedSize, undockedSize } from './ring'
+import { dockedSize, topLeft, undockedSize } from './ring'
 import { keptSlot, type Scene } from './scene'
 import type { LivingWorld } from './world'
 
@@ -52,7 +52,6 @@ export function homesAfter(scene: Scene, released: ReadonlyMap<string, Point>): 
   return (id) => home(id, new Set([id]))
 }
 
-const topLeft = (c: Point, s: Size): Point => ({ x: Math.round(c.x - s.w / 2), y: Math.round(c.y - s.h / 2) })
 
 export function planRelease(
   scene: Scene,

@@ -1,10 +1,24 @@
 /**
  * The one-time move of takes kept before kept takes docked in their ring: each docked take still at
- * its old full size goes to its slot at the docked size. Pure; the Canvas runs it once per board load.
+ * its old full size goes to its slot at the docked size. The Canvas runs it once per board load.
  */
 import type { Item, Point } from '../api'
-import { dockedSize } from './ring'
-import type { Scene } from './scene'
+import { dockedSize, topLeft } from './ring'
+import { dockedCentre, type FlowerModel, type Scene } from './scene'
+import type { LivingWorld } from './world'
+
+/** Where the take of the flower's option `index` docks now: round its hub and source where they are (null while either has no body). */
+export function liveSlotCentre(world: Pick<LivingWorld, 'body'>, model: FlowerModel, index: number): Point | null {
+  const hub = world.body(model.hubId)
+  const source = world.body(model.sourceId)
+  return hub && source ? dockedCentre(model, index, hub, source) : null
+}
+
+/** The top-left a take of `size` docks at in that slot now (null while the flower has no bodies). */
+export function liveDockedAt(world: Pick<LivingWorld, 'body'>, model: FlowerModel, index: number, size: { w: number; h: number }): Point | null {
+  const c = liveSlotCentre(world, model, index)
+  return c && topLeft(c, size)
+}
 
 /** Each docked take not yet at the docked size (more than 1px off), with its spot and size in its slot. */
 export function staleDocked(
@@ -18,7 +32,6 @@ export function staleDocked(
     if (!it) return []
     const size = dockedSize(it)
     if (Math.abs(it.w - size.w) <= 1) return []
-    const c = slotOf(id)
-    return [{ id, x: Math.round(c.x - size.w / 2), y: Math.round(c.y - size.h / 2), ...size }]
+    return [{ id, ...topLeft(slotOf(id), size), ...size }]
   })
 }

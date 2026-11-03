@@ -114,6 +114,24 @@ describe('living world', () => {
     expect(world.body('a')!.pulseAt).toBe(-Infinity)
   })
 
+  it('a pending pulse is dropped when its body has not come within 2 s', () => {
+    const { world } = rig() // its clock reads 1000
+    world.pulse('a')
+    world.sync(scene(), 3100)
+    world.sync(scene(item('a', 0, 0)), 3200)
+    expect(world.body('a')!.pulseAt).toBe(-Infinity)
+  })
+
+  it('grabbing() is true from grab until release', () => {
+    const { world } = rig()
+    world.sync(scene(item('a', 0, 0)))
+    expect(world.grabbing()).toBe(false)
+    world.grab(['a'])
+    expect(world.grabbing()).toBe(true)
+    world.release()
+    expect(world.grabbing()).toBe(false)
+  })
+
   it('now() is the clock the world steps by', () => {
     const { world, frame } = rig()
     const t0 = world.now()

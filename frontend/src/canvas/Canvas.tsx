@@ -18,13 +18,12 @@ import { type Exploration, exploreItem, isGenerated, type Item, keys, type PartV
 import { useDemo } from '../demo'
 import { withExploration } from '../explore/logic'
 import { itemVerdict } from '../explore/verdict'
-import { staleDocked } from '../living/dockIn'
+import { liveSlotCentre, staleDocked } from '../living/dockIn'
 import { Edges } from '../living/Edges'
 import { useKonvaBodies } from '../living/useKonvaBodies'
 import { useLiveBoxes } from '../living/useLiveBounds'
 import { LivingProvider } from '../living/useLiving'
 import { homesAfter, placeSettled, planRelease } from '../living/release'
-import { dockedCentre } from '../living/scene'
 import { useLivingScene } from '../living/useLivingScene'
 import { createLivingWorld, type LivingWorld } from '../living/world'
 import { Callouts } from '../map/Callouts'
@@ -534,30 +533,36 @@ export function Canvas({
     placeSettled(world, plan)
   }
   // kept takes from before they docked in their ring: moved in once per board load, once the board has
-  // settled for a second (each written, no undo step; not while locked). A held or selected one waits.
+  // settled for a second (each written, no undo step). A held or selected one waits, and nothing runs
+  // mid-drag. Locked, the move is applied here only, never written: a refetch brings back the stored
+  // size and the next settle docks it in again.
   const dockedIn = useRef<{ boardId: string; done: Set<string> }>({ boardId, done: new Set() })
   useEffect(() => {
-    if (readOnly || !explorations) return
-    const timer = setTimeout(() => {
+    if (!explorations) return
+    let timer: ReturnType<typeof setTimeout>
+    const run = () => {
+      if (world.grabbing()) {
+        timer = setTimeout(run, DOCK_IN_SETTLE_MS)
+        return
+      }
       if (dockedIn.current.boardId !== boardId) dockedIn.current = { boardId, done: new Set() }
       const { done } = dockedIn.current
       const slotOf = (id: string): Point => {
         const slot = scene.slots.get(id)!
         const model = scene.flowers.find((f) => f.hubId === slot.hubId)
-        const hub = world.body(slot.hubId)
-        const source = model && world.body(model.sourceId)
-        if (model && hub && source) return dockedCentre(model, slot.index, hub, source)
-        return world.body(id) ?? centreOf(itemBounds(allItems.find((i) => i.id === id)!))
+        return (model && liveSlotCentre(world, model, slot.index)) ?? world.body(id) ?? centreOf(itemBounds(allItems.find((i) => i.id === id)!))
       }
       const stale = staleDocked(scene, allItems, slotOf).filter((t) => !done.has(t.id) && !world.body(t.id)?.pinned)
       if (stale.length === 0) return
       const next = new Map(stale.map(({ id, ...b }) => [id, b]))
       qc.setQueryData<Item[]>(keys.items(boardId), (old) => old?.map((i) => (next.has(i.id) ? { ...i, ...next.get(i.id) } : i)))
+      if (readOnly) return
       for (const [id, b] of next) {
         done.add(id)
         patchItem(id, b).catch(() => void qc.invalidateQueries({ queryKey: keys.items(boardId) }))
       }
-    }, DOCK_IN_SETTLE_MS)
+    }
+    timer = setTimeout(run, DOCK_IN_SETTLE_MS)
     return () => clearTimeout(timer)
   }, [boardId, readOnly, explorations, scene, allItems, world, qc])
   useLayoutEffect(() => world.setPinned(selected), [world, selected])

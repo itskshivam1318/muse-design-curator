@@ -47,19 +47,19 @@ function client(explorations: Exploration[], items: Item[], explore = true) {
 
 let boardActions: ReturnType<typeof useItemActions> | null = null
 /** The board page in small: the canvas over the cached items, with the real item actions. */
-function Board({ onOpenPanel = vi.fn() }: { onOpenPanel?: (...args: unknown[]) => void }) {
+function Board({ onOpenPanel = vi.fn(), readOnly = false }: { onOpenPanel?: (...args: unknown[]) => void; readOnly?: boolean }) {
   const items = useQuery<Item[]>({ queryKey: keys.items('b1'), queryFn: () => [] }).data ?? []
   const actions = useItemActions('b1')
   useEffect(() => {
     boardActions = actions
   })
-  return <Canvas boardId="b1" items={items} actions={actions} onFiles={vi.fn()} onOpenPanel={onOpenPanel} spaceDown={false} />
+  return <Canvas boardId="b1" items={items} actions={actions} onFiles={vi.fn()} onOpenPanel={onOpenPanel} spaceDown={false} readOnly={readOnly} />
 }
 
-function renderBoard(qc: QueryClient, onOpenPanel?: (...args: unknown[]) => void) {
+function renderBoard(qc: QueryClient, onOpenPanel?: (...args: unknown[]) => void, readOnly = false) {
   return render(
     <QueryClientProvider client={qc}>
-      <Board onOpenPanel={onOpenPanel} />
+      <Board onOpenPanel={onOpenPanel} readOnly={readOnly} />
     </QueryClientProvider>,
   )
 }
@@ -262,24 +262,71 @@ describe('Canvas flowers', () => {
     expect(document.querySelector('path[data-edge-id="stem:e2"]')).toBeTruthy()
   })
 
-  it('an old full-size kept take docks into its ring once, after the board settles', async () => {
-    sized()
-    const src = makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })
-    const kept = makeItem({ id: 'k1', board_id: 'b1', x: 700, y: 0, w: 400, h: 300, explore_option_id: 'o1', origin: 'generated', parent_item_id: 'src' })
-    const qc = client(
-      [{ id: 'e1', board_id: 'b1', dx: 300, dy: 0, item_id: 'src', key: 'mood', options: [opt({ id: 'o1', status: 'kept', kept_item_id: 'k1', takes: ['k1'] })] }],
-      [src, kept],
-    )
-    renderBoard(qc)
-    expect(patchItem).not.toHaveBeenCalled()
-    await waitFor(() => expect(patchItem).toHaveBeenCalledTimes(1), { timeout: 3000 })
-    const [id, body] = vi.mocked(patchItem).mock.calls[0]
-    expect(id).toBe('k1')
-    expect(body).toMatchObject({ w: 168, h: 126 })
-    expect(qc.getQueryData<Item[]>(keys.items('b1'))!.find((i) => i.id === 'k1')).toMatchObject(body)
-    expect(undoHistory.size).toBe(0) // not an undoable move
-    await new Promise((r) => setTimeout(r, 1300))
-    expect(patchItem).toHaveBeenCalledTimes(1)
+  describe('dock-in of old kept takes', () => {
+    const board = (readOnly = false) => {
+      sized()
+      const src = makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })
+      const kept = makeItem({ id: 'k1', board_id: 'b1', x: 700, y: 0, w: 400, h: 300, explore_option_id: 'o1', origin: 'generated', parent_item_id: 'src' })
+      const qc = client(
+        [{ id: 'e1', board_id: 'b1', dx: 300, dy: 0, item_id: 'src', key: 'mood', options: [opt({ id: 'o1', status: 'kept', kept_item_id: 'k1', takes: ['k1'] })] }],
+        [src, kept],
+      )
+      renderBoard(qc, undefined, readOnly)
+      return qc
+    }
+    const settle = () => act(() => void vi.advanceTimersByTime(1000))
+    const k1 = (qc: QueryClient) => qc.getQueryData<Item[]>(keys.items('b1'))!.find((i) => i.id === 'k1')!
+    const sizePatches = () => vi.mocked(patchItem).mock.calls.filter(([id, b]) => id === 'k1' && 'w' in b)
+    beforeEach(() => void vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }))
+    afterEach(() => void vi.useRealTimers())
+
+    it('an old full-size kept take docks into its ring once, after the board settles', () => {
+      const qc = board()
+      act(() => void vi.advanceTimersByTime(900))
+      expect(patchItem).not.toHaveBeenCalled()
+      settle()
+      expect(patchItem).toHaveBeenCalledTimes(1)
+      const [id, body] = vi.mocked(patchItem).mock.calls[0]
+      expect(id).toBe('k1')
+      expect(body).toMatchObject({ w: 168, h: 126 })
+      expect(k1(qc)).toMatchObject(body)
+      expect(undoHistory.size).toBe(0) // not an undoable move
+      settle()
+      settle()
+      expect(patchItem).toHaveBeenCalledTimes(1)
+    })
+
+    it('a locked board docks it in locally and writes nothing, again after a refetch', () => {
+      const qc = board(true)
+      settle()
+      expect(k1(qc)).toMatchObject({ w: 168, h: 126 })
+      // a refetch brings the stored size back: the next settle docks it in again
+      act(() => qc.setQueryData<Item[]>(keys.items('b1'), (old) => old!.map((i) => (i.id === 'k1' ? { ...i, w: 400, h: 300 } : i))))
+      settle()
+      settle()
+      expect(k1(qc)).toMatchObject({ w: 168, h: 126 })
+      expect(patchItem).not.toHaveBeenCalled()
+    })
+
+    it('waits while something is held, and docks in once it settles after the release', () => {
+      const qc = board()
+      const node = Konva.stages.at(-1)!.findOne('#src')!
+      const evt = new MouseEvent('mousemove')
+      act(() => {
+        node.fire('dragstart', { evt })
+        node.position({ x: node.x() + 40, y: node.y() })
+        node.fire('dragmove', { evt })
+      })
+      settle()
+      settle()
+      expect(sizePatches()).toEqual([])
+      expect(k1(qc).w).toBe(400)
+      act(() => void node.fire('dragend', { evt }))
+      settle()
+      settle()
+      expect(sizePatches()).toHaveLength(1)
+      expect(k1(qc)).toMatchObject({ w: 168, h: 126 })
+    })
   })
 })
 

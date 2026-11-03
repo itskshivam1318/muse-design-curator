@@ -65,6 +65,12 @@ export function petalAngles(dir: number, n: number): number[] {
 export const petalRadius = (n: number) =>
   Math.max(135, n * 19, n > 1 ? (PETAL + FEEL.gap) / (2 * Math.sin(PETAL_ARC / (n - 1))) : 0)
 
+/** The top-left of a box of `size` centred on `c`, rounded to whole canvas units (as positions are stored). */
+export const topLeft = (c: Point, size: { w: number; h: number }): Point => ({
+  x: Math.round(c.x - size.w / 2),
+  y: Math.round(c.y - size.h / 2),
+})
+
 /** A take's size docked in its ring: DOCKED_W wide, same aspect. */
 export function dockedSize(s: { w: number; h: number }): { w: number; h: number } {
   return { w: DOCKED_W, h: (s.h * DOCKED_W) / s.w }

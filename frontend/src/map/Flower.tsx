@@ -8,8 +8,9 @@ import { type PointerEvent, type WheelEvent, useEffect, useLayoutEffect, useMemo
 import type { ExploreOption, Item, Point } from '../api'
 import type { View } from '../canvas/geometry'
 import { resultCheck } from '../explore/verdict'
+import { liveDockedAt } from '../living/dockIn'
 import { dockedSize } from '../living/ring'
-import { dockedCentre, type FlowerModel } from '../living/scene'
+import type { FlowerModel } from '../living/scene'
 import { useBodyElement, useLivingWorld } from '../living/useLiving'
 import { useItems } from '../queries'
 import { setCollapsed } from './collapse'
@@ -231,11 +232,7 @@ export function FlowerLayer({ boardId, items, view, flowers, locked = false, onW
   // a kept take docks in its ring at once: the slot its petal's option has round the hub where it is now
   const keepAt = (model: FlowerModel, index: number) => (result: Item) => {
     const size = dockedSize(result)
-    const hub = world.body(model.hubId)
-    const source = world.body(model.sourceId)
-    if (!hub || !source) return { size }
-    const c = dockedCentre(model, index, hub, source)
-    return { at: { x: Math.round(c.x - size.w / 2), y: Math.round(c.y - size.h / 2) }, size }
+    return { at: liveDockedAt(world, model, index, size) ?? undefined, size }
   }
 
   let card = null
