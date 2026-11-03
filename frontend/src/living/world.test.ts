@@ -90,6 +90,33 @@ describe('living world', () => {
     off()
   })
 
+  it('stop() then start() inside a subscriber leaves one loop running', () => {
+    let t = 1000
+    let id = 0
+    const queued = new Map<number, FrameRequestCallback>()
+    const world = createLivingWorld({
+      reduced: true,
+      now: () => t,
+      schedule: (f) => (queued.set(++id, f), id),
+      cancel: (h) => void queued.delete(h),
+    })
+    let restart = true
+    world.onFrame(() => {
+      if (!restart) return
+      restart = false
+      world.stop()
+      world.start()
+    })
+    world.start()
+    for (let i = 0; i < 3; i++) {
+      t += 1000 / 60
+      const due = [...queued.values()]
+      queued.clear()
+      for (const f of due) f(t)
+    }
+    expect(queued.size).toBe(1)
+  })
+
   it('place puts a body at a centre at rest; a grabbed body is left to the pointer', () => {
     const { world } = rig()
     world.sync(scene(item('a', 0, 0), item('b', 300, 0)))

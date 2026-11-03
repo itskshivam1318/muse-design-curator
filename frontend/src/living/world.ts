@@ -82,6 +82,7 @@ export function createLivingWorld(opts: LivingWorldOpts): LivingWorld {
   }
 
   const tick = (): void => {
+    const mine = handle // the frame this tick was scheduled as
     const t = now()
     // fixed steps of one 60 Hz frame: the push between bodies is per step, so a variable step would
     // move their resting point every frame (the board would never be still)
@@ -92,7 +93,8 @@ export function createLivingWorld(opts: LivingWorldOpts): LivingWorld {
       pending = Math.max(0, pending - 1)
     }
     for (const fn of [...subs]) fn(t)
-    if (handle !== null) handle = schedule(tick)
+    // a subscriber that stopped (and maybe restarted) the loop replaced the handle: that loop is its own
+    if (handle !== null && handle === mine) handle = schedule(tick)
   }
 
   return {
