@@ -14,7 +14,7 @@ import {
 } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Group, Layer, Line, Rect, Stage } from 'react-konva'
-import { type Exploration, exploreItem, isGenerated, type Item, keys, type PartView, patchItem, type Point, type Region, type UploadOrigin } from '../api'
+import { type Exploration, exploreItem, isGenerated, type Item, keys, patchItem, type Point, type UploadOrigin } from '../api'
 import { useDemo } from '../demo'
 import { withExploration } from '../explore/logic'
 import { itemVerdict } from '../explore/verdict'
@@ -30,8 +30,11 @@ import { Callouts } from '../map/Callouts'
 import { setCollapsed } from '../map/collapse'
 import { FlowerLayer } from '../map/Flower'
 import { RegionOverlay } from '../map/RegionOverlay'
+import { regionOf } from '../map/regions'
 import { useNodeDrop } from '../plugins/nodeDrop'
 import { NodeLayer } from '../plugins/NodeLayer'
+import { ConnectLayer } from '../put/ConnectLayer'
+import { useConnect } from '../put/useConnect'
 import { useAnalysis, useBoardLens, useExplorations, useRegion, visibleItems } from '../queries'
 import { setTool, useTool } from '../shell/tools'
 import type { ItemActions } from './actions'
@@ -172,6 +175,9 @@ export function Canvas({
   const [dropActive, setDropActive] = useState(false)
   const pinch = useRef<{ dist: number; center: Point } | null>(null)
   const { selected } = useSelection()
+  // a put-into line being held: the board neither pans nor marquees
+  const connect = useConnect()
+  const connecting = connect.state.phase === 'drag'
   const palette = useCanvasPalette()
   const reduced = usePrefersReducedMotion()
   const fitted = useRef(false)
@@ -299,7 +305,7 @@ export function Canvas({
   }
 
   const onStageDown = (e: KEvent) => {
-    if (e.target !== stageRef.current || spaceDown || e.evt.button !== 0) return
+    if (e.target !== stageRef.current || spaceDown || connecting || e.evt.button !== 0) return
     if (tool === 'note') {
       e.evt.preventDefault() // keep the mousedown from taking focus away from the editor about to open
       const p = pointerCanvas()
@@ -654,7 +660,7 @@ export function Canvas({
             y={view.y}
             scaleX={view.scale}
             scaleY={view.scale}
-            draggable={spaceDown}
+            draggable={spaceDown && !connecting}
             onWheel={onWheel}
             onDragMove={onStageDrag}
             onDragEnd={onStageDrag}
@@ -752,6 +758,7 @@ export function Canvas({
           <FlowerLayer boardId={boardId} items={visible} view={view} flowers={scene.flowers} viewport={viewport} locked={readOnly} onWheel={onOverlayWheel} onRelease={commitDrag} />
         )}
         <NodeLayer boardId={boardId} items={visible} view={view} size={size} readOnly={readOnly} onWheel={onOverlayWheel} world={world} />
+        <ConnectLayer items={visible} view={view} world={world} readOnly={readOnly} selectedIds={selected} connect={connect} />
         {hoveredItem && hoveredItem.kind !== 'link' && hoveredItem.kind !== 'note' && hoveredItem.parse_status !== 'completed' && (
           <Live items={[hoveredItem]}>{(b) => <StatusTip item={hoveredItem} screen={toScreenBounds(b, view)} />}</Live>
         )}
@@ -915,18 +922,4 @@ function ItemList({ items, selected }: { items: Item[]; selected: readonly strin
       ))}
     </ul>
   )
-}
-
-/**
- * What to draw for a hovered part: its region once known; until then the stored region (a box or a
- * passage is already exact) or, for a mask being found, a loading outline of its bbox. A mask that
- * could not be found falls back to an outline of its bbox (or of the whole item).
- */
-function regionOf(part: PartView | undefined, fetched: Region | undefined, pending: boolean): { region: Region; loading: boolean } | null {
-  if (!part) return null
-  if (fetched) return { region: fetched, loading: false }
-  const r = part.region ?? undefined
-  if (part.region_kind === 'box') return r ? { region: { kind: 'box', box: r }, loading: false } : null
-  if (part.region_kind === 'text_range') return r ? { region: { kind: 'text_range', range: r }, loading: false } : null
-  return { region: { kind: 'mask', box: r }, loading: pending }
 }

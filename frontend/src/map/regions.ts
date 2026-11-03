@@ -1,5 +1,5 @@
 /** Where a part sits on its item: region boxes in canvas units, callout anchors, display tags. */
-import type { PartView, Point, RegionKind } from '../api'
+import type { PartView, Point, Region, RegionKind } from '../api'
 import type { Bounds } from '../canvas/geometry'
 import { NOTE_PAD } from '../canvas/noteSize'
 
@@ -33,4 +33,18 @@ export function partAnchor(item: Bounds, part: PartView, text?: string | null): 
   if (!r || r.length !== 4) return centre
   const b = boxBounds(item, r)
   return { x: b.x + b.width / 2, y: b.y + b.height / 2 }
+}
+
+/**
+ * What to draw for a hovered part: its region once known; until then the stored region (a box or a
+ * passage is already exact) or, for a mask being found, a loading outline of its bbox. A mask that
+ * could not be found falls back to an outline of its bbox (or of the whole item).
+ */
+export function regionOf(part: PartView | undefined, fetched: Region | undefined, pending: boolean): { region: Region; loading: boolean } | null {
+  if (!part) return null
+  if (fetched) return { region: fetched, loading: false }
+  const r = part.region ?? undefined
+  if (part.region_kind === 'box') return r ? { region: { kind: 'box', box: r }, loading: false } : null
+  if (part.region_kind === 'text_range') return r ? { region: { kind: 'text_range', range: r }, loading: false } : null
+  return { region: { kind: 'mask', box: r }, loading: pending }
 }
