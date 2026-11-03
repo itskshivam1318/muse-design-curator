@@ -44,6 +44,7 @@ packages = ["app"]
 testpaths = ["tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
+markers = ["file_db: the client uses a file database, one connection per thread (for concurrent requests)"]
 
 [tool.ruff]
 line-length = 100

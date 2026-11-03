@@ -52,6 +52,7 @@ async def test_render_view_tool_returns_item_with_sync_jobs(
     assert item["parent_item_id"] == ids[0]
 
 
+@pytest.mark.file_db
 async def test_two_views_each_get_their_own_item(ctx: ToolContext, ids: tuple[str, str]) -> None:
     a, b = await asyncio.gather(
         run_tool(ctx, "render_view", {"anchor_id": ids[0], "view": "from the rear"}),

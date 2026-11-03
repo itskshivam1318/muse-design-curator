@@ -96,7 +96,9 @@ def _no_job_database(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
-def client(data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+def client(
+    data_dir: Path, monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> Iterator[TestClient]:
     from app import jobs
     from app.analysis import service as analysis_service
     from app.api import deps
@@ -106,9 +108,16 @@ def client(data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
     from app.main import app
     from app.put import service as put_service
 
-    engine = make_engine(
-        "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
-    )
+    if request.node.get_closest_marker("file_db"):
+        # concurrent in-process requests (two agent tool calls at once) each get their own
+        # connection, as in production; one shared in-memory connection is not thread-safe
+        engine = make_engine(
+            f"sqlite:///{data_dir / 'test.sqlite'}", connect_args={"check_same_thread": False}
+        )
+    else:
+        engine = make_engine(
+            "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
+        )
     run_migrations(engine)
     factory = make_session_factory(engine)
     monkeypatch.setattr(deps, "_factory", lambda: factory)
