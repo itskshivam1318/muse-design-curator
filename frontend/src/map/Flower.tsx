@@ -4,10 +4,12 @@
  * opens its card; the hub collapses the flower to a badge, and dragging it (or the badge) moves the
  * flower. A kept option has no petal: its take is docked in the ring in its place.
  */
+import { useIsMutating } from '@tanstack/react-query'
 import { type PointerEvent, type WheelEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ExploreOption, Item, Point } from '../api'
 import { type Bounds, rectsIntersect, type View } from '../canvas/geometry'
 import { itemBounds } from '../canvas/nodeProps'
+import { exploringKey, hubSummary } from '../explore/logic'
 import { resultCheck } from '../explore/verdict'
 import { liveDockedAt } from '../living/dockIn'
 import { dockedSize } from '../living/ring'
@@ -113,14 +115,13 @@ function usePlaced<T extends HTMLElement>(id: string) {
 export function Flower({ model, source, byId = new Map(), openOption = null, onOpenOption, onToggle, scale = 1, onRelease }: FlowerProps) {
   const hubRef = usePlaced<HTMLDivElement & HTMLButtonElement>(model.hubId)
   const drag = useHubDrag(model.hubId, scale, onRelease)
-  const n = model.options.length
-  const k = model.options.filter(isKept).length
-  const summary = `${n} options · ${k} kept`
+  const exploring = useIsMutating({ mutationKey: exploringKey(model.id) }) > 0
+  const { text: summary, busy } = hubSummary(model.options, exploring)
   if (model.collapsed) {
     const text = `${model.label} · ${summary}`
     return (
       <div role="group" aria-label={`${model.label} flower`} data-exploration-id={model.id}>
-        <button ref={hubRef} type="button" className="flower-badge" aria-label={text} onClick={onToggle} {...drag}>
+        <button ref={hubRef} type="button" className={busy ? 'flower-badge is-busy' : 'flower-badge'} aria-label={text} aria-busy={busy} onClick={onToggle} {...drag}>
           {text}
         </button>
       </div>
@@ -128,9 +129,12 @@ export function Flower({ model, source, byId = new Map(), openOption = null, onO
   }
   return (
     <div role="group" aria-label={`${model.label} flower`} data-exploration-id={model.id}>
-      <div ref={hubRef} className="flower-hub" {...drag}>
+      <div ref={hubRef} className={busy ? 'flower-hub is-busy' : 'flower-hub'} aria-busy={busy} {...drag}>
         <span className="flower-hub-label">{model.label}</span>
-        <span className="flower-hub-sub">{summary}</span>
+        <span className="flower-hub-sub" role="status">
+          {busy && <span className="spinner" aria-hidden="true" />}
+          {summary}
+        </span>
         <button type="button" className="flower-collapse" aria-label={`Collapse ${model.label}`} title="Collapse" onClick={onToggle}>
           –
         </button>

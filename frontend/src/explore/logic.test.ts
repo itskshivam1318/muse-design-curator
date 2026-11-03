@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ExploreOption } from '../api'
-import { optionTree } from './logic'
+import { hubSummary, optionTree, renderErrorText } from './logic'
 
 function opt(over: Partial<ExploreOption> & { id: string }): ExploreOption {
   return {
@@ -31,3 +31,26 @@ describe('optionTree', () => {
   })
 })
 
+
+describe('hubSummary', () => {
+  const opts = [opt({ id: 'a' }), opt({ id: 'b', status: 'visualizing' }), opt({ id: 'c', kept_item_id: 'i9' })]
+
+  it('counts options and kept ones when idle', () => {
+    expect(hubSummary([opt({ id: 'a' }), opt({ id: 'c', kept_item_id: 'i9' })], false)).toEqual({ text: '2 options · 1 kept', busy: false })
+  })
+
+  it('says how many are rendering', () => {
+    expect(hubSummary(opts, false)).toEqual({ text: 'rendering 1…', busy: true })
+  })
+
+  it('says it is exploring first', () => {
+    expect(hubSummary(opts, true)).toEqual({ text: 'exploring…', busy: true })
+  })
+})
+
+describe('renderErrorText', () => {
+  it('does not ask for a retry that cannot help', () => {
+    expect(renderErrorText('REGION_EMPTY')).not.toMatch(/try again/)
+    expect(renderErrorText('IMAGE_EDIT_FAILED')).toBe("Couldn't render, try again.")
+  })
+})

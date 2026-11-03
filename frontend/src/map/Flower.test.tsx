@@ -159,7 +159,8 @@ describe('FlowerLayer', () => {
     // a kept option's take is docked in the ring in its place: no petal
     expect(petal('o4')).toBeNull()
     expect(petal('o5').className).toContain('is-drifted')
-    expect(within(hub('Hand style')).getByText('5 options · 1 kept')).toBeTruthy()
+    // one is rendering: the hub says so instead of its counts
+    expect(within(hub('Hand style')).getByText('rendering 1…')).toBeTruthy()
   })
 
   it('a petal opens its card, focused, so Escape closes it at once', async () => {

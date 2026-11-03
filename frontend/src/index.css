@@ -1305,8 +1305,23 @@ button.onboarding-step:hover {
   font-weight: 600;
 }
 .flower-hub-sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font: 10px var(--f-mono);
   opacity: 0.85;
+}
+/* the hub's work under way: exploring for more, or renders running */
+.flower-hub-sub .spinner {
+  width: 8px;
+  height: 8px;
+  margin-left: 0;
+  border-width: 1.5px;
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+}
+.flower-hub.is-busy .flower-hub-sub {
+  opacity: 1;
 }
 .flower-collapse {
   position: absolute;
@@ -1668,6 +1683,27 @@ button.onboarding-step:hover {
 }
 .callout-dim:disabled {
   cursor: default;
+}
+/* exploring this dimension: a spinner at the row's end until its flower opens */
+.callout-dim[aria-busy='true'] {
+  position: relative;
+  padding-right: 26px;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  cursor: progress;
+}
+.callout-dim[aria-busy='true']::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  width: 10px;
+  height: 10px;
+  margin-top: -7px;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 .callout-dim.is-stale {
   color: var(--muted);

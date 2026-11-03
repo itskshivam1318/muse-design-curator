@@ -4,7 +4,7 @@
  * this, or Retry / Drop when it drifted; always More like this and Dismiss. (A kept option has no petal,
  * so no card: its take is docked in the ring, and selecting it opens its own dimensions.)
  */
-import { useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiError,
@@ -18,7 +18,7 @@ import {
   type Point,
   visualizeOption,
 } from '../api'
-import { visualizeInProgress, withExploration, withOption } from '../explore/logic'
+import { exploringKey, renderErrorText, visualizeInProgress, withExploration, withOption } from '../explore/logic'
 import { dismissOption } from '../explore/optionActions'
 import { resultCheck } from '../explore/verdict'
 import { useLivingWorld } from '../living/useLiving'
@@ -150,9 +150,14 @@ export function PetalCard({ option, dimension, item, keepAt, onClose, locked = f
       onClose?.()
     }, 'Could not dismiss')
 
+  // keyed by the exploration, so its hub shows the explore running (the card may close first)
+  const exploreMore = useMutation({
+    mutationKey: exploringKey(live.exploration_id),
+    mutationFn: () => exploreItem(item.id, { key: dimension.key, mode: 'more', parent_option_id: live.id }),
+  })
   const more = () =>
     act(async () => {
-      const e = await exploreItem(item.id, { key: dimension.key, mode: 'more', parent_option_id: live.id })
+      const e = await exploreMore.mutateAsync()
       qc.setQueryData<Exploration[]>(keys.explorations(boardId), (old) => withExploration(old, e))
     }, 'Could not explore')
 
@@ -241,15 +246,15 @@ export function PetalCard({ option, dimension, item, keepAt, onClose, locked = f
           )}
         </div>
       )}
-      {!rendering && live.last_error && <p className="error small">Couldn't render, try again.</p>}
+      {!rendering && live.last_error && <p className="error small">{renderErrorText(live.last_error)}</p>}
       {error && (
         <p className="error small" role="alert">
           {error}
         </p>
       )}
       <div className="petal-more">
-        <button type="button" className="btn-quiet small" disabled={locked || busy} onClick={() => void more()}>
-          More like this
+        <button type="button" className="btn-quiet small" disabled={locked || busy} aria-busy={exploreMore.isPending} onClick={() => void more()}>
+          {exploreMore.isPending ? 'Exploring…' : 'More like this'}
         </button>
         <button type="button" className="btn-quiet small" disabled={locked || busy} onClick={() => void dismiss()}>
           Dismiss

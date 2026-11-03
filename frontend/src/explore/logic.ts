@@ -56,3 +56,22 @@ export function withOption(list: Exploration[] | undefined, option: ExploreOptio
 /** A visualize refused because one is already running for the option: its job's events will follow. */
 export const visualizeInProgress = (e: unknown): boolean =>
   e instanceof ApiError && e.status === 409 && e.code === 'VISUALIZE_IN_PROGRESS'
+
+/** The mutation key of a "More like this" explore on one exploration (its hub shows it running). */
+export const exploringKey = (explorationId: string) => ['explore-more', explorationId] as const
+
+/** What a flower's hub says under its label: the work under way first, else its counts. */
+export function hubSummary(options: ExploreOption[], exploring: boolean): { text: string; busy: boolean } {
+  const rendering = options.filter((o) => o.status === 'visualizing').length
+  if (exploring) return { text: 'exploring…', busy: true }
+  if (rendering) return { text: `rendering ${rendering}…`, busy: true }
+  const kept = options.filter((o) => o.kept_item_id).length
+  return { text: `${options.length} options · ${kept} kept`, busy: false }
+}
+
+/** Why a render did not land, from the option's last_error code: a retry only helps some. */
+export function renderErrorText(code: string): string {
+  if (code === 'REGION_EMPTY') return "Couldn't find this part in the image. Re-analyse the item to find it again."
+  if (code === 'PART_NOT_FOUND') return 'This part is gone from the item.'
+  return "Couldn't render, try again."
+}
