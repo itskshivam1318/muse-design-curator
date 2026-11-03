@@ -1,7 +1,6 @@
 from typing import Any
 
 from app.agent import run_state
-from app.agent.checks import output_item_ids
 from app.agent.context import ToolContext, api_error, board_items
 
 SHEET_GAP = 80  # between the board's bounding box and the sheet
@@ -155,7 +154,8 @@ async def _lay_out(
 
 
 def _origin(rest: list[dict[str, Any]]) -> tuple[float, float]:
-    """Right of the bounding box of everything not on the sheet, top-aligned with it."""
+    """Right of the bounding box of everything not going on the new sheet (an item the previous
+    sheet held but this one drops counts, so the new sheet clears it), top-aligned with it."""
     if not rest:
         return 0.0, 0.0
     return (
@@ -191,7 +191,7 @@ async def run(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
         status, res = await ctx.api.delete(f"/api/items/{note_id}")
         if status not in (204, 404):
             return api_error(status, res)
-    on_sheet = set(output_item_ids(current))
+    on_sheet = {e["item_id"] for section in sections for e in section["items"]}
     origin = _origin([i for i in live.values() if i["id"] not in on_sheet])
     note_ids: list[str] = []
     try:

@@ -4,6 +4,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.agent import checks, run_state
 from app.agent.context import ToolContext, board_items
+from app.providers.reasoning import MAX_STRUCTURED_IMAGES
 
 REFUSALS_MAX = 3
 SUMMARY_MAX = 2000
@@ -29,10 +30,13 @@ DEFINITION = {
 
 
 async def _images(ctx: ToolContext, item_ids: list[str]) -> tuple[list[bytes], list[str]]:
-    """The images of the output items that have one (notes do not), with their ids."""
+    """The images of the output items that have one (notes do not), with their ids; at most
+    the first MAX_STRUCTURED_IMAGES, as many as the consistency check looks at."""
     images: list[bytes] = []
     shown: list[str] = []
     for item_id in item_ids:
+        if len(images) >= MAX_STRUCTURED_IMAGES:
+            break
         response = await ctx.api.get_bytes(f"/api/items/{item_id}/image?size=full")
         if response is not None:
             images.append(response)
@@ -41,6 +45,8 @@ async def _images(ctx: ToolContext, item_ids: list[str]) -> tuple[list[bytes], l
 
 
 async def _problems(ctx: ToolContext, run: dict[str, Any]) -> list[str] | dict[str, Any]:
+    """Deliverable problems; only when there are none, the consistency check, which runs only
+    with at least 2 output images (one image has nothing to be inconsistent with)."""
     items = await board_items(ctx)
     if isinstance(items, dict):
         return items

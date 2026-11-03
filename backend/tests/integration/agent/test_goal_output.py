@@ -116,8 +116,10 @@ async def test_compose_output_lays_out_and_stores(
     a = _image(client, board, 1, x=0, y=0)
     b = _image(client, board, 2, x=500, y=100)
     c = _image(client, board, 3, x=1000, y=40)
+    _image(client, board, 4, x=1500, y=60)  # stays on the board
     before = _items(client, board)
-    right = max(i["x"] + i["w"] for i in before.values())
+    rest = [i for i in before.values() if i["id"] not in (a, b, c)]
+    right = max(i["x"] + i["w"] for i in rest)
     run_id = await _goal(ctx, "front", "side")
     with events.subscribe(board) as sub:
         res = await tools.run_tool(
@@ -147,7 +149,7 @@ async def test_compose_output_lays_out_and_stores(
     assert texts[0] == "Cabin" and "front" in texts and "side" in texts
     assert {"shows front", "shows side"} <= set(texts)
     title = notes[0]
-    assert (title["x"], title["y"]) == (left, min(i["y"] for i in before.values()))
+    assert (title["x"], title["y"]) == (left, min(i["y"] for i in rest))
     caption_a = next(
         n for n in notes if n["note_text"] == "shows front" and n["x"] == after[a]["x"]
     )
@@ -174,6 +176,17 @@ async def test_compose_output_replaces_previous_sheet(
     assert not set(first) & set(live)
     assert set(second["note_ids"]) <= set(live)
     assert second["title"] == "Two" and live[second["note_ids"][0]]["note_text"] == "Two"
+    sheet = [live[b]] + [live[n] for n in second["note_ids"]]
+    assert not any(_overlap(live[a], s) for s in sheet)  # a, dropped, stays clear of the sheet
+
+
+def _overlap(p: dict[str, Any], q: dict[str, Any]) -> bool:
+    return (
+        p["x"] < q["x"] + q["w"]
+        and q["x"] < p["x"] + p["w"]
+        and p["y"] < q["y"] + q["h"]
+        and q["y"] < p["y"] + p["h"]
+    )
 
 
 async def test_compose_output_refusals(ctx: ToolContext, client: TestClient, board: str) -> None:
