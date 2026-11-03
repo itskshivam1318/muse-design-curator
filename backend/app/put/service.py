@@ -226,12 +226,12 @@ def _png(img: Image.Image, info: PngInfo | None = None) -> bytes:
     return buf.getvalue()
 
 
-def _stamped(img: Image.Image, model: str, job_id: str) -> bytes:
+def _stamped(img: Image.Image, model: str, job_id: str, key: str = "muse:put") -> bytes:
     """PNG bytes carrying their provenance and the job, so the same result twice (a
     deterministic model) is still a distinct file for the board's sha index."""
     info = PngInfo()
     info.add_text("Software", model)
-    info.add_text("muse:put", job_id)
+    info.add_text(key, job_id)
     return _png(img, info)
 
 
