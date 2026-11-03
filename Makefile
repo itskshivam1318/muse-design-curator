@@ -1,6 +1,6 @@
 export PATH := $(HOME)/.local/bin:$(PATH)
 
-.PHONY: install dev test lint e2e seed import index demo-data ext smoke
+.PHONY: install dev test lint e2e seed import index demo-data ext smoke demo-record
 
 install:
 	uv python install 3.12
@@ -48,3 +48,8 @@ ext:
 
 smoke:
 	cd backend && uv run python scripts/smoke_meta.py
+
+# Film a board while Claude Code works it (docs/demo/boards.md): make demo-record BOARD=<id> SLUG=<slug>
+demo-record:
+	@test -n "$(BOARD)" -a -n "$(SLUG)" || (echo "usage: make demo-record BOARD=<id> SLUG=<car|ui|room|outerwear>"; exit 2)
+	node frontend/scripts/record-board.mjs --board "$(BOARD)" --slug "$(SLUG)" $(if $(APP),--app $(APP)) $(if $(API),--api $(API)) $(if $(MAX_MIN),--max-min $(MAX_MIN))
