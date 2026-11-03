@@ -590,6 +590,7 @@ export function Canvas({
     const live = explorations?.find((e) => e.item_id === item.id && e.key === key)
     if (live) {
       setCollapsed(boardId, live.id, false)
+      world.pulse(`hub:${live.id}`) // a swell on the hub says where it is
       // out of sight: bring its hub into view
       const hub = world.body(`hub:${live.id}`)
       const v = viewport

@@ -9,6 +9,12 @@ import { stubCanvasContext } from '../test/canvasStub'
 import { makeItem } from '../test/fixtures'
 import { selection } from './selection'
 
+// remember each world the canvas makes, so a test can watch it
+const worlds: import('../living/world').LivingWorld[] = []
+vi.mock('../living/world', async (orig) => {
+  const m = await orig<typeof import('../living/world')>()
+  return { ...m, createLivingWorld: (...a: Parameters<typeof m.createLivingWorld>) => { const w = m.createLivingWorld(...a); worlds.push(w); return w } }
+})
 vi.mock('../api', async (orig) => ({
   ...(await orig<typeof import('../api')>()),
   getRegion: vi.fn(() => Promise.resolve({ kind: 'mask', box: [0.4, 0.2, 0.6, 0.5], mask_url: '/api/media/masks/hands.png' })),
@@ -121,6 +127,22 @@ describe('Canvas flowers', () => {
     act(() => selection.select(['src']))
     fireEvent.click(screen.getByRole('button', { name: 'Hand style · syringe' }))
     await waitFor(() => expect(screen.getAllByTestId('petal')).toHaveLength(1))
+    expect(exploreItem).not.toHaveBeenCalled()
+  })
+
+  it('opening an existing dimension pulses its hub', async () => {
+    sized()
+    const qc = client(
+      [{ id: 'e1', board_id: 'b1', dx: null, dy: null, item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1' })] }],
+      [makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })],
+    )
+    qc.setQueryData(keys.analysis('src'), analysis)
+    renderBoard(qc)
+    const world = worlds[worlds.length - 1]
+    const pulse = vi.spyOn(world, 'pulse')
+    act(() => selection.select(['src']))
+    fireEvent.click(screen.getByRole('button', { name: 'Hand style · syringe' }))
+    await waitFor(() => expect(pulse).toHaveBeenCalledWith('hub:e1'))
     expect(exploreItem).not.toHaveBeenCalled()
   })
 

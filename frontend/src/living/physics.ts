@@ -51,6 +51,7 @@ export const FEEL = {
   growMs: 450,
   hubLeadMs: 260,
   petalStaggerMs: 70,
+  calloutStaggerMs: 45,
 }
 
 const GROW_REDUCED_MS = 250

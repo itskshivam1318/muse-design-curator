@@ -237,11 +237,12 @@ export function buildScene(input: SceneInput): Scene {
   if (selected && selectedCards) {
     const analysis = analyses.get(selected.id)!
     const b = itemBounds(selected)
+    let n = 0
     for (const [card, { angle }] of selectedCards) {
       const p = ellipsePoint({ w: b.width, h: b.height }, angle, CALLOUT_GAP)
       const size = calloutSize(selected, analysis, card, formsOn(card))
       const h = calloutHeights?.get(card) ?? size.h
-      specs.push({ id: calloutId(selected.id, card), kind: 'callout', w: size.w, h, home: rel(selected.id, p), ignore: selected.id })
+      specs.push({ id: calloutId(selected.id, card), kind: 'callout', w: size.w, h, home: rel(selected.id, p), ignore: selected.id, delay: n++ * FEEL.calloutStaggerMs })
     }
   }
   if (selected && toolbar) {

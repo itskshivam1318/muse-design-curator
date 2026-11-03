@@ -70,6 +70,12 @@ there. **Extract** cuts a part out as a linked item. **Notes**: press `N` and cl
 board. **Plugins** are nodes you add from the rail and place from the toolbar's Nodes menu; see
 [Plugins](#plugins) and [docs/plugins.md](docs/plugins.md).
 
+**The board floats.** Items, flowers, petals and callouts drift gently and nudge aside as you drag
+or add things; a new item grows in and its neighbours make room. The positions you save are *homes*:
+what the board drifts around. Drift and pushes are never saved; only a release (a drag, a hub drag)
+or a keep writes a position. With the system's reduce-motion setting on, nothing drifts or
+overshoots, though things still glide out of the way.
+
 ## Explore → Visualize
 
 Select an item and its **callouts** show what Muse read: one card per part with its physical

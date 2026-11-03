@@ -224,3 +224,27 @@ test('wide screenshot: UI callouts with boxes', async ({ page }) => {
   await callout(page, 'Primary button').hover()
   await expect(page.getByTestId('region-overlay')).toHaveAttribute('data-state', 'box')
 })
+
+test('stems connect with nothing selected', async ({ page }) => {
+  await boardWith(page, 'E2E stems', ['watch_01.jpg'])
+  await selectItem(page, /^image watch_01\.jpg/)
+  await openDimension(page, 'Body colour')
+  await openDimension(page, 'Detail style')
+  await page.keyboard.press('Escape')
+  const flowers = page.locator('[data-exploration-id]')
+  await expect(page.locator('.flower-hub').first()).toBeVisible() // the group itself has no box
+  // no callouts any more: every flower still has its stem
+  await expect(page.locator('.callout-layer').getByRole('group')).toHaveCount(0)
+  const stems = page.locator('path[data-edge-kind="stem"]')
+  await expect.poll(async () => (await stems.count()) >= (await flowers.count())).toBe(true)
+  expect(await flowers.count()).toBeGreaterThanOrEqual(2)
+})
+
+test('the add button uploads an image', async ({ page }) => {
+  const boardId = await createBoard(page, 'E2E add button')
+  await page.getByRole('button', { name: 'Add to board', exact: true }).click()
+  await page.getByLabel('Choose images or video to upload').setInputFiles(sitePath('watch_03.jpg'))
+  await expectItemCount(page, 1)
+  await expect.poll(async () => (await boardItems(boardId)).length).toBe(1)
+  await expect(page.getByRole('button', { name: /^image watch_03\.jpg/ })).toBeVisible()
+})

@@ -151,6 +151,26 @@ describe('physics', () => {
     expect(b.vx).toBe(0)
   })
 
+  it('growScale follows easeOutBack and the keep swell decays within 700 ms', () => {
+    const w = createWorld()
+    syncWorld(w, [item('a', 0, 0)], 1000)
+    const a = w.bodies.get('a')!
+    expect(growScale(a, 1000, false)).toBeCloseTo(0, 5)
+    // easeOutBack overshoots 1 on the way in, then settles exactly
+    const mid = Array.from({ length: 45 }, (_, i) => growScale(a, 1000 + i * 10, false))
+    expect(Math.max(...mid)).toBeGreaterThan(1.02)
+    expect(growScale(a, 1000 + FEEL.growMs, false)).toBeCloseTo(1, 5)
+    // reduced motion: linear, never past 1
+    const lin = Array.from({ length: 40 }, (_, i) => growScale(a, 1000 + i * 10, true))
+    expect(Math.max(...lin)).toBeLessThanOrEqual(1)
+    expect(growScale(a, 1125, true)).toBeCloseTo(0.5, 5)
+    // the keep swell: up at the middle of its 700 ms, gone by the end
+    a.pulseAt = 5000
+    expect(growScale(a, 5350, false)).toBeGreaterThan(1.1)
+    expect(growScale(a, 5700, false)).toBe(1)
+    expect(growScale(a, 6000, false)).toBe(1)
+  })
+
   it('a body whose parent is gone keeps its place', () => {
     const w = createWorld()
     syncWorld(w, [item('p', 0, 0), { id: 'c', kind: 'petal', w: 20, h: 20, home: { kind: 'rel', to: 'p', dx: 100, dy: 0 } }], 0)

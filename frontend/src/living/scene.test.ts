@@ -131,9 +131,9 @@ describe('buildScene', () => {
     expect(callouts.map((b) => b.id)).toEqual(['callout:a:hands', 'callout:a:whole:item'])
     const hands = ellipsePoint({ w: 200, h: 150 }, cardAngles[0], CALLOUT_GAP)
     expect(callouts[0]).toEqual({
-      id: 'callout:a:hands', kind: 'callout', ...calloutSize(item, analysis, 'hands'), home: { kind: 'rel', to: 'a', dx: hands.x, dy: hands.y }, ignore: 'a',
+      id: 'callout:a:hands', kind: 'callout', ...calloutSize(item, analysis, 'hands'), home: { kind: 'rel', to: 'a', dx: hands.x, dy: hands.y }, ignore: 'a', delay: 0,
     })
-    expect(callouts[1]).toMatchObject({ w: CALLOUT_W, h: calloutSize(item, analysis, WHOLE, 1).h })
+    expect(callouts[1]).toMatchObject({ delay: FEEL.calloutStaggerMs, w: CALLOUT_W, h: calloutSize(item, analysis, WHOLE, 1).h })
     expect(edge(s, 'leader:e1')).toEqual({ id: 'leader:e1', kind: 'leader', from: { body: 'a', anchor: handsFrac }, to: { body: 'callout:a:hands' } })
     expect(edge(s, 'stem:e1')).toEqual({ id: 'stem:e1', kind: 'stem', from: { body: 'callout:a:hands' }, to: { body: 'hub:e1' } })
     expect(edge(s, 'leader:e2')).toMatchObject({ from: { body: 'a' }, to: { body: 'callout:a:whole:item' } })

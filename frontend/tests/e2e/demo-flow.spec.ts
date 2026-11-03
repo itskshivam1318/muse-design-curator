@@ -108,6 +108,17 @@ test('demo flow: board, references, lens, link, video, explore, keep, not this, 
     await selectItem(page, /^image watch_01\.jpg/)
     sourceId = (await boardItems(boardId)).find((i) => i.original_filename === 'watch_01.jpg')!.id
     await expect(callout(page, 'Body')).toBeVisible()
+    // the selected item sits at the board's top edge, its floating callouts above the view: pan down to them
+    const c = (await canvas(page).boundingBox())!
+    await page.mouse.move(c.x + c.width / 2, c.y + c.height / 2)
+    await expect
+      .poll(async () => {
+        const y = (await callout(page, 'Body').boundingBox())?.y ?? -1
+        if (y > c.y) return true
+        await page.mouse.wheel(0, -120) // one step at a time, until the callouts are in view
+        return false
+      })
+      .toBe(true)
     const f = await openDimension(page, 'Body colour')
     await expect(f.locator('img')).toHaveCount(0) // options are notes: nothing rendered yet
   })
@@ -121,11 +132,14 @@ test('demo flow: board, references, lens, link, video, explore, keep, not this, 
     await expectItemCount(page, 8)
     const kept = (await boardItems(boardId)).filter((i) => i.parent_item_id === sourceId && !i.staged)
     expect(kept).toHaveLength(1)
-    await expect(f.locator(`[data-option-id="${optionId}"]`)).toHaveAttribute('aria-label', / · kept$/)
+    // a kept option has no petal: its take is docked in the ring (an item), and the hub counts it
+    await expect(f.locator(`[data-option-id="${optionId}"]`)).toHaveCount(0)
+    await expect(f.locator('.flower-hub')).toContainText('1 kept')
   })
 
   await test.step('8. drop another option as "Not this"; mark an item not-this', async () => {
     const f = flower(page, 'Body colour')
+    await panToReach(page, f) // its card must not open under the tool dock
     const before = await f.getByTestId('petal').count()
     const other = f.locator('[data-testid="petal"]:not(.is-kept)').first()
     await other.click()
@@ -150,7 +164,8 @@ test('demo flow: board, references, lens, link, video, explore, keep, not this, 
     const after = await boardItems(boardId)
     const children = after.filter((i) => i.parent_item_id === sourceId && !i.staged)
     expect(children.map((i) => i.role)).toEqual(['reference']) // the kept result
-    await expect(page.locator(`[data-testid="petal"][data-option-id="${optionId}"]`)).toHaveAttribute('aria-label', / · kept$/)
+    await expect(page.locator(`[data-testid="petal"][data-option-id="${optionId}"]`)).toHaveCount(0)
+    await expect(flower(page, 'Body colour').locator('.flower-hub')).toContainText('1 kept')
     // the chosen video frame survived the reload
     const video = after.find((i) => i.kind === 'video')!
     const { frames } = await apiJson<{ frames: { chosen: boolean; t_ms: number }[] }>(`/items/${video.id}/frames`)

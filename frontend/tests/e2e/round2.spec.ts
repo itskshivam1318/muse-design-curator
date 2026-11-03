@@ -66,21 +66,21 @@ test('flower: render, keep, reload, branch from the kept result', async ({ page 
   const optionId = (await f.locator('.petal.is-open').getAttribute('data-option-id'))!
   await card.getByRole('button', { name: 'Keep', exact: true }).click()
   await expectItemCount(page, 2)
+  // a kept option has no petal: its take is docked in the ring (an ordinary item) and the hub counts it
   const kept = () => page.locator(`[data-testid="petal"][data-option-id="${optionId}"]`)
-  await expect(kept()).toHaveAttribute('aria-label', / · kept$/)
-  // only the kept petal shows its result grown; it is on the board as an ordinary item
-  await expect(page.locator('.petal.is-kept')).toHaveCount(1)
+  await expect(kept()).toHaveCount(0)
+  await expect(f.locator('.flower-hub')).toContainText('1 kept')
+  await expect(page.locator('.petal.is-kept')).toHaveCount(0)
 
   await page.reload()
   await expectItemCount(page, 2)
-  await expect(kept()).toHaveAttribute('aria-label', / · kept$/)
+  await expect(f.locator('.flower-hub')).toContainText('1 kept')
+  await expect(kept()).toHaveCount(0)
 
-  // Branch selects the kept result: its own callouts open from there
-  await kept().click()
-  await page.locator('.petal-card').getByRole('button', { name: 'Branch' }).click()
+  // the docked take is selected like any item: its own callouts open from there
   const keptItem = (await boardItems(boardId)).find((i) => i.parent_item_id && !i.staged)!
-  const pressed = page.getByRole('list', { name: 'Items on this board' }).locator('button[aria-pressed="true"]')
-  await expect(pressed).toContainText(keptItem.original_filename ?? keptItem.id)
+  await page.mouse.move(5, 5)
+  await selectItem(page, new RegExp(`^image .*${escapeRe(keptItem.original_filename ?? keptItem.page_title ?? keptItem.id)}`))
   await expect(callout(page, 'Detail')).toBeVisible()
 })
 
