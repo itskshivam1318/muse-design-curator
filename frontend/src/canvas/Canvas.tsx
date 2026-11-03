@@ -527,7 +527,17 @@ export function Canvas({
   // the put-in card and its ghosts: bodies too, so nothing overlaps them
   const ghosts = useGhosts(boardId)
   const putCardAt = connect.state.phase === 'card' ? connect.state.cardAt : null
-  const extras = useMemo(() => putBodies(putCardAt, ghosts, view.scale), [putCardAt, ghosts, view.scale])
+  // the card as drawn (screen px), measured like the toolbar: the estimate only until then
+  const [putCardSize, setPutCardSize] = useState<{ width: number; height: number } | null>(null)
+  const onPutCardSize = useCallback(
+    (next: { width: number; height: number } | null) =>
+      setPutCardSize((cur) => (cur?.width === next?.width && cur?.height === next?.height ? cur : next)),
+    [],
+  )
+  const extras = useMemo(
+    () => putBodies(putCardAt, ghosts, view.scale, putCardSize),
+    [putCardAt, ghosts, view.scale, putCardSize],
+  )
   const scene = useLivingScene(boardId, visible, calloutItem && showCallouts ? calloutItem.id : null, {
     calloutHeights,
     toolbar,
@@ -765,7 +775,17 @@ export function Canvas({
           <FlowerLayer boardId={boardId} items={visible} view={view} flowers={scene.flowers} viewport={viewport} locked={readOnly} onWheel={onOverlayWheel} onRelease={commitDrag} />
         )}
         <NodeLayer boardId={boardId} items={visible} view={view} size={size} readOnly={readOnly} onWheel={onOverlayWheel} world={world} />
-        <ConnectLayer boardId={boardId} items={visible} view={view} world={world} readOnly={readOnly} selectedIds={selected} connect={connect} />
+        <ConnectLayer
+          boardId={boardId}
+          items={visible}
+          view={view}
+          world={world}
+          readOnly={readOnly}
+          selectedIds={selected}
+          connect={connect}
+          toolbar={toolbar}
+          onCardSize={onPutCardSize}
+        />
         {hoveredItem && hoveredItem.kind !== 'link' && hoveredItem.kind !== 'note' && hoveredItem.parse_status !== 'completed' && (
           <Live items={[hoveredItem]}>{(b) => <StatusTip item={hoveredItem} screen={toScreenBounds(b, view)} />}</Live>
         )}

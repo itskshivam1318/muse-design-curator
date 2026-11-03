@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { type AnalysisView, type Item, keys, type PartView } from '../api'
 import type { LivingWorld } from '../living/world'
@@ -16,7 +16,7 @@ vi.mock('../api', async (orig) => ({
 const { getRegion, putInto } = await import('../api')
 const { ghostStore, removeGhost } = await import('./ghosts')
 const { ConnectLayer } = await import('./ConnectLayer')
-const { putBodies } = await import('./bodies')
+const { cardPlace, putBodies } = await import('./bodies')
 const { itemUnder, useConnect } = await import('./useConnect')
 
 afterEach(() => {
@@ -231,6 +231,59 @@ describe('putBodies', () => {
       { id: 'ghost:j1', kind: 'item', w: 400, h: 200, home: { kind: 'abs', x: 960, y: 100 } },
     ])
     expect(putBodies(null, [], 1)).toEqual([])
+  })
+
+  it('a taller measured card gives a taller body (screen px over the zoom); the estimate until measured', () => {
+    const at = { x: 0, y: 0 }
+    expect(putBodies(at, [], 2, { width: 260, height: 300 })[0]).toMatchObject({ w: 130, h: 150 })
+    expect(putBodies(at, [], 2, null)[0]).toMatchObject({ w: 130, h: 85 })
+  })
+})
+
+describe('useConnect release', () => {
+  it('with no place for its card, the card (and so its body) sits at the line\'s end', () => {
+    const { result } = renderHook(() => useConnect())
+    act(() => result.current.start('src', { x: 200, y: 100 }))
+    act(() => result.current.move({ x: 380, y: 150 }, { targetId: 'tgt', spots: [{ kind: 'point', fx: 0.2, fy: 0.75 }] }))
+    act(() => result.current.release())
+    const s = result.current.state
+    expect(s.phase === 'card' && s.cardAt).toEqual({ x: 380, y: 150 })
+    expect(putBodies(s.phase === 'card' ? s.cardAt : null, [], 1)[0]).toMatchObject({ id: 'put-card', home: { kind: 'abs', x: 380, y: 150 } })
+  })
+})
+
+describe('cardPlace', () => {
+  const card = { w: 260, h: 170 }
+  const box = (c: { x: number; y: number }) => ({ x: c.x - card.w / 2, y: c.y - card.h / 2, width: card.w, height: card.h })
+  const meets = (a: { x: number; y: number; width: number; height: number }, b: typeof a) =>
+    a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+  const source = { x: 0, y: 0, width: 200, height: 200 }
+  const toolbar = { w: 320, h: 50 }
+  const toolbarBox = { x: 100 - 160, y: -50, width: 320, height: 50 }
+
+  it('pictures 100 px apart: the card is beside the target, away from the source, clear of it and its toolbar', () => {
+    const target = { x: 300, y: 0, width: 400, height: 200 }
+    const c = box(cardPlace(source, target, card, toolbar))
+    expect(meets(c, source)).toBe(false)
+    expect(meets(c, toolbarBox)).toBe(false)
+    expect(meets(c, target)).toBe(false)
+    expect(c.x).toBeGreaterThan(700)
+  })
+
+  it('a target to the left: the card goes on its left', () => {
+    const target = { x: -500, y: 50, width: 400, height: 200 }
+    const c = box(cardPlace(source, target, card, toolbar))
+    expect(meets(c, source)).toBe(false)
+    expect(meets(c, target)).toBe(false)
+    expect(c.x + c.width).toBeLessThan(-500)
+  })
+
+  it('a wide source reaching past the target still leaves the card clear of it', () => {
+    const wide = { x: 0, y: 300, width: 1200, height: 200 }
+    const target = { x: 400, y: 0, width: 200, height: 200 }
+    const c = box(cardPlace(wide, target, card, toolbar))
+    expect(meets(c, wide)).toBe(false)
+    expect(meets(c, { x: 600 - 160, y: 250, width: 320, height: 50 })).toBe(false)
   })
 })
 

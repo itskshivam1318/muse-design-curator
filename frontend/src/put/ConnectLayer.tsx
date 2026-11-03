@@ -15,7 +15,7 @@ import type { LivingWorld } from '../living/world'
 import { RegionOverlay } from '../map/RegionOverlay'
 import { regionOf } from '../map/regions'
 import { useAnalysis, useRegion } from '../queries'
-import { PUT_CARD_ID, PUT_CARD_W } from './bodies'
+import { cardPlace, PUT_CARD_H, PUT_CARD_ID, PUT_CARD_W } from './bodies'
 import { GhostTile } from './GhostTile'
 import { addGhost, useGhosts } from './ghosts'
 import { PutCard } from './PutCard'
@@ -31,11 +31,15 @@ interface Props {
   readOnly: boolean
   selectedIds: readonly string[]
   connect: ReturnType<typeof useConnect>
+  /** The selection toolbar's size (canvas units, its gap included): the card opens clear of it. */
+  toolbar?: { w: number; h: number }
+  /** The open card's drawn size (screen px), for its body; null once it closes. */
+  onCardSize?: (size: { width: number; height: number } | null) => void
 }
 
 const SPOKE_SAG = 22
 
-export function ConnectLayer({ boardId, items, view, world, readOnly, selectedIds, connect }: Props) {
+export function ConnectLayer({ boardId, items, view, world, readOnly, selectedIds, connect, toolbar, onCardSize }: Props) {
   const qc = useQueryClient()
   const { state } = connect
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items])
@@ -103,14 +107,13 @@ export function ConnectLayer({ boardId, items, view, world, readOnly, selectedId
     last.current = p
     connect.move(p, aim(p))
   }
-  // the card opens on the line, midway, and stays there; the line's end keeps to its spot on the target
+  // the card opens beside the target, clear of the source, and stays there; the line's end keeps to its spot
   const place = (line: { sourceId: string; targetId: string; at: Point }): Placed | null => {
     const s = liveBounds(line.sourceId)
     const t = liveBounds(line.targetId)
     if (!s || !t) return null
-    const from = { x: s.x + s.width, y: s.y + s.height / 2 }
     return {
-      cardAt: { x: (from.x + line.at.x) / 2, y: (from.y + line.at.y) / 2 },
+      cardAt: cardPlace(s, t, { w: PUT_CARD_W / view.scale, h: PUT_CARD_H / view.scale }, toolbar),
       endOn: { fx: (line.at.x - t.x) / t.width, fy: (line.at.y - t.y) / t.height },
     }
   }
@@ -162,7 +165,16 @@ export function ConnectLayer({ boardId, items, view, world, readOnly, selectedId
         />
       )}
       {state.phase === 'card' && source && target && (
-        <CardOnLine key={`${state.sourceId}>${state.targetId}`} boardId={boardId} source={source} target={target} state={state} view={view} connect={connect} />
+        <CardOnLine
+          key={`${state.sourceId}>${state.targetId}`}
+          boardId={boardId}
+          source={source}
+          target={target}
+          state={state}
+          view={view}
+          connect={connect}
+          onSize={onCardSize}
+        />
       )}
       {ghosts.map((g) => (
         <GhostTile key={g.jobId} ghost={g} view={view} />
@@ -174,16 +186,17 @@ export function ConnectLayer({ boardId, items, view, world, readOnly, selectedId
 type CardState = Extract<Connect, { phase: 'card' }>
 
 /** The card where its body is (it never moves: it is placed when the line is let go). */
-function CardOnLine({ boardId, source, target, state, view, connect }: {
+function CardOnLine({ boardId, source, target, state, view, connect, onSize }: {
   boardId: string
   source: Item
   target: Item
   state: CardState
   view: View
   connect: ReturnType<typeof useConnect>
+  onSize?: (size: { width: number; height: number } | null) => void
 }) {
   const live = useLiveBounds(PUT_CARD_ID)
-  const centre = live ? { x: live.x + live.width / 2, y: live.y + live.height / 2 } : (state.cardAt ?? state.end)
+  const centre = live ? { x: live.x + live.width / 2, y: live.y + live.height / 2 } : state.cardAt
   const at = toScreenPoint(centre, view)
   const submit = async (words: string) => {
     const w = words.trim()
@@ -202,6 +215,7 @@ function CardOnLine({ boardId, source, target, state, view, connect }: {
         onToggle={connect.toggle}
         onCancel={connect.cancel}
         onSubmit={submit}
+        onSize={onSize}
       />
     </div>
   )

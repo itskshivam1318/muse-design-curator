@@ -15,8 +15,8 @@ export type Connect =
       end: Point
       spots: Spot[]
       off: Set<number>
-      /** The card's centre, fixed when it opens (it holds its place; the board moves round it). */
-      cardAt: Point | null
+      /** The card's centre, fixed when it opens (it holds its place; the board moves round it); its body's too. */
+      cardAt: Point
       /** Where the line ends on the target (fractions of it), so the end follows it when it moves. */
       endOn: { fx: number; fy: number } | null
     }
@@ -40,7 +40,8 @@ export function useConnect() {
       setState((s) => {
         if (s.phase !== 'drag') return s
         if (!s.targetId || s.spots.length === 0) return IDLE
-        const { cardAt = null, endOn = null } = place?.({ sourceId: s.sourceId, targetId: s.targetId, at: s.at }) ?? {}
+        // with no place worked out, the card sits at the line's end (drawn and body alike)
+        const { cardAt = s.at, endOn = null } = place?.({ sourceId: s.sourceId, targetId: s.targetId, at: s.at }) ?? {}
         return { phase: 'card', sourceId: s.sourceId, targetId: s.targetId, end: s.at, spots: s.spots, off: new Set(), cardAt, endOn }
       }),
     [],

@@ -16,7 +16,7 @@ const wheels: Spot[] = [
 const source = makeItem({ id: 'src', original_filename: 'bike.jpg' })
 const target = makeItem({ id: 'tgt', original_filename: null, page_title: null, creator_handle: null })
 
-function setup(onSubmit: (words: string) => Promise<void> = () => Promise.resolve(), spots: Spot[] = wheels) {
+function setup(onSubmit: (words: string) => Promise<void> = () => Promise.resolve(), spots: Spot[] = wheels, onSize?: (s: { width: number; height: number } | null) => void) {
   const onCancel = vi.fn()
   const submit = vi.fn(onSubmit)
   function Harness() {
@@ -28,7 +28,7 @@ function setup(onSubmit: (words: string) => Promise<void> = () => Promise.resolv
         else next.add(i)
         return next
       })
-    return <PutCard source={source} target={target} spots={spots} off={off} onToggle={toggle} onCancel={onCancel} onSubmit={submit} />
+    return <PutCard source={source} target={target} spots={spots} off={off} onToggle={toggle} onCancel={onCancel} onSubmit={submit} onSize={onSize} />
   }
   render(<Harness />)
   return { onCancel, submit }
@@ -100,6 +100,24 @@ describe('PutCard', () => {
     expect(putIn()).toBeTruthy()
     expect((putIn() as HTMLButtonElement).disabled).toBe(false)
     expect(onCancel).not.toHaveBeenCalled()
+  })
+
+  it('reports its drawn size, and again when it grows (an error showing)', async () => {
+    let height = 160
+    const spy = vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(() => height)
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(() => 260)
+    const onSize = vi.fn()
+    setup(() => Promise.reject(new Error('Daily limit reached')), wheels, onSize)
+    expect(onSize).toHaveBeenLastCalledWith({ width: 260, height: 160 })
+    height = 210
+    await act(async () => {
+      fireEvent.click(putIn())
+    })
+    expect(onSize).toHaveBeenLastCalledWith({ width: 260, height: 210 })
+    cleanup()
+    expect(onSize).toHaveBeenLastCalledWith(null)
+    spy.mockRestore()
+    vi.restoreAllMocks()
   })
 
   it('Cancel and Esc call onCancel', () => {

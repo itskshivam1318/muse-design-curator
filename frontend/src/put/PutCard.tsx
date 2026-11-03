@@ -3,7 +3,7 @@
  * never the last), a few optional words, Cancel and Put in. Enter puts it in, Esc cancels. A refused
  * request shows its message here and the card stays.
  */
-import { type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from 'react'
+import { type FormEvent, type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ApiError, type Item } from '../api'
 import { itemTitle } from '../format'
 import { spotLabel, type Spot } from './spots'
@@ -18,6 +18,8 @@ interface Props {
   onToggle: (i: number) => void
   onCancel: () => void
   onSubmit: (words: string) => Promise<void>
+  /** Its drawn size (screen px) whenever it changes; null once it closes. */
+  onSize?: (size: { width: number; height: number } | null) => void
 }
 
 /** An item's title for the card; a picture with no name of its own is "Picture". */
@@ -29,7 +31,7 @@ const pictureTitle = (i: Item): string => {
 const errorText = (e: unknown, fallback: string) =>
   e instanceof ApiError || e instanceof Error ? e.message || fallback : fallback
 
-export function PutCard({ source, target, spots, off, onToggle, onCancel, onSubmit }: Props) {
+export function PutCard({ source, target, spots, off, onToggle, onCancel, onSubmit, onSize }: Props) {
   const [words, setWords] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -37,6 +39,26 @@ export function PutCard({ source, target, spots, off, onToggle, onCancel, onSubm
   const inFlight = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => inputRef.current?.focus(), [])
+  // measured like the selection toolbar: after every render (chips wrap, an error shows) and on resize
+  const ref = useRef<HTMLFormElement>(null)
+  const onSizeRef = useRef(onSize)
+  useLayoutEffect(() => {
+    onSizeRef.current = onSize
+  })
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (el) onSizeRef.current?.({ width: el.offsetWidth, height: el.offsetHeight })
+  })
+  useEffect(() => {
+    const el = ref.current
+    const report = () => el && onSizeRef.current?.({ width: el.offsetWidth, height: el.offsetHeight })
+    const ro = el && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(report) : null
+    if (el) ro?.observe(el)
+    return () => {
+      ro?.disconnect()
+      onSizeRef.current?.(null)
+    }
+  }, [])
   const onCount = spots.length - spots.filter((_, i) => off.has(i)).length
 
   const submit = async (e?: FormEvent) => {
@@ -62,6 +84,7 @@ export function PutCard({ source, target, spots, off, onToggle, onCancel, onSubm
 
   return (
     <form
+      ref={ref}
       className="put-card"
       role="dialog"
       aria-label="Put in"
