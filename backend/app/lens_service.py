@@ -6,6 +6,7 @@ to whole-image grounding in that board's lens version (noted in `lens.notes`).
 
 import io
 import logging
+import re
 from functools import partial
 from typing import Any
 
@@ -302,6 +303,44 @@ def propose_lens(session: Session, board_id: str) -> LensSpec:
     return LensSpec.model_validate(propose_lens_row(session, board_id).spec_json)
 
 
+PROPOSE_RULES = (
+    "Propose a lens for this board: the parts worth locating and the attributes worth "
+    "comparing across its pictures. Rules: attribute keys, part ids and every vocabulary or "
+    "scale value are snake_case tokens (lowercase words joined by underscores, e.g. "
+    "long_bonnet). A part's sam_prompt names one visible thing in 1-3 words, with no and, "
+    "or, not or commas (e.g. round headlamp). At most 8 parts and 20 attributes."
+)
+_PROMPT_OK = re.compile(r"(\band\b|,|\bor\b|\bnot\b)", re.IGNORECASE)
+
+
+def _token(value: Any) -> Any:
+    """A model's word or phrase as a canonical token ("Very-long bonnet" -> very_long_bonnet)."""
+    if not isinstance(value, str):
+        return value
+    return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_") or value
+
+
+def _tidy_proposal(raw: dict[str, Any]) -> dict[str, Any]:
+    """Make a proposed lens's tokens canonical; drop parts whose prompt is not 1-3 words
+    naming one thing, and clear the attributes that pointed at them."""
+    parts = []
+    for p in raw.get("parts") or []:
+        prompt = str(p.get("sam_prompt") or "")
+        if 1 <= len(prompt.split()) <= 3 and not _PROMPT_OK.search(prompt):
+            parts.append({**p, "id": _token(p.get("id"))})
+    kept = {p["id"] for p in parts}
+    attributes = []
+    for a in raw.get("attributes") or []:
+        a = {**a, "key": _token(a.get("key"))}
+        for field in ("vocabulary", "scale"):
+            if isinstance(a.get(field), list):
+                a[field] = [_token(v) for v in a[field]]
+        if a.get("part") is not None:
+            a["part"] = _token(a["part"]) if _token(a["part"]) in kept else None
+        attributes.append(a)
+    return {**raw, "parts": parts, "attributes": attributes}
+
+
 def propose_lens_row(session: Session, board_id: str) -> Lens:
     board = _require_board(session, board_id)
     eligible = _eligible(session, board.id)
@@ -312,9 +351,11 @@ def propose_lens_row(session: Session, board_id: str) -> Lens:
     sampled = sample_diverse(eligible, MAX_SAMPLE)
     images = [b for b in (_image_bytes(i) for i in sampled) if b is not None]
     settings = get_settings()
+    context = with_notes(session, board.id, board.context or "")
     raw = get_reasoning(settings).propose_lens(
-        images, with_notes(session, board.id, board.context or ""), LensSpec.model_json_schema()
+        images, f"{PROPOSE_RULES}\n\n{context}".strip(), LensSpec.model_json_schema()
     )
+    raw = _tidy_proposal(raw)
     domain = _domain_key(board)
     version = _next_version(session, board.id, domain)
     try:

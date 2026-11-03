@@ -74,3 +74,24 @@ def test_strict_schema_closes_nested_and_optional() -> None:
     assert s["properties"]["properties"] == {"type": "string"}
     assert s["$defs"]["d"]["additionalProperties"] is False
     assert "required" not in schema["properties"]["b"]["items"]  # copy, not in place
+
+
+def test_propose_lens_request_is_strict_with_closed_schema() -> None:
+    from app.domain.lens import LensSpec
+
+    responses = FakeResponses({"id": "x@1"})
+    client: Any = SimpleNamespace(responses=responses)
+    MuseSparkProvider(client, "muse-spark-1.3", max_retries=0, timeout=5).propose_lens(
+        [b"img"], "ctx", LensSpec.model_json_schema()
+    )
+    fmt = responses.calls[0]["text"]["format"]
+    assert fmt["strict"] is True
+    assert closed_everywhere(fmt["schema"])
+
+
+def test_strict_schema_drops_what_strict_mode_refuses() -> None:
+    from app.domain.lens import LensSpec
+
+    s = json.dumps(strict_schema(LensSpec.model_json_schema()))
+    assert '"oneOf"' not in s and '"discriminator"' not in s and '"default"' not in s
+    assert '"anyOf"' in s

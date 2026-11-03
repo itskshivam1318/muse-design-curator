@@ -55,9 +55,11 @@ class ReasoningProvider(Protocol):
 
 def strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
     """A copy of `schema` that strict structured output accepts: every object is closed
-    (additionalProperties: false) and lists all of its properties as required."""
+    (additionalProperties: false) and lists all of its properties as required; `oneOf` becomes
+    `anyOf`, and `discriminator` and `default`, which strict mode refuses, are dropped."""
 
     maps = ("properties", "$defs", "definitions")  # name -> subschema, not schemas themselves
+    refused = ("discriminator", "default")
 
     def walk(node: Any) -> Any:
         if isinstance(node, list):
@@ -65,9 +67,10 @@ def strict_schema(schema: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(node, dict):
             return node
         out = {
-            k: {n: walk(sub) for n, sub in v.items()} if k in maps and isinstance(v, dict)
+            ("anyOf" if k == "oneOf" else k):
+            {n: walk(sub) for n, sub in v.items()} if k in maps and isinstance(v, dict)
             else walk(v)
-            for k, v in node.items()
+            for k, v in node.items() if k not in refused
         }  # fmt: skip
         if out.get("type") == "object" or isinstance(out.get("properties"), dict):
             props = out.setdefault("properties", {})
@@ -158,7 +161,7 @@ class MuseSparkProvider:
         self, images: list[bytes], context: str, schema: dict[str, Any]
     ) -> dict[str, Any]:
         _limit(images, MAX_PROPOSE_IMAGES)
-        return self._run(context, images, schema, "medium")
+        return self._run(context, images, strict_schema(schema), "medium")
 
     def verify(self, images: list[bytes], schema: dict[str, Any], prompt: str) -> dict[str, Any]:
         _limit(images, MAX_VERIFY_IMAGES)
