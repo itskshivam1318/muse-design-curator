@@ -327,6 +327,7 @@ def put_into(
     done = {"job_id": job_id, "item_id": item.id}
     after_commit(session, partial(events.publish, item.board_id, "item.added", added))
     after_commit(session, partial(events.publish, item.board_id, "put.done", done))
+    after_commit(session, partial(jobs.enqueue, "analyse_item", item_id=item.id))  # read it
     session.commit()
 
 

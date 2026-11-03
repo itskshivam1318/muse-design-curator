@@ -247,3 +247,26 @@ def test_a_queue_failure_releases_its_reservation(client: TestClient, world, mon
     monkeypatch.setattr(jobs, "enqueue", boom)
     post(client, anchor_of(world), view="from above")
     assert held(world) == {}
+
+
+def test_a_view_is_read_like_any_new_picture(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    anchor = anchor_of(world)
+    assert post(client, anchor, view="from above").status_code == 202
+    (item,) = children(world, anchor)
+    assert item.parse_status == "completed"  # queued for analysis, not left pending forever
+
+
+def test_startup_recovery_leaves_unchecked_views_alone(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    from app.api import deps
+    from app.explore.visualize import recover_stuck
+
+    anchor = anchor_of(world)
+    assert post(client, anchor, view="from above").status_code == 202
+    s = deps._factory()()
+    try:
+        recover_stuck(s)
+        s.commit()
+    finally:
+        s.close()
+    (item,) = children(world, anchor)
+    assert item.check_json is None  # a view is never checked, so it was never interrupted

@@ -320,3 +320,10 @@ def test_a_failed_put_request_releases_its_reservation(client: TestClient, world
     assert len(held(world)) == 1
     s.rollback()  # the request's transaction did not commit
     assert held(world) == {}
+
+
+def test_a_put_result_is_read_like_any_new_picture(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    target, source = two(world)
+    assert put(client, target, source).status_code == 202
+    (item,) = results(world, target)
+    assert item.parse_status == "completed"  # queued for analysis, not left pending forever
