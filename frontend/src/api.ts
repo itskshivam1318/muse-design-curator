@@ -687,6 +687,13 @@ export const setContentType = (itemId: string, contentType: ContentType) =>
 /** Cut a part out of its item as a new item. */
 export const extractPart = (itemId: string, partKey: string) =>
   request<Item>(`${item(itemId)}/parts/${enc(partKey)}/extract`, { method: 'POST' })
+export type PutSpot = { part: string } | { point: { fx: number; fy: number } }
+/** Put one picture into another at the chosen spots; the new picture arrives by event. */
+export const putInto = (targetId: string, body: { source_id: string; spots: PutSpot[]; words?: string }) =>
+  request<{ job_id: string; x: number; y: number; w: number; h: number }>(`${item(targetId)}/put-into`, {
+    method: 'POST',
+    json: body,
+  })
 export const getRenderers = (itemId: string, key: string) =>
   request<RendererInfo[]>(`${item(itemId)}/dimensions/${enc(key)}/renderers`)
 
