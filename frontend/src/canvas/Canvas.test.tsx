@@ -7,6 +7,7 @@ import { type AnalysisView, type Exploration, type ExploreOption, type Item, key
 import '../panels/registerPanels'
 import { stubCanvasContext } from '../test/canvasStub'
 import { makeItem } from '../test/fixtures'
+import { KEPT_EXTRA, petalRadius } from '../living/ring'
 import { selection } from './selection'
 
 // remember each world the canvas makes, so a test can watch it
@@ -403,6 +404,25 @@ describe('Canvas item drag', () => {
     expect(vi.mocked(patchItem).mock.calls.find(([id]) => id === 'k1')?.[1]).toMatchObject({ w: 300, h: 187.5 })
     expect(qc.getQueryData<Exploration[]>(keys.explorations('b1'))![0].options[0].undocked).toBe(true)
     expect(undoHistory.size).toBe(1)
+  })
+
+  it('undoing an undock while the take is still selected puts it back in its slot', async () => {
+    sized()
+    const src = makeItem({ id: 'src', board_id: 'b1', x: 0, y: 0 })
+    const kept = makeItem({ id: 'k1', board_id: 'b1', x: 700, y: 0, w: 168, h: 105, explore_option_id: 'o1', origin: 'generated' })
+    const qc = client(
+      [{ id: 'e1', board_id: 'b1', dx: 300, dy: 0, item_id: 'src', key: 'hand_style', options: [opt({ id: 'o1', status: 'kept', kept_item_id: 'k1', takes: ['k1'] })] }],
+      [src, kept],
+    )
+    renderBoard(qc)
+    const at = { ...worlds.at(-1)!.body('k1')! }
+    drag(Konva.stages.at(-1)!.findOne('#k1')!, 1200, 0)
+    expect(worlds.at(-1)!.body('k1')!.x).toBeCloseTo(at.x + 1200, 0) // dropped out there, selected
+    // its slot: past the one-petal ring round the hub, 300 right of the source's centre (100, 75)
+    const slot = { x: 100 + 300 + petalRadius(1) + KEPT_EXTRA, y: 75 }
+    act(() => void boardActions!.undo())
+    await waitFor(() => expect(worlds.at(-1)!.body('k1')!.kind).toBe('kept'))
+    expect([worlds.at(-1)!.body('k1')!.x, worlds.at(-1)!.body('k1')!.y]).toEqual([slot.x, slot.y])
   })
 })
 

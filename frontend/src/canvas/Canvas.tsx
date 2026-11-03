@@ -577,6 +577,19 @@ export function Canvas({
     }
     storedAt.current = next
   }, [world, visible, selected])
+  // a selected docked take is pinned too: when its slot moves (an undo of its undock or of a hub drag)
+  // it goes to the slot's resolved spot at once
+  const slotAt = useRef(new Map<string, Point>())
+  useLayoutEffect(() => {
+    const home = homesAfter(scene, new Map())
+    const next = new Map([...scene.docked.keys()].map((id) => [id, home(id)]))
+    for (const id of selected) {
+      const was = slotAt.current.get(id)
+      const now = next.get(id)
+      if (now && (!was || was.x !== now.x || was.y !== now.y) && world.body(id)?.kind === 'kept') world.place(id, now)
+    }
+    slotAt.current = next
+  }, [world, scene, selected])
   const hoveredPartView =
     calloutItem && hoveredPart?.itemId === calloutItem.id ? analysis?.parts.find((p) => p.key === hoveredPart.part) : undefined
   const regionQuery = useRegion(calloutItem?.id ?? '', hoveredPartView?.key ?? '', !!hoveredPartView)
