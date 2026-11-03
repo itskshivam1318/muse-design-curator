@@ -68,3 +68,17 @@ def step_to_dict(s: AgentStep) -> dict[str, Any]:
         "say": s.say, "ok": s.ok, "result": s.result_json, "item_ids": s.item_ids_json,
         "highlight": s.highlight, "created_at": s.created_at,
     }  # fmt: skip
+
+
+def get_run(session: Session, run_id: str) -> AgentRun | None:
+    return session.get(AgentRun, run_id)
+
+
+def get_step(session: Session, step_id: str) -> AgentStep | None:
+    return session.get(AgentStep, step_id)
+
+
+def set_highlight(session: Session, step: AgentStep, highlight: bool) -> AgentStep:
+    step.highlight = highlight
+    session.flush()
+    return step

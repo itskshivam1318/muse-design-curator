@@ -10,6 +10,7 @@ from app import demo
 from app.agent.mcp_server import mount_mcp
 from app.analysis import service as _analysis  # noqa: F401  (registers the analyse_item job)
 from app.api import (
+    agent,
     analysis,
     attributes,
     boards,
@@ -106,6 +107,7 @@ app.include_router(analysis.router)
 app.include_router(extension.router)
 app.include_router(items.router)
 app.include_router(media.router)
+app.include_router(agent.router)
 app.include_router(notes.router)
 app.include_router(lenses.router)
 app.include_router(attributes.router)
