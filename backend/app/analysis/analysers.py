@@ -96,7 +96,8 @@ def build_prompt(content: ItemContent, board_context: str, hints: Hints) -> str:
             "Each text part is a 'text_range' region: [start, end] character offsets into the text."
             if is_text
             else "Parts of a UI screenshot use region_kind 'box' with [x0, y0, x1, y1] in 0..1; "
-            "parts of an image use region_kind 'mask' with region null."
+            "parts of an image use region_kind 'mask' with region a rough [x0, y0, x1, y1] box "
+            "in 0..1 around that part (it picks out which one: the rear wheel, not the front)."
         ),
         (
             "3. For each part give its physical dimensions (type 'physical', part = the part "
@@ -158,6 +159,19 @@ def _token(*candidates: object) -> str:
     return ""
 
 
+def _hint(region: Any) -> list[float] | None:
+    """An image part's rough box (where its mask is looked for), or None when it is unusable."""
+    if not isinstance(region, list) or len(region) != 4:
+        return None
+    try:
+        x0, y0, x1, y1 = (float(v) for v in region)
+    except (TypeError, ValueError):
+        return None
+    if not (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1):
+        return None
+    return [x0, y0, x1, y1]
+
+
 def _clean_part(raw: Any, content_type: str, text_len: int) -> PartOut | None:
     if not isinstance(raw, dict):
         return None
@@ -166,7 +180,7 @@ def _clean_part(raw: Any, content_type: str, text_len: int) -> PartOut | None:
     if raw.get("region_kind") != want:
         return None
     if want == "mask":
-        raw["region"] = None
+        raw["region"] = _hint(raw.get("region"))
     try:
         part = PartOut.model_validate(raw)
         if want == "box":

@@ -138,3 +138,21 @@ def test_load_content_rejects_unsupported():
     with pytest.raises(AppError) as e:
         analysers.load_content(None, BoardItem(id="x", kind="link"))  # type: ignore[arg-type]
     assert e.value.code == "UNSUPPORTED_ITEM"
+
+
+def test_image_part_keeps_its_rough_box_as_a_hint(monkeypatch):
+    _fake(monkeypatch, {
+        "content_type": "image", "summary": "s",
+        "parts": [
+            {"key": "rear_wheel", "label": "Rear wheel", "region_kind": "mask",
+             "region": [0.6, 0.6, 0.75, 0.85]},
+            {"key": "front_wheel", "label": "Front wheel", "region_kind": "mask",
+             "region": [0.3, 0.6, 0.1, 0.85]},  # x0 > x1: no hint
+            {"key": "glass", "label": "Glass", "region_kind": "mask", "region": [0.1, 0.2]},
+        ],
+        "dimensions": [],
+    })  # fmt: skip
+    a = run_analyser(_img(), "", Hints.empty())
+    assert [(p.key, p.region) for p in a.parts] == [
+        ("rear_wheel", [0.6, 0.6, 0.75, 0.85]), ("front_wheel", None), ("glass", None),
+    ]  # fmt: skip

@@ -36,6 +36,29 @@ class TinySeg(MockSegmentationProvider):
         return SegResult(True, [SegInstance((0, 0, 1, 1), mask, None)])
 
 
+class TwoWheelSeg(MockSegmentationProvider):
+    """A left and a right instance, the left one scored higher (as SAM does with 'rear wheel')."""
+
+    def localize(self, image: bytes, sha256: str, noun: str) -> SegResult:
+        w, h = 400, 300
+        left = np.zeros((h, w), dtype=bool)
+        left[180:270, 40:120] = True
+        right = np.zeros((h, w), dtype=bool)
+        right[180:270, 260:340] = True
+        return SegResult(
+            True,
+            [
+                SegInstance((40, 180, 120, 270), left, 0.9),
+                SegInstance((260, 180, 340, 270), right, 0.6),
+            ],
+        )
+
+
+class EmptySeg(MockSegmentationProvider):
+    def localize(self, image: bytes, sha256: str, noun: str) -> SegResult:
+        return SegResult(False, [])
+
+
 class FailingSeg(MockSegmentationProvider):
     def localize(self, image: bytes, sha256: str, noun: str) -> SegResult:
         raise ModelError("boom")
@@ -131,4 +154,62 @@ def test_missing_mask_file_is_located_again(
         again = locate(s, item_id, "body")
         assert files.abs_path(part.mask_path).is_file()
     assert seg.calls == 2
-    assert again.kind == "mask" and again.mask_url == first.mask_url
+    # the located box is its hint now: the same region, found again
+    assert again.kind == "mask" and again.box == pytest.approx(first.box, abs=0.01)
+
+
+def _mask_of(part: ItemPart) -> np.ndarray:
+    from PIL import Image
+
+    assert part.mask_path
+    with Image.open(files.abs_path(part.mask_path)) as m:
+        return np.asarray(m.convert("L")) > 127
+
+
+def test_hint_picks_the_instance_it_overlaps(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: TwoWheelSeg())
+    with deps._factory()() as s:
+        item_id = setup_item(s, board(client), region_json=[0.62, 0.58, 0.88, 0.92])
+        r = locate(s, item_id, "body")
+        part = s.query(ItemPart).filter_by(item_id=item_id).one()
+        mask = _mask_of(part)
+    assert r.kind == "mask"
+    assert mask[220, 300] and not mask[220, 80]  # the right instance, not the higher-scored left
+    assert r.box == pytest.approx([0.65, 0.6, 0.85, 0.9], abs=0.01)
+
+
+def test_hint_far_from_every_instance_falls_back_to_its_box(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: TwoWheelSeg())
+    with deps._factory()() as s:
+        item_id = setup_item(s, board(client), region_json=[0.3, 0.05, 0.6, 0.3])
+        r = locate(s, item_id, "body")
+        mask = _mask_of(s.query(ItemPart).filter_by(item_id=item_id).one())
+    assert r.box == pytest.approx([0.3, 0.05, 0.6, 0.3], abs=0.01)
+    assert mask[50, 180] and not mask[220, 300] and not mask[220, 80]
+
+
+def test_nothing_found_with_a_hint_uses_the_box(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: EmptySeg())
+    with deps._factory()() as s:
+        item_id = setup_item(s, board(client), region_json=[0.4, 0.2, 0.7, 0.45])
+        r = locate(s, item_id, "body")
+        mask = _mask_of(s.query(ItemPart).filter_by(item_id=item_id).one())
+    assert r.kind == "mask" and r.box == pytest.approx([0.4, 0.2, 0.7, 0.45], abs=0.01)
+    assert mask[100, 220] and not mask[200, 50]
+
+
+def test_nothing_found_without_a_hint_is_still_422(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: EmptySeg())
+    with deps._factory()() as s:
+        item_id = setup_item(s, board(client))
+        with pytest.raises(AppError) as e:
+            locate(s, item_id, "body")
+    assert e.value.code == "REGION_EMPTY"
