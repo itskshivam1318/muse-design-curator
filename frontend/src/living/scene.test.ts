@@ -4,7 +4,7 @@ import { calloutSize, WHOLE } from '../map/cards'
 import { makeItem } from '../test/fixtures'
 import { analysis, exp, item, opt } from '../test/explore'
 import { FEEL } from './physics'
-import { CALLOUT_GAP, CALLOUT_W, ellipsePoint, HUB_GAP, KEPT_EXTRA, petalAngles, petalRadius, ringAngles } from './ring'
+import { CALLOUT_CLEAR, CALLOUT_W, clearPoint, ellipsePoint, HUB_GAP, KEPT_EXTRA, petalAngles, petalRadius, ringAngles } from './ring'
 import { buildScene, type SceneInput } from './scene'
 
 const scene = (over: Partial<SceneInput> & { explorations: Exploration[] }) =>
@@ -41,6 +41,20 @@ describe('buildScene', () => {
     expect(edge(s, 'stem:e1')).toEqual({ id: 'stem:e1', kind: 'stem', from: { body: 'a', anchor: handsFrac }, to: { body: 'hub:e1' } })
     expect(edge(s, 'spoke:o1')).toEqual({ id: 'spoke:o1', kind: 'spoke', from: { body: 'hub:e1' }, to: { body: 'petal:o1' } })
     expect(s.flowers[0]).toMatchObject({ id: 'e1', hubId: 'hub:e1', sourceId: 'a', key: 'hand_style', label: 'Hand style', part: 'Hands', collapsed: false })
+  })
+
+  it("a selected source's hub opens beyond its callout cards, along its offset, and springs back after", () => {
+    const exps = [exp('e1', 'hand_style', [opt('o1'), opt('o2')], 'a', { dx: 0, dy: 120 })]
+    expect(spec(scene({ explorations: exps }), 'hub:e1')!.home).toMatchObject({ dx: 0, dy: 120 })
+    const s = scene({ explorations: exps, selectedId: 'a' })
+    const home = spec(s, 'hub:e1')!.home as { dx: number; dy: number }
+    expect(home.dx).toBeCloseTo(0)
+    // past the tallest card below the item, and then some for the petals curling back
+    const tallest = Math.max(...s.specs.filter((b) => b.kind === 'callout').map((b) => b.h))
+    expect(home.dy).toBeGreaterThan(75 + CALLOUT_CLEAR + tallest)
+    // a hub already far enough out stays put
+    const far = [exp('e1', 'hand_style', [opt('o1')], 'a', { dx: 0, dy: 2000 })]
+    expect(spec(scene({ explorations: far, selectedId: 'a' }), 'hub:e1')!.home).toMatchObject({ dx: 0, dy: 2000 })
   })
 
   it('without dx/dy the hub sits at the callout slot angle', () => {
@@ -129,9 +143,9 @@ describe('buildScene', () => {
     const s = scene({ explorations: exps, selectedId: 'a', formsOn: (card) => (card === WHOLE ? 1 : 0) })
     const callouts = s.specs.filter((b) => b.kind === 'callout')
     expect(callouts.map((b) => b.id)).toEqual(['callout:a:hands', 'callout:a:whole:item'])
-    const hands = ellipsePoint({ w: 200, h: 150 }, cardAngles[0], CALLOUT_GAP)
+    const hands = clearPoint({ w: 200, h: 150 }, calloutSize(item, analysis, 'hands'), cardAngles[0], CALLOUT_CLEAR)
     expect(callouts[0]).toEqual({
-      id: 'callout:a:hands', kind: 'callout', ...calloutSize(item, analysis, 'hands'), home: { kind: 'rel', to: 'a', dx: hands.x, dy: hands.y }, ignore: 'a', delay: 0,
+      id: 'callout:a:hands', kind: 'callout', ...calloutSize(item, analysis, 'hands'), home: { kind: 'rel', to: 'a', dx: hands.x, dy: hands.y }, yieldTo: 'a', delay: 0,
     })
     expect(callouts[1]).toMatchObject({ delay: FEEL.calloutStaggerMs, w: CALLOUT_W, h: calloutSize(item, analysis, WHOLE, 1).h })
     expect(edge(s, 'leader:e1')).toEqual({ id: 'leader:e1', kind: 'leader', from: { body: 'a', anchor: handsFrac }, to: { body: 'callout:a:hands' } })
@@ -193,7 +207,7 @@ describe('buildScene', () => {
     const s = scene({ items: [item, other], explorations: [], selectedId: 'a', toolbar })
     const obstacles = s.specs.filter((b) => b.kind === 'obstacle')
     expect(obstacles).toEqual([
-      { id: 'toolbar:a', kind: 'obstacle', w: 240, h: 50, home: { kind: 'rel', to: 'a', dx: 0, dy: -(75 + 25) }, ignore: 'a' },
+      { id: 'toolbar:a', kind: 'obstacle', w: 240, h: 50, home: { kind: 'rel', to: 'a', dx: 0, dy: -(75 + 25) }, yieldTo: 'a' },
     ])
     expect(s.edges.some((e) => e.from.body === 'toolbar:a' || e.to.body === 'toolbar:a')).toBe(false)
   })

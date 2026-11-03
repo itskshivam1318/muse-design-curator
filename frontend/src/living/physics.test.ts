@@ -74,7 +74,7 @@ describe('physics', () => {
         item('a', 0, 0),
         { id: 'toolbar:a', kind: 'obstacle', w: 200, h: 40, home: { kind: 'rel', to: 'a', dx: 0, dy: -70 } },
         // a callout whose home sits right on the toolbar
-        { id: 'callout:a:x', kind: 'callout', w: 120, h: 50, home: { kind: 'rel', to: 'a', dx: 0, dy: -75 }, ignore: 'a' },
+        { id: 'callout:a:x', kind: 'callout', w: 120, h: 50, home: { kind: 'rel', to: 'a', dx: 0, dy: -75 }, yieldTo: 'a' },
       ],
       0,
     )
@@ -232,11 +232,32 @@ describe('physics', () => {
     expect([w.bodies.get('a')!.w, w.bodies.get('a')!.h]).toEqual([200, 10])
   })
 
-  it('a spec that drops ignore clears it', () => {
+  it('a spec that drops yieldTo clears it', () => {
     const w = createWorld()
-    syncWorld(w, [item('a', 0, 0, { ignore: 'b' })], 0)
+    syncWorld(w, [item('a', 0, 0, { yieldTo: 'b' })], 0)
     syncWorld(w, [item('a', 0, 0)], 10)
-    expect(w.bodies.get('a')!.ignore).toBeUndefined()
+    expect(w.bodies.get('a')!.yieldTo).toBeUndefined()
+  })
+
+  it('a body pushed onto the item it yields to is moved off it, and the item never moves', () => {
+    const w = createWorld()
+    syncWorld(
+      w,
+      [
+        item('a', 0, 0),
+        // a callout whose home overlaps its item, and a neighbour shoving it further in
+        { id: 'callout:a:x', kind: 'callout', w: 120, h: 50, home: { kind: 'rel', to: 'a', dx: 0, dy: 50 }, yieldTo: 'a' },
+        item('b', 0, 110),
+      ],
+      0,
+    )
+    run(w, 600, true)
+    const a = w.bodies.get('a')!
+    const c = w.bodies.get('callout:a:x')!
+    expect([a.x, a.y]).toEqual([0, 0])
+    const overlapX = (a.w + c.w) / 2 - Math.abs(c.x - a.x)
+    const overlapY = (a.h + c.h) / 2 - Math.abs(c.y - a.y)
+    expect(Math.min(overlapX, overlapY)).toBeLessThanOrEqual(0)
   })
 
   it('bodies the awake predicate rejects neither move nor collide', () => {

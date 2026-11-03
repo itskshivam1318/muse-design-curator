@@ -457,11 +457,6 @@ export function Canvas({
     return [{ id: child.id, parent: parent.id, points: lineagePoints(itemBounds(parent), itemBounds(child)) }]
   })
   const noteChildren = (noteId: string) => items.filter((i) => i.parent_item_id === noteId && isGenerated(i))
-  const lineage = visible.flatMap((child) => {
-    const parent = child.parent_item_id ? byId.get(child.parent_item_id) : undefined
-    if (!parent || fromNote(child) || !(selected.includes(child.id) || selected.includes(parent.id))) return []
-    return [{ id: child.id, parent: parent.id, points: lineagePoints(itemBounds(parent), itemBounds(child)) }]
-  })
   // ---- notes: the editor and the bar ----
   const editedNote = editing?.id ? byId.get(editing.id) : undefined
   const editorAt: { x: number; y: number; text: string } | null = editing
@@ -526,6 +521,13 @@ export function Canvas({
     toolbar,
   })
   useLayoutEffect(() => world.sync(scene), [world, scene])
+  // a take of a flower is already linked by its spoke to the hub its source grew: no second line
+  const lineage = visible.flatMap((child) => {
+    const parent = child.parent_item_id ? byId.get(child.parent_item_id) : undefined
+    if (!parent || fromNote(child) || scene.slots.has(child.id)) return []
+    if (!(selected.includes(child.id) || selected.includes(parent.id))) return []
+    return [{ id: child.id, parent: parent.id, points: lineagePoints(itemBounds(parent), itemBounds(child)) }]
+  })
   // a pointer release (items, docked takes, hubs): every change it makes, written as one undo step
   const commitDrag = (centres: Map<string, Point>) => {
     const plan = planRelease(scene, visible, explorations ?? [], centres, homesAfter(scene, centres))
@@ -755,11 +757,14 @@ export function Canvas({
         )}
         {!dragging &&
           !marquee &&
-          creditTargets(hoveredItem, selectedItems).map((i) => (
-            <Live key={`credit-${i.id}`} items={[i]}>
-              {(b) => <CreditCaption item={i} screen={toScreenBounds(b, view)} verdict={itemVerdict(i, explorations, labels)} />}
-            </Live>
-          ))}
+          creditTargets(hoveredItem, selectedItems)
+            // the item showing its callout cards: a card sits where its caption would
+            .filter((i) => !(showCallouts && i.id === calloutItem?.id))
+            .map((i) => (
+              <Live key={`credit-${i.id}`} items={[i]}>
+                {(b) => <CreditCaption item={i} screen={toScreenBounds(b, view)} verdict={itemVerdict(i, explorations, labels)} />}
+              </Live>
+            ))}
         {selectedItems.length > 0 && !dragging && !marquee && !onlyNotes && (
           <Live items={selectedItems}>
             {(b) => (

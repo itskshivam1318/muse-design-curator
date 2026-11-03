@@ -8,8 +8,8 @@ export const HUB_W = 150
 export const HUB_H = 48
 export const PETAL = 88
 
-/** A callout card clears its item by this much along each axis. */
-export const CALLOUT_GAP = { x: 105, y: 46 }
+/** A callout card's box clears its item's box by this much. */
+export const CALLOUT_CLEAR = 24
 /** A hub clears its source by this much along each axis (when it has no stored offset). */
 export const HUB_GAP = { x: 210, y: 190 }
 /** Petals spread ± this many radians around the hub's direction. */
@@ -50,6 +50,19 @@ export function ringAngles(_owner: { w: number; h: number }, anchors: (Point | n
 /** The offset from the owner's centre at `angle` on an ellipse clearing the owner by `gap`. */
 export function ellipsePoint(owner: { w: number; h: number }, angle: number, gap: { x: number; y: number }): Point {
   return { x: Math.cos(angle) * (owner.w / 2 + gap.x), y: Math.sin(angle) * (owner.h / 2 + gap.y) }
+}
+
+/**
+ * The offset from the owner's centre at `angle` where a box of `size` centred there first clears the
+ * owner by `gap` (its whole box, not its centre: a tall card below a short item sits lower).
+ */
+export function clearPoint(owner: { w: number; h: number }, size: { w: number; h: number }, angle: number, gap: number): Point {
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  const tx = Math.abs(cos) > 1e-6 ? ((owner.w + size.w) / 2 + gap) / Math.abs(cos) : Infinity
+  const ty = Math.abs(sin) > 1e-6 ? ((owner.h + size.h) / 2 + gap) / Math.abs(sin) : Infinity
+  const t = Math.min(tx, ty)
+  return { x: cos * t, y: sin * t }
 }
 
 /** The angles of `n` petals spread over ±PETAL_ARC around `dir` (one petal: straight along it). */

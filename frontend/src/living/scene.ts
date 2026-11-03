@@ -10,7 +10,7 @@ import { calloutSize, cardOf, WHOLE } from '../map/cards'
 import { partAnchor } from '../map/regions'
 import { isKept } from '../map/results'
 import { type BodySpec, FEEL, type Home } from './physics'
-import { CALLOUT_GAP, ellipsePoint, HUB_GAP, HUB_H, HUB_W, KEPT_EXTRA, PETAL, petalAngles, petalRadius, ringAngles } from './ring'
+import { CALLOUT_CLEAR, clearPoint, ellipsePoint, HUB_GAP, HUB_H, HUB_W, KEPT_EXTRA, PETAL, PETAL_ARC, petalAngles, petalRadius, ringAngles } from './ring'
 
 const BADGE_W = 120
 const BADGE_H = 28
@@ -123,6 +123,20 @@ export function dockedCentre(m: FlowerModel, index: number, hub: Point, source: 
   return { x: hub.x + p.x, y: hub.y + p.y }
 }
 
+/**
+ * A selected source's flower opens beyond its callout cards: its hub moves out along its offset
+ * until the petals curling back toward the source clear the band the cards take round the item.
+ * Only ever further out; the stored offset is untouched, so it springs back once deselected.
+ */
+function beyondCards(b: Bounds, sizes: ReadonlyMap<string, { w: number; h: number }>, offset: Point, n: number): Point {
+  const band = [...sizes.values()].reduce((m, s) => ({ w: Math.max(m.w, s.w), h: Math.max(m.h, s.h) }), { w: 0, h: 0 })
+  const owner = { w: b.width + 2 * (band.w + CALLOUT_CLEAR), h: b.height + 2 * (band.h + CALLOUT_CLEAR) }
+  // petals spread ±PETAL_ARC round the hub's direction: the outermost reach back past the hub
+  const back = petalRadius(n) * Math.max(0, -Math.cos(PETAL_ARC)) + PETAL / 2
+  const need = clearPoint(owner, { w: 2 * back, h: 2 * back }, Math.atan2(offset.y, offset.x), FEEL.gap)
+  return Math.hypot(need.x, need.y) > Math.hypot(offset.x, offset.y) ? need : offset
+}
+
 export function buildScene(input: SceneInput): Scene {
   const { items, explorations, analyses, labels, collapsed, selectedId, formsOn = () => 0, calloutHeights, toolbar } = input
   const onBoard = items.filter((i) => !i.staged) // staged takes wait in their option's stage
@@ -134,6 +148,18 @@ export function buildScene(input: SceneInput): Scene {
       cardCache.set(item.id, a ? cardsOf(item, a) : null)
     }
     return cardCache.get(item.id)!
+  }
+
+  const selected = selectedId ? byId.get(selectedId) : undefined
+  const selectedCards = selected ? cards(selected) : null
+  // the selected item's callout sizes: its cards ring it, and its flowers open beyond them
+  const cardSizes = new Map<string, { w: number; h: number }>()
+  if (selected && selectedCards) {
+    const analysis = analyses.get(selected.id)!
+    for (const card of selectedCards.keys()) {
+      const size = calloutSize(selected, analysis, card, formsOn(card))
+      cardSizes.set(card, { w: size.w, h: calloutHeights?.get(card) ?? size.h })
+    }
   }
 
   // each flower's geometry first: docked takes (listed among the items) need their hub's direction.
@@ -149,11 +175,12 @@ export function buildScene(input: SceneInput): Scene {
       const card = analysis ? (cardOf(analysis, e.key) ?? WHOLE) : null
       const slot = card ? cards(source)!.get(card)! : null
       const b = itemBounds(source)
-      const offset: Point =
+      let offset: Point =
         stored(e)
           ? { x: e.dx!, y: e.dy! }
           : ellipsePoint({ w: b.width, h: b.height }, slot?.angle ?? Math.PI / 2, HUB_GAP)
       const options = optionTree(e.options).map((r) => r.option)
+      if (source.id === selectedId && cardSizes.size) offset = beyondCards(b, cardSizes, offset, options.length)
       const dim = analysis?.dimensions.find((d) => d.key === e.key)
       const model: FlowerModel = {
         id: e.id,
@@ -198,9 +225,6 @@ export function buildScene(input: SceneInput): Scene {
     }
   }
 
-  const selected = selectedId ? byId.get(selectedId) : undefined
-  const selectedCards = selected ? cards(selected) : null
-
   for (const f of flowers) {
     const { model, source, offset, start } = f
     const hubId = model.hubId
@@ -236,20 +260,18 @@ export function buildScene(input: SceneInput): Scene {
   }
 
   if (selected && selectedCards) {
-    const analysis = analyses.get(selected.id)!
     const b = itemBounds(selected)
     let n = 0
     for (const [card, { angle }] of selectedCards) {
-      const p = ellipsePoint({ w: b.width, h: b.height }, angle, CALLOUT_GAP)
-      const size = calloutSize(selected, analysis, card, formsOn(card))
-      const h = calloutHeights?.get(card) ?? size.h
-      specs.push({ id: calloutId(selected.id, card), kind: 'callout', w: size.w, h, home: rel(selected.id, p), ignore: selected.id, delay: n++ * FEEL.calloutStaggerMs })
+      const size = cardSizes.get(card)!
+      const p = clearPoint({ w: b.width, h: b.height }, size, angle, CALLOUT_CLEAR)
+      specs.push({ id: calloutId(selected.id, card), kind: 'callout', ...size, home: rel(selected.id, p), yieldTo: selected.id, delay: n++ * FEEL.calloutStaggerMs })
     }
   }
   if (selected && toolbar) {
     const b = itemBounds(selected)
     const home = rel(selected.id, { x: 0, y: -(b.height / 2 + toolbar.h / 2) })
-    specs.push({ id: `toolbar:${selected.id}`, kind: 'obstacle', w: toolbar.w, h: toolbar.h, home, ignore: selected.id })
+    specs.push({ id: `toolbar:${selected.id}`, kind: 'obstacle', w: toolbar.w, h: toolbar.h, home, yieldTo: selected.id })
   }
 
   return { specs, edges, flowers: flowers.map((f) => f.model), docked, slots }

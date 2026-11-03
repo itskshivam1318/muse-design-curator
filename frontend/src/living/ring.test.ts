@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { FEEL } from './physics'
-import { dockedSize, ellipsePoint, PETAL, petalAngles, petalRadius, ringAngles, undockedSize } from './ring'
+import { clearPoint, dockedSize, ellipsePoint, PETAL, petalAngles, petalRadius, ringAngles, undockedSize } from './ring'
 
 const gap = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)))
 
@@ -20,6 +20,16 @@ describe('ring geometry', () => {
   it('ringAngles puts a whole-item anchor below', () => {
     const [a] = ringAngles({ w: 200, h: 150 }, [null])
     expect(gap(a, Math.PI / 2)).toBeCloseTo(0)
+  })
+
+  it('clearPoint sets a box clear of the owner box by the gap, whatever its size', () => {
+    expect(clearPoint({ w: 200, h: 150 }, { w: 176, h: 100 }, 0, 24)).toEqual({ x: 212, y: 0 })
+    const below = clearPoint({ w: 200, h: 150 }, { w: 176, h: 160 }, Math.PI / 2, 24)
+    expect(below.x).toBeCloseTo(0)
+    expect(below.y).toBeCloseTo(179)
+    // diagonal: whichever axis clears first
+    const d = clearPoint({ w: 200, h: 150 }, { w: 176, h: 100 }, Math.PI / 4, 24)
+    expect(Math.max(Math.abs(d.x) - 212, Math.abs(d.y) - 149)).toBeCloseTo(0)
   })
 
   it('ellipsePoint clears the owner by the gap along each axis', () => {

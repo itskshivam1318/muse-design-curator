@@ -14,8 +14,8 @@ export interface BodySpec {
   start?: Point
   /** ms after the sync that adds it before it appears (grow-in stagger). */
   delay?: number
-  /** Skip collisions with this body id (a callout with its own item). */
-  ignore?: string
+  /** Collisions with this body id move only this one (a callout off its own item, never the item). */
+  yieldTo?: string
 }
 
 export interface Body extends BodySpec {
@@ -82,7 +82,7 @@ export function syncWorld(w: World, specs: BodySpec[], now: number, rng: () => n
       existing.home = spec.home
       existing.start = spec.start
       existing.delay = spec.delay
-      existing.ignore = spec.ignore
+      existing.yieldTo = spec.yieldTo
       existing.tw = spec.w
       existing.th = spec.h
       continue
@@ -95,7 +95,7 @@ export function syncWorld(w: World, specs: BodySpec[], now: number, rng: () => n
       home: spec.home,
       start: spec.start,
       delay: spec.delay,
-      ignore: spec.ignore,
+      yieldTo: spec.yieldTo,
       tw: spec.w,
       th: spec.h,
       x: 0,
@@ -195,14 +195,13 @@ export function stepWorld(w: World, dtFrames: number, now: number, opts: { reduc
       for (let j = i + 1; j < live.length; j++) {
         const a = live[i]
         const c = live[j]
-        if (a.ignore === c.id || c.ignore === a.id) continue
         const dx = c.x - a.x
         const dy = c.y - a.y
         const ox = (a.w + c.w) / 2 + FEEL.gap - Math.abs(dx)
         const oy = (a.h + c.h) / 2 + FEEL.gap - Math.abs(dy)
         if (ox <= 0 || oy <= 0) continue
-        const ia = a.pinned ? 0 : FEEL.invMass[a.kind]
-        const ic = c.pinned ? 0 : FEEL.invMass[c.kind]
+        const ia = a.pinned || c.yieldTo === a.id ? 0 : FEEL.invMass[a.kind]
+        const ic = c.pinned || a.yieldTo === c.id ? 0 : FEEL.invMass[c.kind]
         const sum = ia + ic
         if (!sum) continue
         let nx = 0
@@ -237,14 +236,13 @@ export function stepWorld(w: World, dtFrames: number, now: number, opts: { reduc
       for (let j = i + 1; j < live.length; j++) {
         const a = live[i]
         const c = live[j]
-        if (a.ignore === c.id || c.ignore === a.id) continue
         const dx = c.x - a.x
         const dy = c.y - a.y
         const ox = (a.w + c.w) / 2 - Math.abs(dx)
         const oy = (a.h + c.h) / 2 - Math.abs(dy)
         if (ox <= 0 || oy <= 0) continue
-        const ia = a.pinned ? 0 : FEEL.invMass[a.kind]
-        const ic = c.pinned ? 0 : FEEL.invMass[c.kind]
+        const ia = a.pinned || c.yieldTo === a.id ? 0 : FEEL.invMass[a.kind]
+        const ic = c.pinned || a.yieldTo === c.id ? 0 : FEEL.invMass[c.kind]
         const sum = ia + ic
         if (!sum) continue
         moved = true

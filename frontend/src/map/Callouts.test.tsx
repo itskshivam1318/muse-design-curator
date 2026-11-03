@@ -121,7 +121,7 @@ describe('Callouts', () => {
     const leader = document.querySelector('.callout-leader')!
     const anchor = partAnchor({ x: 0, y: 0, width: 400, height: 300 }, analysis.parts[0])
     expect([leader.getAttribute('x1'), leader.getAttribute('y1')]).toEqual([String(anchor.x), String(anchor.y)])
-    expect(Number(leader.getAttribute('x2'))).toBeGreaterThanOrEqual(body.x - body.w / 2)
+    expect(Number(leader.getAttribute('x2'))).toBeGreaterThanOrEqual(r2(body.x - body.w / 2) - 0.01) // written to 2 decimals
   })
 
   it('leaders at rest are not rewritten each frame', () => {
