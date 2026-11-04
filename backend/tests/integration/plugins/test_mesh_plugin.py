@@ -1,6 +1,7 @@
 """Image → 3D: a cleaned cut-out goes to fal, the .glb comes back as a model item."""
 
 import io
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 from app import demo
 from app.config import get_settings
 from app.db.models import BoardItem
+from app.explore.visualize import _iso
 from app.providers import get_fal
 from app.providers.fal import MockFal
 from tests.integration.api.test_nodes_api import add_plugin, make_node, run_node, upload_image
@@ -146,7 +148,7 @@ def test_mesh_resumed_download_failure_keeps_other_slots(
     assert run is not None
     ep = get_settings().FAL_MESH_FAST
     run.external_json = {"endpoint": ep, "request_id": "mock-old", "status": "IN_QUEUE",
-                         "cap": "mesh", "submitted_at": "2026-11-04T00:00:00Z"}  # fmt: skip
+                         "cap": "mesh", "submitted_at": _iso(datetime.now(UTC))}  # fmt: skip
     db.commit()
     demo.windows._hits.pop(f"mesh:{board}", None)
     from app.analysis import limits
@@ -156,7 +158,10 @@ def test_mesh_resumed_download_failure_keeps_other_slots(
 
     service.execute_run(db, rid)
     db.expire_all()
-    assert db.get(PluginRun, rid).status == "failed"  # type: ignore[union-attr]
+    done = db.get(PluginRun, rid)
+    assert done is not None and done.status == "failed"
+    assert done.error_code == "PLUGIN_BAD_OUTPUT", done.error_code
+    assert fal.count("download") == 1
     assert fal.count("submit") == 0 and hits(board) == 1
 
 
