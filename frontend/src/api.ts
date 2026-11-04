@@ -677,6 +677,9 @@ export const patchNode = (
   body: { x?: number; y?: number; input_item_ids?: string[]; params?: Record<string, unknown> },
 ) => request<PluginNode>(`/nodes/${enc(nodeId)}`, { method: 'PATCH', json: body })
 export const deleteNode = (nodeId: string) => request<void>(`/nodes/${enc(nodeId)}`, { method: 'DELETE' })
+/** Describe what the node's inputs show as a prompt (the Describe button on a prompt field). */
+export const describeNode = (nodeId: string) =>
+  request<{ prompt: string }>(`/nodes/${enc(nodeId)}/describe`, { method: 'POST' })
 export const runNode = (nodeId: string) => request<PluginRun>(`/nodes/${enc(nodeId)}/run`, { method: 'POST' })
 
 /** Newest first. */
