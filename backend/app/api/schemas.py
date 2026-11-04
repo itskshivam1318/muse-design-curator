@@ -84,6 +84,7 @@ def item_to_dict(i: BoardItem) -> dict[str, Any]:
         "x": i.x, "y": i.y, "w": i.w, "h": i.h, "z": i.z,
         "storage_path": i.storage_path, "thumb_path": i.thumb_path,
         "parent_item_id": i.parent_item_id, "put_source_item_id": i.put_source_item_id,
+        "option_run_id": i.option_run_id,
         "created_at": i.created_at,
         "licence": licence_of(i), "explore_option_id": i.explore_option_id,
         "generation": i.generation_json, "check": i.check_json,

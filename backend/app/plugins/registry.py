@@ -13,7 +13,7 @@ log = logging.getLogger(__name__)
 
 BUILTIN_DIR = Path(__file__).parent / "builtin"
 PACKS_FILE = Path(__file__).parent / "packs.json"
-NOT_CONNECTED_MODELS = {"video.generate", "mesh.from_image"}
+NOT_CONNECTED_MODELS: set[str] = set()
 
 
 @dataclass

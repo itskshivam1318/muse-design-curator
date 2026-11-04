@@ -107,3 +107,14 @@ def test_image_builtin_spec() -> None:
     m = load_manifest(BUILTIN / "image", builtin=True)
     assert (m.runner, m.model, m.secondary) == ("model", "image.edit", "Prompt")
     assert m.params["properties"]["count"]["maximum"] == 4
+
+
+def test_manifest_accepts_needs_and_new_outputs(tmp_path: Path) -> None:
+    m = load_manifest(
+        write(tmp_path, base(needs=["parts"], outputs=["images", "model3d", "video"])),
+        builtin=False,
+    )
+    assert m.needs == ["parts"] and "model3d" in m.outputs
+    assert load_manifest(write(tmp_path, base()), builtin=False).needs == []
+    with pytest.raises(ManifestError):
+        load_manifest(write(tmp_path, base(needs=["bogus"])), builtin=False)

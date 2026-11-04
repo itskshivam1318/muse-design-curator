@@ -21,7 +21,7 @@
     "images"
   ],
   "requires": [
-    "VIDEO_MODEL"
+    "FAL_KEY"
   ],
   "model": "video.generate",
   "secondary": "Track with SAM"

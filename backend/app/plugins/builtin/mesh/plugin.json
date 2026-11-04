@@ -20,7 +20,7 @@
     "images"
   ],
   "requires": [
-    "MESH_MODEL"
+    "FAL_KEY"
   ],
   "model": "mesh.from_image",
   "secondary": "Download"

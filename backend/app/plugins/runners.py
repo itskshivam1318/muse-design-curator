@@ -32,9 +32,10 @@ SHIM = Path(__file__).parent / "shim.py"
 SHIM_BAD_RESULT_EXIT = 3  # shim.py: run() returned something json.dumps cannot encode
 MAX_STDOUT = 1024 * 1024
 STDERR_TAIL = 4096
-OUTPUT_KINDS = ("images", "notes", "attributes", "text", "table")
+OUTPUT_KINDS = ("images", "notes", "attributes", "text", "table", "video", "model3d")
 SAFE_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
-MAX_IMAGE_RESULTS = 8  # image results per run, across all inputs
+MAX_IMAGE_RESULTS = 8  # image results per run, across all inputs (model runner)
+MAX_PYTHON_IMAGES = 24  # image results per run (python runner)
 PART_PROMPT = "Change only the {part}: {prompt}. Keep everything else exactly the same."
 
 

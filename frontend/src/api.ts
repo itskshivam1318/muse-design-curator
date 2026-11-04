@@ -4,7 +4,7 @@
  */
 
 export type ParseStatus = 'pending' | 'pending_lens' | 'processing' | 'completed' | 'failed'
-export type ItemKind = 'image' | 'video' | 'link' | 'note'
+export type ItemKind = 'image' | 'video' | 'link' | 'note' | 'model'
 export type ItemRole = 'reference' | 'counter_example'
 
 export interface Item {
@@ -35,6 +35,7 @@ export interface Item {
   thumb_path: string | null
   parent_item_id: string | null
   put_source_item_id: string | null
+  option_run_id: string | null
   created_at: string
   /** Stored provenance of a licensed (corpus) image; null for the user's own items. */
   licence?: ItemLicence | null

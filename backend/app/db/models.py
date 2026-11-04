@@ -52,7 +52,7 @@ class Board(Base):
     declined_json: Mapped[Any] = _json()
 
 
-ITEM_KINDS = ("image", "video", "link", "note")
+ITEM_KINDS = ("image", "video", "link", "note", "model")
 ORIGINS = ("upload", "drop", "paste", "link", "extension", "candidate", "seed", "generated", "note")
 RIGHTS = ("user_supplied", "licensed", "generated")
 PARSE_STATUS = ("pending", "pending_lens", "processing", "completed", "failed")
@@ -145,6 +145,8 @@ class BoardItem(Base):
     removed_at: Mapped[str | None] = mapped_column(String)
     # no FK: explorations.item_id references board_items (would be a cycle)
     explore_option_id: Mapped[str | None] = mapped_column(String, index=True)
+    # the plugin run that offered this as an option; null = not an option
+    option_run_id: Mapped[str | None] = mapped_column(String, index=True)
     generation_json: Mapped[Any] = _json()
     check_json: Mapped[Any] = _json()
     note_text: Mapped[str | None] = mapped_column(String)
@@ -518,6 +520,8 @@ class PluginRun(Base):
     status: Mapped[str] = mapped_column(String, default="queued")
     progress_json: Mapped[Any] = _json()
     output_json: Mapped[Any] = _json()
+    # fal job in flight: {"endpoint", "request_id", "status", "cap"}
+    external_json: Mapped[Any] = _json()
     error_code: Mapped[str | None] = mapped_column(String)
     error_message: Mapped[str | None] = mapped_column(String)
     claimed_at: Mapped[str | None] = mapped_column(String)

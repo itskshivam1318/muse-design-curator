@@ -8,7 +8,7 @@ from app import demo
 from app.config import Settings, get_settings
 from app.errors import AppError
 
-Kind = Literal["analyse", "render"]
+Kind = Literal["analyse", "render", "mesh", "video"]
 
 
 def _key(board_id: str, kind: Kind) -> str:
@@ -16,7 +16,12 @@ def _key(board_id: str, kind: Kind) -> str:
 
 
 def _limit(kind: Kind, st: Settings) -> int:
-    return st.ANALYSE_PER_BOARD_PER_DAY if kind == "analyse" else st.RENDER_PER_BOARD_PER_DAY
+    return {
+        "analyse": st.ANALYSE_PER_BOARD_PER_DAY,
+        "render": st.RENDER_PER_BOARD_PER_DAY,
+        "mesh": st.MESH_PER_BOARD_PER_DAY,
+        "video": st.VIDEO_PER_BOARD_PER_DAY,
+    }[kind]
 
 
 def check_and_count(board_id: str, kind: Kind, settings: Settings | None = None) -> None:

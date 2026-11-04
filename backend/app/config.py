@@ -20,6 +20,16 @@ class Settings(BaseSettings):
     # per-board daily caps on model work (see app/analysis/limits.py)
     ANALYSE_PER_BOARD_PER_DAY: int = 300
     RENDER_PER_BOARD_PER_DAY: int = 60
+    MESH_PER_BOARD_PER_DAY: int = 10
+    VIDEO_PER_BOARD_PER_DAY: int = 10
+    # fal.ai (mesh and video plugins)
+    FAL_KEY: str | None = None
+    FAL_TIMEOUT_S: int = 600
+    FAL_POLL_S: float = 3.0
+    FAL_MESH_FAST: str = "fal-ai/hunyuan3d/v2/mini/turbo"  # verified in Task 7
+    FAL_MESH_DETAILED: str = "fal-ai/hunyuan3d/v2"  # verified in Task 7
+    FAL_VIDEO_STANDARD: str = "fal-ai/kling-video/v2.1/standard/image-to-video"  # verified in Task 7
+    FAL_VIDEO_PRO: str = "fal-ai/kling-video/v2.1/pro/image-to-video"  # verified in Task 7
     PLUGINS_ENABLED: bool = True
     PLUGINS_DIR: str = "data/plugins"
     PLUGIN_TIMEOUT_S: int = 30
