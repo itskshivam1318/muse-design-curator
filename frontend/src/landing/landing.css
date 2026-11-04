@@ -1,0 +1,49 @@
+.landing {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 56px 16px;
+  display: grid;
+  gap: 24px;
+}
+.landing h1 {
+  font-size: 40px;
+  font-weight: 700;
+}
+.landing header p {
+  max-width: 60ch;
+  margin-top: 8px;
+}
+.landing-video {
+  width: 100%;
+  border-radius: 6px;
+}
+.landing-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+@media (max-width: 600px) {
+  .landing-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.landing-card {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 12px;
+  background: var(--raised);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+.landing-card img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: var(--panel);
+}
+.landing-actions {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}

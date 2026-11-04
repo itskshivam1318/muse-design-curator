@@ -155,7 +155,7 @@ async def post_message(board_id: str, body: ChatMessage) -> dict[str, Any]:
     at once (`agent.question` with `answered: true`).
 
     Refusals (409): CHAT_UNAVAILABLE (demo mode, or no chat model; the message says which),
-    MCP_RUN_OPEN (Claude Code is working on the board), NO_OPEN_QUESTION (an `answer` whose
+    MCP_RUN_OPEN (Muse Code is working on the board), NO_OPEN_QUESTION (an `answer` whose
     `call_id` matches no open question)."""
     await run_in_threadpool(_check_board, board_id)
     reason = runner.unavailable()

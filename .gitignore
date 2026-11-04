@@ -1,6 +1,7 @@
 .superpowers/
 .remember/
 data/
+/bundles/
 data/plugins/
 node_modules/
 dist/

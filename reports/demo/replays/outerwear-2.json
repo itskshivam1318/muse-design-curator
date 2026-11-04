@@ -1,0 +1,23 @@
+[
+ {
+  "card": 1,
+  "of": 3,
+  "step": 1,
+  "say": "Its own run: two more looks in the same range, and look 1 again in a second colour.",
+  "t": 1.23
+ },
+ {
+  "card": 2,
+  "of": 3,
+  "step": 3,
+  "say": "Look 1 in a second colour: one dimension only - the trench colour. Cloth, cut and styling hold.",
+  "t": 5.98
+ },
+ {
+  "card": 3,
+  "of": 3,
+  "step": 16,
+  "say": "Finishing again: the looks are several pieces in one range, and the check now reads them that way.",
+  "t": 10.709
+ }
+]

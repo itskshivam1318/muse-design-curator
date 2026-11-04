@@ -261,7 +261,7 @@ export interface AgentOutput {
   note_ids: string[]
 }
 
-/** One agent working on a board toward a goal (from Claude Code over MCP, or Muse's own). */
+/** One agent working on a board toward a goal (from Muse Code over MCP, or Muse's own). */
 export interface AgentRun {
   id: string
   board_id: string
@@ -721,8 +721,8 @@ function version(item: Item): string {
 
 export const itemImageUrl = (item: Item, size: 'thumb' | 'full') =>
   `${BASE}/items/${enc(item.id)}/image?size=${size}&v=${version(item)}`
-/** An item's thumbnail when only its id is known (e.g. an agent's choice). */
-export const itemIdImageUrl = (itemId: string) => `${BASE}/items/${enc(itemId)}/image?size=thumb`
+/** An item's thumbnail by id alone (no cache-busting token: the caller has no item row). */
+export const itemThumbUrl = (itemId: string) => `${BASE}/items/${enc(itemId)}/image?size=thumb`
 export const frameImageUrl = (itemId: string, frameId: string) =>
   `${BASE}/items/${enc(itemId)}/frames/${enc(frameId)}/image`
 

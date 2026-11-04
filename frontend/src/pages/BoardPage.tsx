@@ -160,7 +160,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
       <main className="page-message">
         <h1>{notFound ? 'Board not found' : 'Could not load this board'}</h1>
         <p className="muted">{notFound ? 'It may have been deleted.' : String(board.error?.message ?? '')}</p>
-        <Link href="/">All boards</Link>
+        <Link href="/boards">All boards</Link>
       </main>
     )
   }
@@ -182,7 +182,7 @@ export function BoardPage({ boardId }: { boardId: string }) {
         onFocusItem={focusItem}
         header={
           <>
-            <Link href="/" className="back-link" aria-label="All boards">
+            <Link href="/boards" className="back-link" aria-label="All boards">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
                 <path d="M10 3L5 8l5 5" />
               </svg>

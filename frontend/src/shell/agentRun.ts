@@ -53,4 +53,4 @@ export const STATUS_TEXT: Record<AgentRunStatus, string> = {
   paused: 'paused',
 }
 
-export const agentName = (run: AgentRun): string => (run.source === 'mcp' ? 'Claude Code' : 'Muse')
+export const agentName = (run: AgentRun): string => (run.source === 'mcp' ? 'Muse Code' : 'Muse')

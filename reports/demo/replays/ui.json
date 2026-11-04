@@ -1,0 +1,86 @@
+[
+ {
+  "card": 1,
+  "of": 12,
+  "step": 1,
+  "say": "Goal first. \"Premium\" means nothing until it is pinned to dimensions and values; then three screens in that vocabulary, and one example of what it is not.",
+  "t": 1.777
+ },
+ {
+  "card": 2,
+  "of": 12,
+  "step": 5,
+  "say": "Old-school e-banking: dense tables, many colours, tiny type. This is the not-this.",
+  "t": 6.517
+ },
+ {
+  "card": 3,
+  "of": 12,
+  "step": 7,
+  "say": "The Apple Card: titanium white, almost nothing printed on it. Restraint as luxury.",
+  "t": 11.252
+ },
+ {
+  "card": 4,
+  "of": 12,
+  "step": 13,
+  "say": "The Apple Card's ground: one quiet material, nothing printed on it.",
+  "t": 15.983
+ },
+ {
+  "card": 5,
+  "of": 12,
+  "step": 17,
+  "say": "The old e-banking screen fails the same dimension: no hierarchy at all.",
+  "t": 20.707
+ },
+ {
+  "card": 6,
+  "of": 12,
+  "step": 19,
+  "say": "The vocabulary, pinned from the references: ground, ornament, hierarchy, type, colour, density - each with a value, and what it is not.",
+  "t": 25.436
+ },
+ {
+  "card": 7,
+  "of": 12,
+  "step": 28,
+  "say": "Card detail, drawn from the home screen: same ground, same serif hero, the card as the one ornament.",
+  "t": 30.168
+ },
+ {
+  "card": 8,
+  "of": 12,
+  "step": 30,
+  "say": "The not-this, made precise: the same screen with only ornament turned up.",
+  "t": 34.893
+ },
+ {
+  "card": 9,
+  "of": 12,
+  "step": 34,
+  "say": "Laying out the sheet: the vocabulary first, then the three screens, then what premium is not.",
+  "t": 39.632
+ },
+ {
+  "card": 10,
+  "of": 12,
+  "step": 36,
+  "say": "Fair: the old e-banking screen is a different design. The not-this that matters is our own screen pushed one dimension too far, so it stays alone.",
+  "t": 44.36
+ },
+ {
+  "card": 11,
+  "of": 12,
+  "step": 39,
+  "say": "The not-this row is marked as a contrast.",
+  "t": 49.09
+ },
+ {
+  "card": 12,
+  "of": 12,
+  "step": 40,
+  "say": "Checking the sheet: the three screens must be one design; the not-this is set apart.",
+  "t": 53.808
+ }
+]

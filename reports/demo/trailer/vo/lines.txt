@@ -1,0 +1,9 @@
+01|You ask an image tool for a vintage coupe. You get four. One is close, but the wheels are wrong. So you re-roll. Now the wheels are right... and everything else has changed.
+02|What if you could change just one thing? This is Muse.
+03|Look at these five watches. What do they have in common? Muse reads your references, and names what they share. Not a vague style, but dimensions you can see.
+04|Dimensions come in two kinds. Physical dimensions live in a part. Pick the coupe, and its parts light up: the wheels, the lamps, the front intake, each with a value. Abstract dimensions read the whole picture: this room's mood, its warmth, how its materials sit together.
+05|Now pick one dimension, and explore it. Muse proposes options along that one line, and draws the one you choose. The room stays put: the camera, the sofa, the light. Only material and palette move, and Muse checks that nothing else did.
+06|Or just ask. Tell Muse Code to make this screen more premium. It adds premium as a dimension of its own, explores it, and draws a take. Every step lands on the board, where you can see it.
+07|Take a part from one picture, and put it into another. The Taycan's wheel, on the coupe. Only the wheel changes.
+08|And it holds over time. Session after session, the capsule stays in range, and a look comes back in a new colour.
+09|Muse. Explore... don't re-roll.

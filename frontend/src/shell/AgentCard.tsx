@@ -53,7 +53,7 @@ const isOpen = (run: AgentRun) => run.status === 'running' || run.status === 'ne
 /** Why the person cannot chat right now, or null when they can. */
 function chatOffReason(demoMode: boolean, runs: AgentRun[], available: boolean): string | null {
   if (demoMode) return 'Chat is off in the demo. Use “Show me how” to watch a run.'
-  if (runs.some((r) => r.source === 'mcp' && isOpen(r))) return 'Claude Code is working'
+  if (runs.some((r) => r.source === 'mcp' && isOpen(r))) return 'Muse Code is working'
   if (!available) return 'Chat needs Muse Spark (REASONING_PROVIDER=muse-spark)'
   return null
 }
@@ -62,10 +62,10 @@ function chatOffReason(demoMode: boolean, runs: AgentRun[], available: boolean):
 const entryText = (e: Entry) => (e.kind === 'message' ? e.message.text : (e.step.say ?? e.step.tool))
 
 /**
- * Floating bottom-right: who is working ("Muse", or "Claude Code" during an agent run), the latest
+ * Floating bottom-right: who is working ("Muse", or "Muse Code" during an agent run), the latest
  * thing that happened (the run's latest step or chat line, else the board's activity), and the chat
- * input (disabled, saying why, in the demo, while Claude Code works or without a chat model). A Muse
- * run shows its chat thread; a Claude Code run its steps. Gives way to the right drawer.
+ * input (disabled, saying why, in the demo, while Muse Code works or without a chat model). A Muse
+ * run shows its chat thread; a Muse Code run its steps. Gives way to the right drawer.
  */
 export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusItem: (itemId: string) => void }) {
   const entries = useActivity()

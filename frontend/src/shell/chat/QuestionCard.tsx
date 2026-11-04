@@ -1,5 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
-import { type AgentAnswer, type AgentMessage, itemIdImageUrl } from '../../api'
+import { type AgentAnswer, type AgentMessage, itemThumbUrl } from '../../api'
 import { clearPartConfirm, partConfirmStore, setConfirmMode, usePartConfirm } from '../partConfirm'
 import { textParts } from './thread'
 
@@ -104,7 +104,7 @@ export function QuestionCard({
           {choices.map((c) =>
             ITEM_ID.test(c) ? (
               <button key={c} type="button" className="question-choice is-item" aria-label={c} disabled={disabled} onClick={() => give({ call_id: callId, choice: c })}>
-                <img src={itemIdImageUrl(c)} alt="" />
+                <img src={itemThumbUrl(c)} alt="" />
               </button>
             ) : (
               <button key={c} type="button" className="question-choice" disabled={disabled} onClick={() => give({ call_id: callId, choice: c })}>

@@ -137,7 +137,7 @@ describe('AgentCard, an agent run', () => {
 
   it('shows the latest say collapsed', () => {
     renderCard({ run: makeRun(), steps: [steps[0]] })
-    expect(screen.getByText('Claude Code')).toBeTruthy()
+    expect(screen.getByText('Muse Code')).toBeTruthy()
     expect(screen.getByText('working')).toBeTruthy()
     expect(screen.getByText('Reading the board')).toBeTruthy()
   })
@@ -268,11 +268,11 @@ describe('AgentCard, an agent run', () => {
     expect((await screen.findByRole('alert')).textContent).toBe('Could not stop the run.')
   })
 
-  it('placeholder says Claude Code is working', () => {
+  it('placeholder says Muse Code is working', () => {
     renderCard({ run: makeRun({ source: 'mcp', status: 'running' }), steps })
     const input = screen.getByLabelText('Message Muse') as HTMLInputElement
     expect(input.disabled).toBe(true)
-    expect(input.placeholder).toBe('Claude Code is working')
+    expect(input.placeholder).toBe('Muse Code is working')
   })
 
   it('placeholder is unchanged once the run is done', () => {
@@ -298,12 +298,12 @@ describe('AgentCard, chat', () => {
     expect(input().placeholder).toBe('Chat is off in the demo. Use “Show me how” to watch a run.')
   })
 
-  it('waits while a Claude Code run is open, even one not shown', () => {
+  it('waits while a Muse Code run is open, even one not shown', () => {
     const mcp = makeRun({ id: 'r1', source: 'mcp', status: 'needs_input', created_at: '2026-11-03T09:00:00Z' })
     const muse = makeRun({ id: 'r2', source: 'muse', status: 'waiting', created_at: '2026-11-03T10:00:00Z' })
     renderCard({ chat: true, runs: [muse, mcp] })
     expect(input().disabled).toBe(true)
-    expect(input().placeholder).toBe('Claude Code is working')
+    expect(input().placeholder).toBe('Muse Code is working')
   })
 
   it('shows the chat chip for the selection', () => {
@@ -325,7 +325,7 @@ describe('AgentCard, chat', () => {
     expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull()
   })
 
-  it('no New chat while the muse run is working, for a Claude Code run, or when locked', () => {
+  it('no New chat while the muse run is working, for a Muse Code run, or when locked', () => {
     renderCard({ chat: true, run: makeRun({ source: 'muse', status: 'running' }), messagesByRun: { r1: [] } })
     expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Stop run' })).toBeTruthy()
@@ -483,8 +483,8 @@ describe('AgentCard, replay', () => {
     // the run's time tells two runs with the same goal apart
     const at = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     expect([...select.options].map((o) => [o.value, o.textContent])).toEqual([
-      ['r2', `Claude Code · ${at('2026-11-03T15:40:00Z')} · Newer goal`],
-      ['r1', `Claude Code · ${at('2026-11-03T09:05:00Z')} · Older goal`],
+      ['r2', `Muse Code · ${at('2026-11-03T15:40:00Z')} · Newer goal`],
+      ['r1', `Muse Code · ${at('2026-11-03T09:05:00Z')} · Older goal`],
     ])
     expect(screen.getByText('Newer goal')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Show me how' })).toBeNull()

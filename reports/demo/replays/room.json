@@ -1,0 +1,44 @@
+[
+ {
+  "card": 1,
+  "of": 6,
+  "step": 17,
+  "say": "Confirming the lens. Materials per part - wood, seat, floor, walls, lamp - and the palette as a whole: family, warmth, lightness.",
+  "t": 1.225
+ },
+ {
+  "card": 2,
+  "of": 6,
+  "step": 18,
+  "say": "Rendering the anchor room. Every variation will be drawn from this one picture, so the layout cannot wander.",
+  "t": 5.958
+ },
+ {
+  "card": 3,
+  "of": 6,
+  "step": 24,
+  "say": "One dimension only: material and palette together. Same room, same furniture shapes, same light - Muse proposes what else it could be made of.",
+  "t": 10.697
+ },
+ {
+  "card": 4,
+  "of": 6,
+  "step": 32,
+  "say": "Kept: walnut and terracotta clay.",
+  "t": 15.439
+ },
+ {
+  "card": 5,
+  "of": 6,
+  "step": 34,
+  "say": "Writing down what held still, so the variations can be compared like for like.",
+  "t": 20.17
+ },
+ {
+  "card": 6,
+  "of": 6,
+  "step": 36,
+  "say": "Laying out the sheet: the anchor, the three versions side by side, and the note on what held still.",
+  "t": 24.902
+ }
+]

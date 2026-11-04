@@ -1,0 +1,44 @@
+[
+ {
+  "card": 1,
+  "of": 6,
+  "step": 1,
+  "say": "Asked: make it more premium. First, premium becomes a dimension.",
+  "t": 1.236
+ },
+ {
+  "card": 2,
+  "of": 6,
+  "step": 2,
+  "say": "An abstract dimension: it reads the whole screen, not one part.",
+  "t": 5.974
+ },
+ {
+  "card": 3,
+  "of": 6,
+  "step": 7,
+  "say": "Now explore it: the same screen, only more or less premium.",
+  "t": 10.702
+ },
+ {
+  "card": 4,
+  "of": 6,
+  "step": 8,
+  "say": "Drawing one take: letterpress matte - everything else on the screen stays.",
+  "t": 15.432
+ },
+ {
+  "card": 5,
+  "of": 6,
+  "step": 12,
+  "say": "Kept: letterpress matte. More premium, and the screen is still the same screen.",
+  "t": 20.16
+ },
+ {
+  "card": 6,
+  "of": 6,
+  "step": 13,
+  "say": "The sheet: one take, more premium, same screen.",
+  "t": 24.889
+ }
+]

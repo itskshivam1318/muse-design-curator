@@ -18,7 +18,7 @@ CHAT_OPEN = {
     "error": "CHAT_OPEN",
     "message": "A chat is open on this board. Pass replace: true to end it and start this run.",
 }
-MCP_RUN_OPEN = {"error": "MCP_RUN_OPEN", "message": "Claude Code is working on this board."}
+MCP_RUN_OPEN = {"error": "MCP_RUN_OPEN", "message": "Muse Code is working on this board."}
 
 
 def _start(
