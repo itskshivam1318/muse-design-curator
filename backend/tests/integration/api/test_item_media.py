@@ -107,3 +107,26 @@ def test_board_lens_null_then_current(client: TestClient) -> None:
     client.post(f"/api/boards/{w}/items", files=[("files", ("a.png", image_bytes(), "image/png"))])
     lens = client.get(f"/api/boards/{w}/lens").json()["lens"]
     assert lens["status"] == "confirmed" and lens["origin"] == "curated"
+
+
+def test_video_route_serves_file_with_mime_and_ranges(client: TestClient, board: str) -> None:
+    data = video_bytes([0, 1, 2])
+    item = _upload(client, board, "a.mp4", data)
+    assert item["kind"] == "video"
+    r = client.get(f"/api/items/{item['id']}/video")
+    assert r.status_code == 200
+    assert r.content == data
+    assert r.headers["content-type"] == item["mime"]
+    part = client.get(f"/api/items/{item['id']}/video", headers={"Range": "bytes=0-9"})
+    assert part.status_code == 206
+    assert part.content == data[:10]
+    assert part.headers["content-range"].startswith("bytes 0-9/")
+
+
+def test_video_route_404_for_non_video_and_unknown(client: TestClient, board: str) -> None:
+    item = _upload(client, board, "a.png", image_bytes())
+    assert client.get(f"/api/items/{item['id']}/video").status_code == 404
+    assert client.get("/api/items/item_nope/video").status_code == 404
+    vid = _upload(client, board, "a.mp4", video_bytes([0, 1, 2]))
+    assert client.delete(f"/api/items/{vid['id']}").status_code == 204
+    assert client.get(f"/api/items/{vid['id']}/video").status_code == 404

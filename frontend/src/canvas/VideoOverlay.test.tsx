@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { itemVideoUrl } from '../api'
 import { makeItem } from '../test/fixtures'
 import { VideoOverlay } from './VideoOverlay'
 
@@ -18,7 +19,10 @@ describe('VideoOverlay', () => {
     const video = container.querySelector('video')!
     expect(video.muted).toBe(true)
     expect(video.loop).toBe(true)
-    expect(video.getAttribute('src')).toContain('/items/v/video')
+    // the exact route the backend serves (GET /api/items/{id}/video), with the item's cache token
+    const item = makeItem({ id: 'v', kind: 'video' })
+    expect(video.getAttribute('src')).toBe(itemVideoUrl(item))
+    expect(video.getAttribute('src')).toMatch(/^\/api\/items\/v\/video\?v=[a-z0-9]*$/)
     expect(play).toHaveBeenCalled()
     expect((container.firstChild as HTMLElement).style.left).toBe('10px')
     fireEvent.click(video)
