@@ -1,0 +1,44 @@
+{
+ "run": "arun_01m6k0ca6mpjyxbtz8zz85tesy",
+ "board": "copy of brd_01m6h989kz0tz8xjvjbp6zbz9x (data/copy-car)",
+ "request": "Give me a darker colourway. Keep everything else exactly as it is.",
+ "takes": [
+  {
+   "option": "Oxblood Noir",
+   "item_id": "itm_01m6k0e12ktwcvhk7wnjkce841",
+   "check": {
+    "target": {
+     "answer": "yes",
+     "confidence": 0.88,
+     "box": [
+      0.1,
+      0.46,
+      0.65,
+      0.63
+     ],
+     "note": "Coupe wears dark burgundy paint glowing deep red on bonnet."
+    },
+    "kept": 4,
+    "of": 4,
+    "drifted": [],
+    "unknown": 8
+   }
+  },
+  {
+   "option": "Teal Blackout",
+   "item_id": "itm_01m6k0ec208tv514awshsyxhz7",
+   "check": {
+    "target": {
+     "answer": "yes",
+     "confidence": 0.88,
+     "box": null,
+     "note": "Dark near-black green coupe with teal highlights on teardrop lamps."
+    },
+    "kept": 4,
+    "of": 4,
+    "drifted": [],
+    "unknown": 8
+   }
+  }
+ ]
+}

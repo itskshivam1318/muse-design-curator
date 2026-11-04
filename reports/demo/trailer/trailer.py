@@ -240,6 +240,14 @@ def framed(path: Path, src: Path, start: float, secs: float, *, speed: float = 1
     v += (f"[f]scale=3840:2160,zoompan=z='1+{push}*on/{n}':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2'"
           f":d=1:s={W}x{H}:fps={FPS},fade=t=in:d=0.25")
     args = ["-loop", "1", "-t", str(secs), "-i", str(bg), "-ss", str(start), "-t", str(secs * speed), "-i", str(src)]
+    if speed > 1.05:  # never hide a speed-up: the frame says so
+        fast = f"sped up {round(speed)}x" if speed >= 1.5 else f"sped up {speed:.1f}x"
+        inner = overlay
+
+        def overlay(t: float, inner=inner, fast=fast) -> Image.Image:
+            im = inner(t) if inner else Image.new("RGBA", (W, H), (0, 0, 0, 0))
+            marker(ImageDraw.Draw(im), 1440, 40, fast, t, 32, fill=INK, ink=HL)
+            return im
     if overlay:
         ov = path.with_suffix(".ov.mov")
         anim_rgba(ov, secs, overlay)
@@ -542,15 +550,37 @@ def agent_checked(t: float) -> Image.Image:
         chip(d, 110, 680, "explore steering form -> wood rim. Held 2 of 2.", 40)
     # the agent's log, on the right
     d.rounded_rectangle([1290, 190, 1820, 880], 20, fill=(28, 30, 37))
-    log = [(0.4, "render_view  seats", (236, 238, 242)), (1.2, "analyse: views disagree", (255, 140, 120)),
-           (2.6, "explore  steering_form", (140, 200, 150)), (3.6, "visualize -> check", (140, 200, 150)),
+    # the run's own tool calls, in order (reports/demo/car-2/run.json turns 20, 29-31, 34, 47)
+    log = [(0.4, "render_view  seats", (236, 238, 242)), (1.2, "black wheel vs wood rim", (255, 140, 120)),
+           (2.6, "explore  steering_form", (140, 200, 150)), (3.6, "visualize -> held 2 of 2", (140, 200, 150)),
            (5.2, "keep_option", (140, 200, 150)), (6.6, "finish", (236, 238, 242)),
-           (7.2, "REFUSED 1 of 3", (255, 140, 120)), (7.6, "3 renders not checked", (255, 140, 120))]
+           (7.2, "REFUSED 1 of 3", (255, 140, 120)), (7.6, "3 views failed check", (255, 140, 120))]
     for k, (at, line, col) in enumerate(log):
         if t > at:
             d.text((1320, 220 + k * 78), line, font=font(34, k in (6,)), fill=col)
     if t > 8.4:
         chip(d, 110, 950, "The checks run inside the tools. The agent can't skip them.", 40, fill=INK, ink=HL)
+    return c
+
+
+CHAT = json.loads((HERE / "shots" / "car-chat.check.json").read_text()) if (HERE / "shots" / "car-chat.check.json").is_file() else None
+
+
+def chat_landed(t: float) -> Image.Image:
+    """The two takes the in-app agent kept, with their own checks (shots/car-chat.check.json)."""
+    c = Image.new("RGB", (W, H), PAPER)
+    d = ImageDraw.Draw(c)
+    d.text((110, 70), "Landed on the board, each one checked", font=font(56, True), fill=INK)
+    for k, (asset, take) in enumerate(zip(["chat_oxblood", "chat_teal"], (CHAT or {}).get("takes", []))):
+        a = ease((t - 0.3 - k * 0.4) / 0.5)
+        if a <= 0:
+            continue
+        x = 110 + k * 870
+        shadowed(c, fit(img(asset), 820, 546), (x, int(190 + 30 * (1 - a))))
+        ck = take["check"]
+        chip(d, x, 770, take["option"], 40, fill=INK, ink=HL)
+        if t > 1.4 + k * 0.4:
+            chip(d, x, 860, f"asked: yes · {ck['target']['confidence']:.2f}   held {ck['kept']} of {ck['of']}", 36)
     return c
 
 
@@ -629,21 +659,20 @@ def main() -> None:
         if m and src.is_file():
             ps = [part(), part(), part(), part()]
             # click a dimension -> petals (Spark's wait sped up)
-            framed(ps[0], src, max(0.0, m["callouts"] - 0.5), 4.5,
+            near_paint, near_card = (0.5, 0.61, 1.8), (0.86, 1.0, 1.8)  # the body-paint callout; the flower and its card
+            framed(ps[0], src, max(0.0, m["callouts"] - 0.5), 4.5, focus=near_paint,
                    speed=max(1.0, (m["petals"] - m["callouts"]) / 4.0), tag="LIVE · explore one dimension",
                    overlay=labels([(0.6, lambda d, t: marker(d, 240, 985, "click a dimension: paint", t)),
                                    (3.0, lambda d, t: marker(d, 840, 985, "options along that one line", t))]))
             # pick a petal, open its card, press render
-            framed(ps[1], src, m["petals"], m["render"] - m["petals"] + 0.8, push=0.04,
+            framed(ps[1], src, m["card"] - 3.0, m["render"] - m["card"] + 3.8, push=0.04, focus=near_card,
                    overlay=labels([(0.3, lambda d, t: marker(d, 240, 985, "pick one", t))]))
             # Muse Image drawing, sped up, and the frame says so
             wait = m["checked"] - m["render"]
-            fast = f"sped up {max(1, round(wait / 3))}x"
-            framed(ps[2], src, m["render"] + 0.8, 3.0, speed=max(1.0, wait / 3.0), push=0.03,
-                   overlay=labels([(0.0, lambda d, t: marker(d, 1440, 40, fast, t, 32, fill=INK, ink=HL)),
-                                   (0.4, lambda d, t: marker(d, 240, 985, "Muse Image draws only that", t))]))
+            framed(ps[2], src, m["render"] + 0.8, 3.0, speed=max(1.0, wait / 3.0), push=0.03, focus=near_card,
+                   overlay=labels([(0.4, lambda d, t: marker(d, 240, 985, "Muse Image draws only that", t))]))
             # the check line lands; keep
-            framed(ps[3], src, m["checked"], 5.5, push=0.10, focus=(0.75, 0.5, 1.35),
+            framed(ps[3], src, m["checked"], 5.5, push=0.06, focus=(1.0, 0.96, 2.6),
                    overlay=labels([(0.5, lambda d, t: marker(d, 240, 985, "the check, on every take", t)),
                                    (2.6, lambda d, t: marker(d, 940, 985, "keep  ->  on the board", t,
                                                            fill=INK, ink=HL))]))
@@ -662,26 +691,33 @@ def main() -> None:
         clip(ps[1], DEMO / "replays" / "ui-premium.webm", at, 4.2, zoom=1.6)
         anim(ps[2], 6.0, premium_before_after)
         beats.append(("06", "Muse Code: 'make it more premium' adds an abstract dimension (UI)", ps))
-        # 6c LIVE: ask Muse on the board (shots/car-chat.webm + marks)
+        # 6c LIVE: ask Muse on the board (shots/car-chat.webm + marks; takes and checks in car-chat.check.json)
         m = marks("car-chat")
         src = shots / "car-chat.webm"
         if m and src.is_file():
-            ps = [part(), part()]
-            framed(ps[0], src, m["ask"], m["sent"] - m["ask"] + 1.0, focus=(0.9, 0.8, 1.6), push=0.05,
+            ps = [part(), part(), part(), part()]
+            chat = (1.0, 1.0, 2.2)  # the chat panel, bottom right
+            framed(ps[0], src, m["ask"], m["sent"] - m["ask"] + 1.0, focus=chat, push=0.05,
                    tag="LIVE · ask Muse on the board")
-            end = m.get("checked", m["sent"] + 60)
-            items: list[Label] = [(0.5, lambda d, t: marker(d, 240, 985, "every step lands on the board", t))]
+            asked = m.get("answered", m["sent"] + 15) + 1.5
+            items: list[Label] = []
             if "question" in m:
-                items.append((2.5, lambda d, t: marker(d, 980, 985, "not sure? it asks", t, fill=INK, ink=HL)))
-            framed(ps[1], src, m["sent"], 7.0, speed=max(1.0, (end - m["sent"]) / 7.0), push=0.06,
+                items.append((1.0, lambda d, t: marker(d, 240, 985, "not sure? it asks", t)))
+            framed(ps[1], src, m["sent"], 5.0, speed=max(1.0, (asked - m["sent"]) / 5.0), focus=chat, push=0.04,
                    overlay=labels(items))
-            beats.append(("06c", "LIVE: the in-app agent works the board and asks", ps))
+            framed(ps[2], src, asked, 5.0, speed=max(1.0, (m.get("landed", asked + 60) + 2 - asked) / 5.0),
+                   focus=chat, push=0.04,
+                   overlay=labels([(0.5, lambda d, t: marker(d, 240, 985, "every step lands on the board", t))]))
+            anim(ps[3], 5.5, chat_landed)
+            beats.append(("06c", "LIVE: the in-app agent asks, works the board, lands two checked takes", ps))
         # 6b the agent is held to the checks (car: steering drift, finish refused)
         p = part(); anim(p, 11.0, agent_checked); beats.append(("06b", "Muse Code held to the checks: drift caught, finish refused", [p]))
         # 7 put this into that (car)
         p = part(); anim(p, 8.5, put_into); beats.append(("07", "Put this into that: the Taycan wheel (car)", [p]))
         # 8 over time (fashion)
         p = part(); anim(p, 8.5, over_time); beats.append(("08", "It holds over time (fashion)", [p]))
+        # 8b built on Meta: the models this ran on (app/config.py: muse-spark-1.3, sam-3.1, muse-image-1.0)
+        p = part(); anim(p, 12.0, meta_stack); beats.append(("08b", "Built on Meta: Spark, SAM, Muse Image, Muse Code", [p]))
         # 9 end
         p = part(); anim(p, 4.0, end_card); beats.append(("09", "End", [p]))
 

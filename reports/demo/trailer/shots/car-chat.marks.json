@@ -1,0 +1,10 @@
+{
+ "ask": 4.92,
+ "sent": 10.06,
+ "question": 22.15,
+ "answered": 25.5,
+ "first_step": 13.0,
+ "explored": 46.0,
+ "takes_ready": 101.0,
+ "landed": 107.0
+}

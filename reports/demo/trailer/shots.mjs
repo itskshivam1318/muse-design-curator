@@ -99,14 +99,15 @@ const SHOTS = {
     await page.goto(`${args.app}/boards/${args.car}`)
     await page.waitForTimeout(3500)
     await page.mouse.move(1500, 900)
-    await pick(page, 'note.png', 3)
+    await pick(page, 'note.png', 4)
     await page.waitForTimeout(2500)
     mark('callouts')
     const dim = page.locator('.callout-dim', { hasText: /paint|colour|color/i }).first()
     await clickGlide(page, dim)
     mark('explore')
     // the options arrive as petals around the hub
-    const petal = page.locator('[data-exploration-id] button:not(.flower-badge):not(.flower-collapse)').nth(1)
+    // a petal of the paint flower that has no take yet (is-note), so pressing it shows Render
+    const petal = page.getByRole('group', { name: /paint.*flower/i }).locator('[data-testid="petal"].is-note').first()
     await petal.waitFor({ timeout: 120000 })
     await page.waitForTimeout(1500)
     mark('petals')

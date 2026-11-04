@@ -1,5 +1,7 @@
 out/
-shots/
+shots/*
+!shots/*.marks.json
+!shots/*.check.json
 assets/
 vo/*.aiff
 vo/**/*.wav

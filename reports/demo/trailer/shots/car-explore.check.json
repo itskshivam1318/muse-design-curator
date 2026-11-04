@@ -1,0 +1,16 @@
+{
+ "item_id": "itm_01m6k08zhwyamrmwt800xp9p4b",
+ "option": "Graphite Black GT",
+ "board": "copy of brd_01m6h989kz0tz8xjvjbp6zbz9x (data/copy-car)",
+ "check": {
+  "target": {
+   "answer": "yes",
+   "confidence": 0.92,
+   "note": "Car body shows glossy near-black graphite paint."
+  },
+  "kept": 4,
+  "of": 4,
+  "drifted": [],
+  "unknown": 8
+ }
+}
