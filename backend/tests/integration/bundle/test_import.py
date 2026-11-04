@@ -15,10 +15,10 @@ from app.api.deps import get_session
 from app.bundle.export import BundleError, export_board
 from app.bundle.importer import MAX_MEMBER_BYTES, import_board
 from app.bundle.scope import TABLE_ORDER, model_for
-from app.db.models import Board, Lens
+from app.db.models import Board, Decision, Lens, RunCandidate, UiEvent, VariationRun
 from app.db.session import make_engine, make_session_factory, run_migrations
 from app.main import app
-from tests.integration.bundle.conftest import Built
+from tests.integration.bundle.conftest import Built, add_vary_run
 from tests.integration.bundle.test_export import read_rows
 
 
@@ -282,9 +282,18 @@ def test_skips_a_lens_that_is_already_here(
         assert board is not None and board.lens_id == "lens_shared"
 
 
-def test_refuses_a_lens_of_a_board_that_is_not_here(
-    tmp_path: Path, bundle: Path, second: sessionmaker[Session], second_dir: Path
+@pytest.mark.parametrize("other_board_here", [False, True])
+def test_refuses_a_lens_of_another_board(
+    other_board_here: bool,
+    tmp_path: Path,
+    bundle: Path,
+    second: sessionmaker[Session],
+    second_dir: Path,
 ) -> None:
+    if other_board_here:
+        with second() as s:
+            s.add(Board(id="brd_elsewhere", title="Someone else's"))
+            s.commit()
     lens = _lens_row(board_id="brd_elsewhere")
     foreign = rewrite(
         bundle,
@@ -292,8 +301,10 @@ def test_refuses_a_lens_of_a_board_that_is_not_here(
         edit=_with_lens(lens),
         add={"rows/lenses.json": json.dumps([lens]).encode()},
     )
+    before = counts(second)
     assert refused(second, foreign) == "FOREIGN_LENS"
-    assert nothing_written(second, second_dir)
+    assert counts(second) == before
+    assert not second_dir.exists() or not [p for p in second_dir.rglob("*") if p.is_file()]
 
 
 def test_replace_keeps_one_copy_of_the_boards_own_lens(
@@ -312,3 +323,61 @@ def test_replace_keeps_one_copy_of_the_boards_own_lens(
         assert s.scalars(select(Lens.id)).all() == ["lens_own"]
         board = s.get(Board, built_board.id)
         assert board is not None and board.lens_id == "lens_own"
+
+
+def test_replace_deletes_what_this_server_added_to_the_board(
+    bundle: Path, second: sessionmaker[Session], built_board: Built
+) -> None:
+    first = run_import(second, bundle)
+    assert "replaced_left_out" not in first  # a plain import returns the bundle's manifest
+    with zipfile.ZipFile(bundle) as z:
+        assert first == json.loads(z.read("manifest.json"))
+    with second() as s:
+        add_vary_run(s, built_board.id, built_board.image_a)  # a run, its lens, a UI event
+        s.add(RunCandidate(id="cand_x", run_id="run_x", corpus_item_id="cx_x"))
+        s.add(
+            Decision(
+                board_id=built_board.id,
+                run_id="run_x",
+                run_candidate_id="cand_x",
+                corpus_item_id="cx_x",
+                decision="keep",
+            )
+        )
+        s.commit()
+    m = run_import(second, bundle, replace=True)
+    assert m["replaced_left_out"] == {
+        "variation_runs": 1,
+        "run_candidates": 1,
+        "decisions": 1,
+        "ui_events": 1,
+    }
+    with second() as s:
+        for model in (VariationRun, RunCandidate, Decision, UiEvent):
+            assert s.scalar(select(func.count()).select_from(model)) == 0
+    after = counts(second)
+    assert after.pop("lenses") == 1  # the curated lens the run used is not the board's; it stays
+    assert after == m["counts"]
+
+
+def test_imports_a_bundle_with_directory_entries(
+    tmp_path: Path, bundle: Path, second: sessionmaker[Session], built_board: Built
+) -> None:
+    rezipped = tmp_path / "rezipped.zip"
+    with zipfile.ZipFile(bundle) as zin, zipfile.ZipFile(rezipped, "w") as zout:
+        dirs = sorted({n.rsplit("/", 1)[0] + "/" for n in zin.namelist() if "/" in n} | {"files/"})
+        for d in dirs:
+            zout.writestr(zipfile.ZipInfo(d), b"")
+        for name in zin.namelist():
+            zout.writestr(name, zin.read(name))
+    assert any(i.is_dir() for i in zipfile.ZipFile(rezipped).infolist())
+    m = run_import(second, rezipped)
+    assert counts(second) == m["counts"]
+
+
+def test_refuses_an_unsafe_directory_entry(
+    tmp_path: Path, bundle: Path, second: sessionmaker[Session], second_dir: Path
+) -> None:
+    bad = rewrite(bundle, tmp_path / "bad.zip", add={"files/../up/": b""})
+    assert refused(second, bad) == "UNSAFE_PATH"
+    assert nothing_written(second, second_dir)

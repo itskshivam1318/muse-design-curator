@@ -30,33 +30,32 @@ def schema_head() -> str:
     return head
 
 
-def _left_out(session: Session, board_id: str) -> list[str]:
+def left_out_scope(board_id: str) -> dict[str, tuple[Any, Any]]:
+    """Left-out table -> (model, where clause matching this board's rows), in LEFT_OUT order
+    (a table after the tables its rows refer to)."""
     runs = select(m.VariationRun.id).where(m.VariationRun.board_id == board_id)
     candidates = select(m.RunCandidate.id).where(m.RunCandidate.run_id.in_(runs))
-    counted = {
-        "variation_runs": m.VariationRun.board_id == board_id,
-        "run_candidates": m.RunCandidate.run_id.in_(runs),
-        "validation_results": m.ValidationResult.run_candidate_id.in_(candidates),
-        "decisions": m.Decision.board_id == board_id,
-        "plugin_nodes": m.PluginNode.board_id == board_id,
-        "plugin_runs": m.PluginRun.board_id == board_id,
-        "board_plugins": m.BoardPlugin.board_id == board_id,
-        "ui_events": m.UiEvent.board_id == board_id,
+    found: dict[str, tuple[Any, Any]] = {
+        "variation_runs": (m.VariationRun, m.VariationRun.board_id == board_id),
+        "run_candidates": (m.RunCandidate, m.RunCandidate.run_id.in_(runs)),
+        "validation_results": (
+            m.ValidationResult,
+            m.ValidationResult.run_candidate_id.in_(candidates),
+        ),
+        "decisions": (m.Decision, m.Decision.board_id == board_id),
+        "plugin_nodes": (m.PluginNode, m.PluginNode.board_id == board_id),
+        "plugin_runs": (m.PluginRun, m.PluginRun.board_id == board_id),
+        "board_plugins": (m.BoardPlugin, m.BoardPlugin.board_id == board_id),
+        "ui_events": (m.UiEvent, m.UiEvent.board_id == board_id),
     }
-    models = {
-        "variation_runs": m.VariationRun,
-        "run_candidates": m.RunCandidate,
-        "validation_results": m.ValidationResult,
-        "decisions": m.Decision,
-        "plugin_nodes": m.PluginNode,
-        "plugin_runs": m.PluginRun,
-        "board_plugins": m.BoardPlugin,
-        "ui_events": m.UiEvent,
-    }
+    return {t: found[t] for t in scope.LEFT_OUT}
+
+
+def _left_out(session: Session, board_id: str) -> list[str]:
     return [
         t
-        for t in scope.LEFT_OUT
-        if session.scalar(select(func.count()).select_from(models[t]).where(counted[t]))
+        for t, (model, where) in left_out_scope(board_id).items()
+        if session.scalar(select(func.count()).select_from(model).where(where))
     ]
 
 

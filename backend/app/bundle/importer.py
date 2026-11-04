@@ -18,7 +18,7 @@ from sqlalchemy import Table, delete, select, tuple_
 from sqlalchemy.orm import Session
 
 from app.bundle import scope
-from app.bundle.export import BundleError, schema_head
+from app.bundle.export import BundleError, left_out_scope, schema_head
 from app.db import models as m
 from app.storage.files import abs_path, root
 
@@ -38,6 +38,10 @@ def _check_members(z: zipfile.ZipFile) -> dict[str, zipfile.ZipInfo]:
     members: dict[str, zipfile.ZipInfo] = {}
     for info in z.infolist():
         name = info.filename
+        if info.is_dir():  # zip -r and Finder add these; nothing is read from them
+            if not _safe_relative(name.rstrip("/")):
+                raise BundleError("UNSAFE_PATH", f"{name!r} is not a safe path")
+            continue
         if not _safe_relative(name):
             raise BundleError("UNSAFE_PATH", f"{name!r} is not a safe path")
         allowed = (
@@ -175,16 +179,17 @@ def _check_files(paths: list[str], members: dict[str, zipfile.ZipInfo]) -> None:
 def _lenses_to_insert(
     session: Session, lenses: list[dict[str, Any]], board_id: str
 ) -> list[dict[str, Any]]:
-    """A lens already here is kept as it is, unless it is this board's own (a replace deletes
-    those first); a lens of a board that is neither this one nor here cannot be inserted."""
+    """A bundled lens is this board's own or has no board; any other cannot be imported. A lens
+    already here is kept as it is, unless it is this board's own (a replace deletes those first).
+    """
     out = []
     for lens in lenses:
+        owner = lens.get("board_id")
+        if owner is not None and owner != board_id:
+            raise BundleError("FOREIGN_LENS", f"lens {lens['id']} belongs to board {owner}")
         here = session.get(m.Lens, lens["id"])
         if here is not None and here.board_id != board_id:
             continue
-        owner = lens.get("board_id")
-        if owner is not None and owner != board_id and session.get(m.Board, owner) is None:
-            raise BundleError("FOREIGN_LENS", f"lens {lens['id']} belongs to board {owner}")
         out.append(lens)
     return out
 
@@ -211,6 +216,18 @@ def _write_files(z: zipfile.ZipFile, members: dict[str, zipfile.ZipInfo], paths:
             os.replace(tmp, dest)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
+
+
+def _delete_left_out(session: Session, board_id: str) -> dict[str, int]:
+    """Delete this board's rows in the tables a bundle leaves out (Vary runs, decisions, plugin
+    rows, UI events made on this server); they refer to the rows a replace deletes. Returns the
+    count deleted per table, for tables that had any."""
+    deleted: dict[str, int] = {}
+    for t, (model, where) in reversed(left_out_scope(board_id).items()):
+        n = session.execute(delete(model).where(where)).rowcount  # type: ignore[attr-defined]
+        if n:
+            deleted[t] = n
+    return deleted
 
 
 def _delete_board(session: Session, board_id: str) -> None:
@@ -253,6 +270,7 @@ def import_board(session: Session, bundle: Path, *, replace: bool = False) -> di
         _write_files(z, members, paths)
     if exists:
         session.flush()
+        manifest = {**manifest, "replaced_left_out": _delete_left_out(session, board_id)}
         _delete_board(session, board_id)
     for t in scope.TABLE_ORDER:
         if rows[t]:
