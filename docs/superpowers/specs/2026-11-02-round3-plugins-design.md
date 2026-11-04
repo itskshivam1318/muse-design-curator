@@ -133,12 +133,11 @@ My calls:
   + seed + count ⇒ same grid.
 - **Count**: 1–24, default 8. Auto may return fewer if there are not N distinct acceptable
   assignments (the node says how many it found).
-- **Palettes** come from: a starter set shipped with the plugin (`palettes.json`, ~12, "Coral
-  Bay" among them); palettes the Palette plugin has already written onto board items; and hand
+- **Palettes** come from: a starter set shipped with the plugin (`x-presets` on the palette
+  param in `plugin.json`, ~12, "Coral Bay" among them); palettes the Palette plugin has already written onto board items; and hand
   edits to any swatch. A palette is a name + 2–8 hex colours.
 - **Inputs**: one image item per run (the grid is per item).
-- Lives at `backend/app/plugins/builtin/recolor/` (`plugin.json`, `main.py`, `recolor.py`,
-  `palettes.json`). Lab helpers are copied in rather than imported, since the shim runs
+- Lives at `backend/app/plugins/builtin/recolor/` (`plugin.json`, `main.py`, `recolor.py`). Lab helpers are copied in rather than imported, since the shim runs
   plugins isolated.
 
 ### Clean-up (python runner, built-in id `cleanup`, replaces the placeholder)
