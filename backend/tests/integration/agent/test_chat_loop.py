@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -360,3 +361,37 @@ async def test_ended_run_is_left_alone(board: str, run_id: str, api: ApiClient) 
     model = FakeChatModel([])
     assert await loop.run_turn(board, run_id, model, api) == "done"
     assert model.calls == []
+
+
+async def test_look_at_fetch_error_is_a_tool_failure(
+    board: str, run_id: str, api: ApiClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def broken(_path: str) -> bytes | None:
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(api, "get_bytes", broken)
+    say(board, run_id, "look")
+    model = FakeChatModel([call("look_at", {"item_ids": ["itm_x"]}), reply("I could not see it.")])
+    assert await loop.run_turn(board, run_id, model, api) == "waiting"
+    result = outputs(model.calls[1][1])["call_1"]
+    assert result["error"] == "TOOL_FAILED" and "connection refused" in result["message"]
+    assert thread(run_id)[-1]["text"] == "I could not see it."
+
+
+async def test_unexpected_error_posts_message_and_waits(
+    board: str, run_id: str, api: ApiClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def broken(*_args: Any) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(loop._Turn, "run_calls", broken)  # fails outside any tool guard
+    say(board, run_id, "read")
+    model = FakeChatModel([calls(("read_board", {}, "c1"), ("read_board", {}, "c2"))])
+    assert await loop.run_turn(board, run_id, model, api) == "waiting"
+    last = thread(run_id)[-1]
+    assert last["role"] == "agent"
+    assert last["text"] == "Something went wrong (RuntimeError). Send a message to try again."
+    status, history = run_row(run_id)
+    assert status == "waiting" and history[0]["muse_person"] is True
+    got = outputs(history)
+    assert got["c1"]["error"] == "TOOL_FAILED" and got["c2"]["error"] == "TOOL_FAILED"

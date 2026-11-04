@@ -9,6 +9,7 @@ history holding it is saved, so a turn that dies before saving leaves its messag
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import Callable
 from typing import Any
@@ -30,6 +31,8 @@ from app.db.repos import agent as agent_repo
 
 __all__ = ["MAX_STEPS", "offered_tools", "run_turn"]
 
+log = logging.getLogger(__name__)
+
 MAX_STEPS = 40
 STEP_CAP_TEXT = f"I stopped after {MAX_STEPS} steps. Tell me how to continue."
 NOT_AVAILABLE = {"error": "NOT_AVAILABLE", "message": "That tool is not offered in this chat."}
@@ -39,6 +42,7 @@ SKIPPED = {
     "message": "Not run: the turn waited for the person's answer. Call it again if still needed.",
 }
 STOPPED = {"error": "STOPPED", "message": "Not run: the person stopped the work."}
+TURN_FAILED = {"error": "TOOL_FAILED", "message": "Not run: the turn failed."}
 _CALL_TYPES = ("function_call", "function_call_output")
 
 
@@ -165,6 +169,15 @@ def _insert_output(history: list[dict[str, Any]], item: dict[str, Any]) -> None:
     history.insert(at, item)
 
 
+def _close_calls(history: list[dict[str, Any]]) -> None:
+    """Give every call still without an output a failure output, so the saved history stays
+    one the model accepts after a turn broke off."""
+    answered = {it.get("call_id") for it in history if it.get("type") == "function_call_output"}
+    for it in list(history):
+        if it.get("type") == "function_call" and it.get("call_id") not in answered:
+            _insert_output(history, _output(it["call_id"], TURN_FAILED))
+
+
 # --- the turn --------------------------------------------------------------------------------
 
 
@@ -207,7 +220,22 @@ class _Turn:
         self.trace.message("agent", text)
 
     async def run(self) -> str:
+        """The turn; anything unexpected after the history is loaded ends it as `waiting` with a
+        message, the history saved, rather than leaving the run `running`."""
         status, self.history, question, pending = await run_in_threadpool(_load, self.run_id)
+        try:
+            return await self.work(status, question, pending)
+        except Exception as e:
+            log.exception("chat turn failed on run %s", self.run_id)
+            _close_calls(self.history)
+            await self.say(
+                f"Something went wrong ({type(e).__name__}). Send a message to try again."
+            )
+            return await self.finish("waiting")
+
+    async def work(
+        self, status: str, question: dict[str, Any] | None, pending: list[dict[str, Any]]
+    ) -> str:
         sent = len(self.history)  # the trace's new items start here: older ones were traced before
         if status not in agent_repo.OPEN:
             return status
@@ -269,14 +297,20 @@ class _Turn:
                 self.stopped = True
                 self.history.append(_output(c.call_id, STOPPED))
                 continue
-            if c.name in local_tools.SUSPENDING and local_tools.valid_args(c.name, c.arguments):
-                question = await self.question(c)
-                if isinstance(question, tuple):
-                    asked = question
-                    continue
-                result = question
-            else:
-                result = await self.call(c, pictures)
+            try:
+                if c.name in local_tools.SUSPENDING and local_tools.valid_args(c.name, c.arguments):
+                    question = await self.question(c)
+                    if isinstance(question, tuple):
+                        asked = question
+                        continue
+                    result = question
+                else:
+                    result = await self.call(c, pictures)
+            except (
+                Exception
+            ) as e:  # a chat-only tool's API call failed (registry tools never raise)
+                log.exception("chat tool %s failed", c.name)
+                result = {"error": "TOOL_FAILED", "message": str(e) or type(e).__name__}
             self.history.append(_output(c.call_id, result))
         self.history.extend(pictures)
         return asked
