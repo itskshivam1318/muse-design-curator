@@ -1,4 +1,4 @@
-/** A minimal history router: two routes, no dependency. */
+/** A minimal history router: a few routes, no dependency. */
 import { useSyncExternalStore } from 'react'
 
 const NAV_EVENT = 'app:navigate'
@@ -22,10 +22,11 @@ export function navigate(to: string, opts: { replace?: boolean } = {}): void {
   window.dispatchEvent(new Event(NAV_EVENT))
 }
 
-export type Route = { name: 'boards' } | { name: 'board'; id: string } | { name: 'not-found' }
+export type Route = { name: 'home' } | { name: 'boards' } | { name: 'board'; id: string } | { name: 'not-found' }
 
 export function matchRoute(path: string): Route {
-  if (path === '/' || path === '') return { name: 'boards' }
+  if (path === '/' || path === '') return { name: 'home' }
+  if (/^\/boards\/?$/.test(path)) return { name: 'boards' }
   const m = /^\/boards\/([^/]+)\/?$/.exec(path)
   if (m) return { name: 'board', id: decodeURIComponent(m[1]) }
   return { name: 'not-found' }
