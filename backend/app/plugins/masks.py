@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.analysis import limits
-from app.analysis.locate import _box_mask, locate, locate_object, object_cached
+from app.analysis.locate import _box_mask, locate, locate_object, object_cached, part_cached
 from app.db.models import BoardItem, ItemPart
 from app.errors import AppError
 from app.extraction.service import _fit, _image_for
@@ -32,10 +32,6 @@ def _mask_from_url(url: str, height: int, width: int) -> np.ndarray:
     return _load(url.removeprefix("/api/media/"), height, width)
 
 
-def _located(part: ItemPart) -> bool:
-    return bool(part.mask_path and files.abs_path(part.mask_path).is_file())
-
-
 def png_bytes(mask: np.ndarray) -> bytes:
     buf = io.BytesIO()
     Image.fromarray(mask.astype(np.uint8) * 255).save(buf, "PNG")
@@ -51,7 +47,7 @@ def prepare_masks(
     out: PreparedMasks = {"parts": [], "object": None}
     if item.kind not in ("image", "video") or not needs:
         return out
-    image, _ = _image_for(session, item)
+    image, sha = _image_for(session, item)
     with Image.open(io.BytesIO(image)) as im:
         width, height = im.size
     parts = (
@@ -65,11 +61,12 @@ def prepare_masks(
         if "parts" in needs
         else []
     )
-    sam = any(p.region_kind == "mask" and not _located(p) for p in parts) or (
+    sam = any(not part_cached(session, sha, p) for p in parts) or (
         "object_mask" in needs and not object_cached(session, item)
     )
     if sam:
         limits.check_and_count(board_id, "analyse")
+    empty: AppError | None = None
     try:
         for p in parts:
             try:
@@ -93,8 +90,15 @@ def prepare_masks(
             except AppError as e:
                 if e.code != "REGION_EMPTY":
                     raise
+                empty = e
     except Exception:
         if sam:
             limits.refund(board_id, "analyse")
         raise
+    if empty is not None or (not out["parts"] and out["object"] is None):
+        # nothing usable came out: the person got nothing, so the slot is given back
+        if sam:
+            limits.refund(board_id, "analyse")
+        if empty is not None:
+            raise empty
     return out

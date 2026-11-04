@@ -158,46 +158,57 @@ class _ObjectSeg:
         return self._seg.localize(image, sha, noun.removeprefix("object:"))
 
 
-def object_text(session: Session, item_id: str) -> str:
-    """What SAM is asked for to find the whole object. The analysis summary is not stored on the
-    item (only its parts and dimensions are), so: the parts' labels joined, else "main object"."""
-    labels = [
-        p.label
-        for p in session.scalars(
-            select(ItemPart).where(ItemPart.item_id == item_id, ItemPart.removed.is_(False))
-        )
-    ]
-    text = " ".join(" ".join(labels).split()[:MAX_PROMPT_WORDS])
-    return text or "main object"
+def object_subject(item: Any) -> str | None:
+    """What SAM is asked for to find the whole item: the analysis subject, cut to
+    MAX_PROMPT_WORDS. None for an item that was never analysed (or has no subject)."""
+    words = (item.subject or "").split()[:MAX_PROMPT_WORDS]
+    return " ".join(words) or None
+
+
+def part_cached(session: Session, sha: str, part: ItemPart) -> bool:
+    """True when locating this part needs no SAM call: it is located, or (a part without a
+    rough box) its prompt has a cached row in part_masks, found or not."""
+    if part.mask_path and files.abs_path(part.mask_path).is_file():
+        return True
+    if part.region_kind != "mask" or _hint(part) is not None:
+        return part.region_kind != "mask"
+    row = masks_repo.get(session, sha, " ".join(part.label.split()[:MAX_PROMPT_WORDS]))
+    return row is not None and (not row.found or _row_file(row))
+
+
+def _row_file(row: Any) -> bool:
+    return bool(row.mask_path and files.abs_path(row.mask_path).is_file())
 
 
 def object_cached(session: Session, item: Any) -> bool:
     """True when locate_object needs no SAM call."""
-    sha = _image_for(session, item)[1]
-    row = masks_repo.get(session, sha, "object:" + object_text(session, item.id))
-    if row is None:
-        return False
-    return not row.found or bool(row.mask_path and files.abs_path(row.mask_path).is_file())
+    subject = object_subject(item)
+    if subject is None:
+        return True  # only the part union is tried
+    row = masks_repo.get(session, _image_for(session, item)[1], "object:" + subject)
+    return row is not None and (not row.found or _row_file(row))
 
 
 def locate_object(session: Session, item_id: str) -> Region:
-    """The whole main object: SAM prompted with the item's summary text (cached under
-    "object:<text>"); falls back to the union of the item's located mask parts."""
+    """The whole item: SAM prompted with the analysis subject (cached under "object:<subject>");
+    falls back to the union of the item's located mask parts. An item without a subject skips
+    SAM."""
     item = _require_item(session, item_id)
     image, sha = _image_for(session, item)
-    text = object_text(session, item.id)
-    prompt = "object:" + text
+    subject = object_subject(item)
+    prompt = "object:" + (subject or "")
     with Image.open(io.BytesIO(image)) as im:
         width, height = im.size
-    try:
-        mask, _ = _part_mask(
-            session, _ObjectSeg(get_segmentation(get_settings())), image, sha, prompt,
-            (height, width),
-        )  # fmt: skip
-    except ModelError as e:
-        raise AppError(502, "REGION_FAILED", "Could not locate the object") from e
-    if mask is not None and mask_ratio(mask, np.ones_like(mask)) >= MIN_MASK_RATIO:
-        return Region(kind="mask", mask_url=_mask_url(_mask_rel(sha, prompt)))
+    if subject is not None:
+        try:
+            mask, _ = _part_mask(
+                session, _ObjectSeg(get_segmentation(get_settings())), image, sha, prompt,
+                (height, width),
+            )  # fmt: skip
+        except ModelError as e:
+            raise AppError(502, "REGION_FAILED", "Could not locate the object") from e
+        if mask is not None and mask_ratio(mask, np.ones_like(mask)) >= MIN_MASK_RATIO:
+            return Region(kind="mask", mask_url=_mask_url(_mask_rel(sha, prompt)))
     union = np.zeros((height, width), dtype=bool)
     for part in session.scalars(
         select(ItemPart).where(ItemPart.item_id == item.id, ItemPart.removed.is_(False))

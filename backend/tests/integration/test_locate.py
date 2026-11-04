@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.analysis import locate as locate_mod
 from app.analysis.locate import locate
 from app.api import deps
-from app.db.models import ItemPart
+from app.db.models import BoardItem, ItemPart
 from app.db.repos import items as items_repo
 from app.errors import AppError
 from app.providers.reliability import ModelError
@@ -225,11 +225,53 @@ def part_mask(rect: tuple[int, int, int, int]) -> np.ndarray:
     return m
 
 
+def set_subject(s: Session, item_id: str, subject: str | None) -> None:
+    item = s.get(BoardItem, item_id)
+    assert item is not None
+    item.subject = subject
+    s.commit()
+
+
+class NounSeg(CountingSeg):
+    def __init__(self) -> None:
+        super().__init__()
+        self.nouns: list[str] = []
+
+    def localize(self, image: bytes, sha256: str, noun: str) -> SegResult:
+        self.nouns.append(noun)
+        return super().localize(image, sha256, noun)
+
+
+def test_locate_object_prompts_sam_with_the_subject(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seg = NounSeg()
+    monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: seg)
+    with deps._factory()() as s:
+        item_id = setup_item(s, board(client))
+        set_subject(s, item_id, "lounge chair")
+        locate_mod.locate_object(s, item_id)
+    assert seg.nouns == ["lounge chair"]
+
+
+def test_locate_object_without_subject_skips_sam(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seg = CountingSeg()
+    monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: seg)
+    with deps._factory()() as s:
+        item_id = setup_item(s, board(client))
+        with pytest.raises(AppError) as e:
+            locate_mod.locate_object(s, item_id)
+    assert (e.value.status, e.value.code) == (422, "REGION_EMPTY") and seg.calls == 0
+
+
 def test_locate_object_uses_cache(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     seg = CountingSeg()
     monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: seg)
     with deps._factory()() as s:
         item_id = setup_item(s, board(client))
+        set_subject(s, item_id, "lounge chair")
         first = locate_mod.locate_object(s, item_id)
         second = locate_mod.locate_object(s, item_id)
     assert seg.calls == 1
@@ -243,6 +285,7 @@ def test_locate_object_falls_back_to_part_union(
     b = board(client)
     with deps._factory()() as s:
         item_id = setup_item(s, b)
+        set_subject(s, item_id, "chair")
         monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: MockSegmentationProvider())
         locate(s, item_id, "body")  # located by the mock: the centre box
         a = part_mask((0, 0, 50, 50))
@@ -267,6 +310,7 @@ def test_locate_object_empty_raises(client: TestClient, monkeypatch: pytest.Monk
     monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: EmptySeg())
     with deps._factory()() as s:
         item_id = setup_item(s, board(client), removed=True)
+        set_subject(s, item_id, "chair")
         with pytest.raises(AppError) as e:
             locate_mod.locate_object(s, item_id)
     assert (e.value.status, e.value.code) == (422, "REGION_EMPTY")

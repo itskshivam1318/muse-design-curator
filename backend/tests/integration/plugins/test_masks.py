@@ -47,9 +47,10 @@ def item_with_parts(client: TestClient, board: str, db: Session) -> BoardItem:
     for key in ("seat", "leg"):
         db.add(ItemPart(item_id=item_id, key=key, label=key.title(), region_kind="mask",
                         source="ai"))  # fmt: skip
-    db.commit()
     item = db.get(BoardItem, item_id)
     assert item is not None
+    item.subject = "lounge chair"
+    db.commit()
     return item
 
 
@@ -108,3 +109,38 @@ def test_python_payload_has_mask_paths(
     for exists, writable, inside, name in got["checks"]:
         assert exists and not writable and inside
         assert "-part-" in name or name.endswith("-object.png")
+
+
+class EmptySeg(MockSegmentationProvider):
+    def localize(self, image: bytes, sha256: str, noun: str) -> SegResult:
+        self.calls = getattr(self, "calls", 0) + 1
+        return SegResult(False, [])
+
+
+def test_nothing_found_refunds_and_object_need_raises(
+    client: TestClient, board: str, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.errors import AppError
+
+    item = item_with_parts(client, board, db)
+    monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: EmptySeg())
+    before = slots(board)
+    with pytest.raises(AppError) as e:
+        prepare_masks(db, board, item, ["object_mask"])
+    assert (e.value.status, e.value.code) == (422, "REGION_EMPTY")
+    assert slots(board) == before
+    # parts only: nothing located is an empty result, also refunded
+    out = prepare_masks(db, board, item, ["parts"])
+    assert out["parts"] == [] and slots(board) == before
+
+
+def test_cached_not_found_part_takes_no_slot(
+    client: TestClient, board: str, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    item = item_with_parts(client, board, db)
+    seg = EmptySeg()
+    monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: seg)
+    prepare_masks(db, board, item, ["parts"])  # SAM finds nothing; the not-found rows are cached
+    calls, before = seg.calls, slots(board)
+    prepare_masks(db, board, item, ["parts"])
+    assert seg.calls == calls and slots(board) == before
