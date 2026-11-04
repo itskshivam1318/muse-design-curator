@@ -11,6 +11,7 @@ Writes out/muse-trailer-v4.mp4 and out/timeline-v4.txt.
 """
 
 import json
+import sys
 import math
 import random
 import shutil
@@ -29,6 +30,8 @@ VO = HERE / "vo4"
 SHOTS = HERE / "shots"
 GREY = (150, 152, 160)
 STORY = json.loads((SHOTS / "story.check.json").read_text())
+DOMAINS = json.loads((SHOTS / "domains.check.json").read_text())
+SHOW_FIELDS = "--v5" in sys.argv
 
 
 def takes_landed(t: float) -> Image.Image:
@@ -210,9 +213,26 @@ def answer(t: float) -> Image.Image:
     return c
 
 
+FIELDS = [("anchor", "cars"), ("room0", "rooms"), ("look1", "clothes"), ("home", "screens")]
+
+
 def close(t: float) -> Image.Image:
     c = Image.new("RGB", (W, H), (14, 14, 17))
     d = ImageDraw.Draw(c)
+    if SHOW_FIELDS:
+        if t < 5.5:
+            for k, (photo, tag) in enumerate(FIELDS):
+                if t < 0.3 + k * 0.5:
+                    continue
+                x = 110 + k * 440
+                c.paste(fit(img(photo), 400, 300), (x, 300))
+                chip(d, x, 620, tag, 44)
+            if t > 2.6:
+                s = "one way of working, any field"
+                f = font(56, True)
+                d.text(((W - d.textlength(s, font=f)) / 2, 760), s, font=f, fill=(235, 236, 240))
+            return c
+        t -= 5.5
     s = "Agencies are drowning in generic AI slop."
     f = font(60, True)
     if t < 5.0:
@@ -229,6 +249,40 @@ def close(t: float) -> Image.Image:
         f = font(34)
         d.text(((W - d.textlength(s, font=f)) / 2, 700), s, font=f, fill=GREY)
     return c
+
+
+def focus_on(box: list[int] | None, z: float) -> tuple[float, float, float] | None:
+    """framed()'s focus=(cx, cy, zoom) that centres a logged screen box (1920x1080 CSS px)."""
+    if not box:
+        return None
+    x, y, w, h = box
+    out = []
+    for c, size in (((x + w / 2) / 1920), None), (((y + h / 2) / 1080), None):
+        x0 = min(max(c - 0.5 / z, 0.0), 1 - 1 / z)
+        out.append(x0 / (1 - 1 / z))
+    return (out[0], out[1], z)
+
+
+def domain_beat(part, slug: str, tag: str, first: str, second: str, last: str) -> list[Path]:
+    """One live shot on another board (shots/domain-<slug>.webm): glide in, explore one dimension,
+    pick, draw (sped up and labelled), and the take as it landed or was refused."""
+    m = marks(f"domain-{slug}")
+    src = SHOTS / f"domain-{slug}.webm"
+    boxes = {b["name"]: b["box"] for b in m.get("boxes", [])}
+    near_dim = focus_on(boxes.get("dim"), 1.6)
+    near_card = focus_on(boxes.get("card-checked") or boxes.get("card"), 1.7)
+    ps = [part(), part(), part(), part(), part()]
+    framed(ps[0], src, m["zoom-in"] - 0.3, m["explore"] + 0.6 - m["zoom-in"] + 0.3, push=0.03, tag=tag, focus=near_dim,
+           overlay=labels([(1.0, lambda d, t: marker(d, 240, 985, first, t))]))
+    framed(ps[1], src, m["explore"] + 0.6, 2.0, speed=max(1.0, (m["petals"] - m["explore"] - 0.6) / 2.0), push=0.03,
+           focus=near_card)
+    framed(ps[2], src, m["petals"] - 0.4, m["render"] - m["petals"] + 0.9, push=0.04, focus=near_card,
+           overlay=labels([(0.3, lambda d, t: marker(d, 240, 985, second, t))]))
+    framed(ps[3], src, m["render"] + 0.6, 2.0, speed=max(1.0, (m["checked"] - m["render"] - 0.6) / 2.0), push=0.03,
+           focus=near_card)
+    framed(ps[4], src, m["checked"] + 0.2, min(3.6, m["zoom-out"] - m["checked"] - 0.3), push=0.05, focus=near_card,
+           overlay=labels([(0.4, lambda d, t: marker(d, 240, 985, last, t, fill=INK, ink=HL))]))
+    return ps
 
 
 # ---------------------------------------------------------------- assembly
@@ -282,7 +336,8 @@ def main() -> None:
                overlay=labels([(3.2, lambda d, t: marker(d, 240, 985, "pick the coupe: every part, read", t)),
                                (4.6, lambda d, t: marker(d, 1080, 985, "wheels · lamps · bonnet", t, fill=INK, ink=HL))]))
         beats.append(("n6", "LIVE: the board zooms in on the coupe; its parts light up", [p]))
-        drawn("n7", "It holds in every view", 7.0, every_view)
+        if not SHOW_FIELDS:
+            drawn("n7", "It holds in every view", 7.0, every_view)
 
         # n8 LIVE: the curveball, asked on the board (same take; the chat panel floats, so the cut zooms on it)
         chat = (1.0, 1.0, 1.9)
@@ -297,26 +352,37 @@ def main() -> None:
         anim(ps[3], 4.2, takes_landed)
         beats.append(("n8", "LIVE: 'make it darker', it asks, two takes land", ps))
 
-        # n9 LIVE: change one thing yourself: the wheels (same take: explore, pick, draw, keep, zoom back out)
-        near_card = (1.0, 0.5, 1.6)  # the petal card, right of the coupe
-        ps = [part(), part(), part(), part(), part()]
-        framed(ps[0], story, m["part-headlamps"] + 2.6, 3.2,
-               speed=max(1.0, (m["petals"] + 0.6 - m["part-headlamps"] - 2.6) / 3.2), push=0.04,
-               tag="LIVE · change one thing",
-               overlay=labels([(0.3, lambda d, t: marker(d, 240, 985, "explore: wheel design", t))]))
-        framed(ps[1], story, m["petals"] + 0.6, m["render"] - m["petals"] + 0.2, focus=near_card, push=0.04,
-               overlay=labels([(0.3, lambda d, t: marker(d, 240, 985, "pick one option", t))]))
-        framed(ps[2], story, m["render"] + 0.8, 2.6, speed=max(1.0, (m["checked"] - m["render"] - 0.8) / 2.6),
-               focus=near_card, push=0.03,
-               overlay=labels([(0.3, lambda d, t: marker(d, 240, 985, "Muse draws only the wheels", t))]))
-        framed(ps[3], story, m["checked"] + 0.3, m["zoom-out"] - m["checked"] - 0.3, focus=near_card, push=0.05,
-               overlay=labels([(0.5, lambda d, t: marker(d, 240, 985, "kept · on the board", t))]))
-        framed(ps[4], story, m["zoom-out"], m["board-again"] + 0.8 - m["zoom-out"], push=0.0,
-               overlay=labels([(0.6, lambda d, t: marker(d, 240, 985, "and back to the whole board", t, fill=INK, ink=HL))]))
-        beats.append(("n9", "LIVE: explore the wheels, draw one, keep it, zoom out", ps))
+        if SHOW_FIELDS:
+            # the same move in other fields, each filmed live on a copy of its board (results: shots/domains.check.json)
+            beats.append(("d1", "LIVE: a room, explore the sofa's material", domain_beat(
+                part, "room", "LIVE · a room", "pick the sofa: explore its material", "pick one", "Rust Linen, kept")))
+            refused = DOMAINS["capsule"]["staged"]
+            beats.append(("d2", "LIVE: a coat, a new cloth (a drifted take is refused)", domain_beat(
+                part, "capsule", "LIVE · a coat", "explore the trench cloth", "pick one",
+                "changed more than the cloth: not added" if refused else "kept")))
+            beats.append(("d3", "LIVE: a screen, explore the balance typeface", domain_beat(
+                part, "fintech", "LIVE · a screen", "explore the balance typeface", "pick one", "Solid Gold Serif, kept")))
+        else:
+            # n9 LIVE: change one thing yourself: the wheels (same take: explore, pick, draw, keep, zoom back out)
+            near_card = (1.0, 0.5, 1.6)  # the petal card, right of the coupe
+            ps = [part(), part(), part(), part(), part()]
+            framed(ps[0], story, m["part-headlamps"] + 2.6, 3.2,
+                   speed=max(1.0, (m["petals"] + 0.6 - m["part-headlamps"] - 2.6) / 3.2), push=0.04,
+                   tag="LIVE · change one thing",
+                   overlay=labels([(0.3, lambda d, t: marker(d, 240, 985, "explore: wheel design", t))]))
+            framed(ps[1], story, m["petals"] + 0.6, m["render"] - m["petals"] + 0.2, focus=near_card, push=0.04,
+                   overlay=labels([(0.3, lambda d, t: marker(d, 240, 985, "pick one option", t))]))
+            framed(ps[2], story, m["render"] + 0.8, 2.6, speed=max(1.0, (m["checked"] - m["render"] - 0.8) / 2.6),
+                   focus=near_card, push=0.03,
+                   overlay=labels([(0.3, lambda d, t: marker(d, 240, 985, "Muse draws only the wheels", t))]))
+            framed(ps[3], story, m["checked"] + 0.3, m["zoom-out"] - m["checked"] - 0.3, focus=near_card, push=0.05,
+                   overlay=labels([(0.5, lambda d, t: marker(d, 240, 985, "kept · on the board", t))]))
+            framed(ps[4], story, m["zoom-out"], m["board-again"] + 0.8 - m["zoom-out"], push=0.0,
+                   overlay=labels([(0.6, lambda d, t: marker(d, 240, 985, "and back to the whole board", t, fill=INK, ink=HL))]))
+            beats.append(("n9", "LIVE: explore the wheels, draw one, keep it, zoom out", ps))
 
         drawn("n10", "The answer: one car, all three asks", 7.0, answer)
-        drawn("n11", "Close: taste for AI exploration", 11.0, close)
+        drawn("n11", "Close: any field; taste for AI exploration", 15.6 if SHOW_FIELDS else 11.0, close)
 
         timeline, video_parts, audio_at = [], [], []
         clock = 0.0
@@ -353,14 +419,16 @@ def main() -> None:
         mix += ";" + "".join(f"[w{k}]" for k in range(len(cuts))) + f"amix=inputs={len(cuts)}:normalize=0[sfx]"
         mix += (f";[vo][sfx]amix=inputs=2:normalize=0,loudnorm=I=-16:TP=-1.5:LRA=11,"
                 f"apad=whole_dur={clock:.2f}[aout]")
-        final = tmp / "muse-trailer-v4.mp4"
+        name = "muse-trailer-v5" if SHOW_FIELDS else "muse-trailer-v4"
+        final = tmp / f"{name}.mp4"
         run("-i", str(silent), *inputs, "-filter_complex", mix + ";[0:v]noise=alls=5:allf=t[vout]",
             "-map", "[vout]", "-map", "[aout]", *ENC, "-c:a", "aac", "-b:a", "192k", "-t", f"{clock:.2f}",
             "-movflags", "+faststart", str(final))
-        shutil.move(final, OUT / "muse-trailer-v4.mp4")
-        (OUT / "timeline-v4.txt").write_text("\n".join(timeline) + f"\n{int(clock // 60)}:{clock % 60:04.1f}  end\n")
-    print(OUT / "muse-trailer-v4.mp4")
-    print((OUT / "timeline-v4.txt").read_text())
+        shutil.move(final, OUT / f"{name}.mp4")
+        (OUT / f"timeline-{name[-2:]}.txt").write_text("\n".join(timeline) + f"\n{int(clock // 60)}:{clock % 60:04.1f}  end\n")
+    name = "muse-trailer-v5" if SHOW_FIELDS else "muse-trailer-v4"
+    print(OUT / f"{name}.mp4")
+    print((OUT / f"timeline-{name[-2:]}.txt").read_text())
 
 
 if __name__ == "__main__":

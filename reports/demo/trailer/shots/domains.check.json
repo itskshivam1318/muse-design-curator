@@ -1,0 +1,73 @@
+{
+ "room": {
+  "board": "copy of brd_01m6j4rrnz1zzx6qax1rya3j27 (data/copy-car)",
+  "item_id": "itm_01m6k83869xthdkhz88ct96cyp",
+  "option": "Rust Linen",
+  "staged": false,
+  "check": {
+   "target": {
+    "answer": "yes",
+    "confidence": 0.95,
+    "box": [
+     0.285,
+     0.53,
+     0.665,
+     0.758
+    ],
+    "note": "Low three-seat sofa in burnt rust linen centered against back wall."
+   },
+   "kept": 0,
+   "of": 0,
+   "drifted": [],
+   "unknown": 12
+  }
+ },
+ "capsule": {
+  "board": "copy of brd_01m6j5n5eqdmxv33zhw03qesx5 (data/copy-car)",
+  "item_id": "itm_01m6k87t5ntqa739vp5fvvq8yv",
+  "option": "Stone Pressed Melton",
+  "staged": true,
+  "check": {
+   "target": {
+    "answer": "yes",
+    "confidence": 0.88,
+    "box": [
+     0.25,
+     0.015,
+     0.81,
+     0.648
+    ],
+    "note": "Stone-grey trench in dense pressed melton texture."
+   },
+   "kept": 1,
+   "of": 2,
+   "drifted": [
+    "cloth_consistency"
+   ],
+   "unknown": 10
+  }
+ },
+ "fintech": {
+  "board": "copy of brd_01m6hcp4q8vrt11mnpw6jrmpb4 (data/copy-car)",
+  "item_id": "itm_01m6k8cjg1w5brn5exzta4tvx6",
+  "option": "Solid Gold Serif",
+  "staged": false,
+  "check": {
+   "target": {
+    "answer": "yes",
+    "confidence": 0.95,
+    "box": [
+     0.14,
+     0.12,
+     0.86,
+     0.205
+    ],
+    "note": "Balance figure is large serif in solid metallic gold matching the card M monogram."
+   },
+   "kept": 0,
+   "of": 0,
+   "drifted": [],
+   "unknown": 10
+  }
+ }
+}

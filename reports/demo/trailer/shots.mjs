@@ -24,6 +24,7 @@ const { values: args } = parseArgs({
     live: { type: 'boolean', default: false },
     car: { type: 'string', default: 'brd_01m6h989kz0tz8xjvjbp6zbz9x' }, // pass the copy's id
     room: { type: 'string', default: 'brd_01m6j4rrnz1zzx6qax1rya3j27' },
+    spec: { type: 'string' }, // for the domain shot: {slug, board, label, nth, dim, flower, zoom}
   },
 })
 const out = join(here, 'shots')
@@ -54,9 +55,9 @@ async function glide(page, locator, steps = 30) {
   await page.mouse.move(b.x + b.width / 2, b.y + Math.min(b.height / 2, 24), { steps })
 }
 
-async function pick(page, label, notches) {
+async function pick(page, label, notches, nth = 0) {
   await page.locator('.left-rail [data-rail="library"]').click()
-  await page.locator('.lib-row', { hasText: new RegExp(`^${label.replace('.', '\\.')}$`) }).first().click()
+  await page.locator('.lib-row', { hasText: new RegExp(`^${label.replace('.', '\\.')}$`) }).nth(nth).click()
   await page.keyboard.press('Escape') // closes the rail; the picture stays selected and centred
   await page.waitForTimeout(600)
   // zoom in on it: ctrl+wheel at the stage centre, where the pick centred it
@@ -146,10 +147,54 @@ async function keptSince(sentAt) {
   return d.steps.filter((s) => s.tool === 'keep_option' && s.ok && Date.parse(s.created_at) > sentAt).length
 }
 
-const LIVE = new Set(['car-explore', 'car-chat', 'story', 'story-dims', 'story-settings'])
+const LIVE = new Set(['car-explore', 'car-chat', 'story', 'story-dims', 'story-settings', 'domain'])
 const HIRES = new Set() // Chrome's headless screencast films at CSS size too, so no HIRES shot for now
 
 const SHOTS = {
+  // LIVE, any board: glide in on one picture, its callouts, explore one dimension, draw, keep, glide out
+  domain: async (page) => {
+    const sp = JSON.parse(args.spec)
+    await page.goto(`${args.app}/boards/${sp.board}`)
+    await page.waitForTimeout(4000)
+    mark('board')
+    await page.mouse.move(1500, 900)
+    await pick(page, sp.label, 0, sp.nth ?? 0)
+    const st = await page.locator('.board-stage').boundingBox()
+    const cx = st.x + st.width / 2, cy = st.y + st.height / 2
+    await page.waitForTimeout(1000)
+    mark('zoom-in')
+    await smoothZoom(page, cx, cy, sp.zoom ?? 4)
+    await page.waitForTimeout(2200)
+    mark('callouts')
+    const dim = page.locator('.callout-dim', { hasText: new RegExp(sp.dim, 'i') }).first()
+    await box(page, 'dim', dim)
+    await clickGlide(page, dim)
+    mark('explore')
+    const fresh = page.getByRole('group', { name: new RegExp(sp.flower, 'i') }).locator('[data-testid="petal"].is-note')
+    await fresh.first().waitFor({ timeout: 150000 })
+    await page.waitForTimeout(1200)
+    const bold = fresh.filter({ has: page.locator('.petal-tag[data-distance="bold"]') })
+    const petal = (await bold.count()) ? bold.first() : fresh.first()
+    await box(page, 'petal', petal)
+    mark('petals')
+    await clickGlide(page, petal)
+    await page.waitForTimeout(1200)
+    await box(page, 'card', '.petal-card')
+    mark('card')
+    await clickGlide(page, page.locator('.petal-render, .petal-primary').first())
+    mark('render')
+    await page.locator('.petal-check').first().waitFor({ timeout: 240000 })
+    await box(page, 'card-checked', '.petal-card')
+    mark('checked')
+    await page.waitForTimeout(2200)
+    const keep = page.locator('button.petal-primary', { hasText: 'Keep' }).first()
+    if (await keep.count()) { await clickGlide(page, keep); mark('kept'); await page.waitForTimeout(2000) }
+    mark('zoom-out')
+    await smoothZoom(page, cx, cy, sp.zoom ?? 4, 30)
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(2500)
+    mark('end')
+  },
   // LIVE: more dimensions, one at a time, on the same coupe (real board zoom in and out)
   'story-dims': async (page) => {
     await page.goto(`${args.app}/boards/${args.car}`)
@@ -410,9 +455,10 @@ const SHOTS = {
 }
 
 const browser = await chromium.launch()
-for (const [name, shot] of Object.entries(SHOTS)) {
-  if (args.only && args.only !== name) continue
-  if (LIVE.has(name) && !args.live && args.only !== name) continue
+for (const [key, shot] of Object.entries(SHOTS)) {
+  const name = key === 'domain' && args.spec ? `domain-${JSON.parse(args.spec).slug}` : key
+  if (args.only && args.only !== key) continue
+  if (LIVE.has(key) && !args.live && args.only !== key) continue
   // A HIRES shot is captured at 2x pixel density through Chrome's screencast (each frame saved with
   // its time), because Playwright's recorder always films at the viewport's CSS size.
   const hi = HIRES.has(name)

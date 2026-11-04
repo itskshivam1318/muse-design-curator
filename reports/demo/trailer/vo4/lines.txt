@@ -11,4 +11,7 @@ n7|am_michael|And it holds in every view. The side, the rear, the dashboard, the
 n8|am_michael|Then the client changes their mind. So just ask. Make it darker, keep everything else. Muse asks what it isn't sure of, and lands the change on the board.
 n9|am_michael|Or change one thing yourself. Pick the wheels, choose an option, and Muse draws only that.
 n10|am_michael|Heritage. Made next year. Warm. One car that answers all three.
-n11|am_michael|Agencies are drowning in generic AI slop. It's time to bring taste to AI exploration. Muse. Explore... don't regenerate.
+d1|am_michael|And it isn't only cars. In a room, pick the sofa, explore its material, and Muse redraws just the sofa.
+d2|am_michael|A coat: try it in a new cloth. When a take changes more than the cloth, Muse won't add it to the board.
+d3|am_michael|A screen: explore the balance typeface, and Muse sets it in a gold serif.
+n11|am_michael|Cars, rooms, clothes, screens: one way of working, any field. Agencies are drowning in generic AI slop. It's time to bring taste to AI exploration. Muse. Explore... don't regenerate.
