@@ -1,4 +1,3 @@
-import { fileURLToPath } from 'node:url'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vitest/config'
 
@@ -16,7 +15,5 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}'],
     restoreMocks: true,
-    // the 3D viewer library registers a WebGL element: tests never load it (they mock this stub)
-    alias: { '@google/model-viewer': fileURLToPath(new URL('./src/test/modelViewerStub.ts', import.meta.url)) },
   },
 })

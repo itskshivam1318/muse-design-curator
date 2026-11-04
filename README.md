@@ -97,6 +97,14 @@ draw, lay out the output sheet and finish.
 
 <img src="docs/media/chat.jpg" alt="The in-app agent asks which green to darken, and each step lands on the board" width="720">
 
+### 6. Plugin nodes that make more of a reference
+
+Beyond Palette and Critique, built-in nodes work from the parts Muse already found: **Variation** recolours an item part by part
+from a palette (up to 24 colourways as dashed option tiles; keep the ones you like, clear the rest, no model calls), **Clean-up**
+cuts the subject out on a transparent or white background, and **Image → 3D** and **Animate** send a cleaned cut-out to fal.ai
+(Hunyuan3D, Kling) for a viewable `.glb` or a short clip. The 3D and video nodes need `FAL_KEY` and show "not connected"
+without it; each board has a daily cap on them. The authoring guide is [`docs/plugins.md`](docs/plugins.md).
+
 ### The result: one car that answers all three asks
 
 <img src="docs/media/hero.jpg" alt="The final coupe, with each of heritage, made next year and warm traced to specific parts" width="720">

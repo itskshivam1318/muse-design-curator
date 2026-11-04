@@ -116,6 +116,11 @@ def write_site(site: Path) -> None:
         )
     )  # fmt: skip
     (site / "screen.png").write_bytes(screen_png())
+    # large enough that a mask-sized cut-out or a band of it is still a valid image
+    with Image.open(FIXTURE_IMAGES / "watch_01.jpg") as im:
+        im.convert("RGB").resize((1536, 1536), Image.Resampling.LANCZOS).save(
+            site / "object_large.jpg", quality=90
+        )
     (site / "clip.mp4").write_bytes(mp4_bytes([FIXTURE_IMAGES / n for n in VIDEO_FRAMES]))
 
 

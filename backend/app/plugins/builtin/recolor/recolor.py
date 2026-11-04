@@ -79,7 +79,7 @@ def parse_palette(value):
     colors = value.get("colors")
     if not isinstance(colors, list) or not 2 <= len(colors) <= 8:
         raise ValueError("A palette needs 2 to 8 colours")
-    # one entry per colour: "#ABC" and "#aabbcc" are the same swatch
+    # one entry per colour: "#ABC" and "#aabbcc" name the same colour
     unique = list(dict.fromkeys(norm_hex(c) for c in colors))
     if len(unique) < 2:
         raise ValueError("A palette needs at least 2 different colours")

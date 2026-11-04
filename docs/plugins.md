@@ -52,14 +52,39 @@ and `tagline` (llm). Copy a folder into `data/plugins/` and reload to try one.
 | `runs_on` | yes | A short "runs on" line for the card (e.g. `Python`, `Muse Spark`). Stored on generated images as their model. |
 | `inputs` | yes | `{"kinds": [...], "min": 1, "max": 12}`. Kinds are `image`, `video`, `note`, `link`. |
 | `params` | no | A JSON Schema object for the node's params. The card renders `string`, `enum`, `integer` and `boolean` (others get a JSON box); `default`, `enum`, `minimum`, `maximum` and `required` are checked. |
-| `outputs` | yes | Any of `images`, `notes`, `attributes`, `text`, `table`. A run may only return what is declared. |
-| `requires` | no | Setting names that must be set (e.g. `["VIDEO_MODEL"]`); otherwise the plugin shows as "not connected" and cannot run. |
+| `outputs` | yes | Any of `images`, `notes`, `attributes`, `text`, `table`, `video`, `model3d`. A run may only return what is declared. |
+| `requires` | no | Setting names that must be set (e.g. `["FAL_KEY"]`, as the 3D and Animate plugins do); otherwise the plugin shows as "not connected" and cannot run. |
+| `needs` | no | Extra inputs the app prepares for a python plugin: `"parts"` and/or `"object_mask"` (see below). |
 | `entry` | python | The python file with `run(...)`, relative to the folder. |
 | `prompt` | llm | The prompt template file, relative to the folder. |
 | `output_schema` | llm | JSON Schema of the model's answer. |
 | `output_map` | llm | Maps an output kind to a key of the answer, e.g. `{"notes": "taglines", "text": "why"}`. |
 
 Unknown top-level keys are ignored.
+
+### Widgets (`x-widget`)
+
+Inside `params`, a property can ask the card for a richer control than the default for its type.
+An unknown widget falls back to the default control.
+
+| `x-widget` | For | Renders |
+|---|---|---|
+| `segmented` | a string/integer `enum` | A row of buttons instead of a dropdown (integer enums save numbers). |
+| `palette` | an object `{name, colors}` | Colour swatches: presets from `x-presets` (an array of `{name, colors}`), the board's own palettes, and editable colours. |
+| `seed` | an integer | A number box with a Shuffle button that sets a new random seed. |
+| `part-colors` | an object `{part_key: "#rrggbb"}` | One colour per mask part of the connected item (manual recolouring). |
+| `frame` | a string (an item id) | A drop slot for a start or end frame; `x-swap-with` names the sibling slot a Swap button exchanges it with. |
+| `prompt` | a string | A multi-line prompt box; with `"x-describe": true` a Describe button asks the reasoning model to write the prompt from the connected image. |
+
+`x-show-if` (`{"param": value}`) hides a field unless another param has that value.
+
+### Masks for python plugins (`needs`)
+
+`"needs": ["parts"]` adds `parts: [{key, label, mask_path}]` to each input: the item's mask
+parts (one PNG per part, white where the part is), found once with the segmentation model and
+cached. `"needs": ["object_mask"]` adds `object_mask_path`, one PNG of the whole subject (the
+item's analysed `subject`, up to four words, prompts the model). Paths are read-only PNG files. A plugin that needs masks and cannot get them fails the run with
+`PLUGIN_BAD_INPUT` and a plain message (for example, fewer than two distinct parts).
 
 ## Python plugins
 
@@ -94,7 +119,11 @@ library module (`json.py`, `random.py`, `types.py`) **shadows** that module for 
 helpers distinct names.
 
 An image can be returned as base64 (`{"data_b64": ..., "caption": ...}`) or as a file the plugin
-wrote inside its working folder (`{"path": "out.png", "caption": ...}`).
+wrote inside its working folder (`{"path": "out.png", "caption": ...}`). A run may return at most
+24 images.
+
+**Failing on purpose.** Return `{"error": "<message>"}` to fail the run with `PLUGIN_BAD_INPUT`
+and your message (use it for input the plugin cannot work with).
 
 ## LLM plugins
 
@@ -134,6 +163,9 @@ A run returns (python) or maps to (llm) a dict with any of the declared kinds:
 }
 ```
 
+`video` and `model3d` are produced by the built-in model runner (Animate and Image → 3D), not by
+python or llm plugins.
+
 - **images** become generated items (lineage back to the first image input), **notes** become
   notes; both are placed in a column to the right of the node.
 - **attributes** are written onto input items (`item_id` must be one of the inputs). Values are
@@ -145,6 +177,17 @@ A run returns (python) or maps to (llm) a dict with any of the declared kinds:
   boolean, a hex colour for a colour, one of the lens's options for an enum or scale); a value
   that does not fit is skipped and listed with a reason. Re-parsing an item keeps plugin values.
 - **text** and **table** are kept on the run and shown in the node.
+- **model3d** becomes a `model` item holding a `.glb` (served from `/api/items/{id}/image?size=full`);
+  selecting it offers Open 3D, a viewer with orbit controls and a Download button. **video**
+  becomes a `video` item that plays inline on the canvas (bytes at `/api/items/{id}/video`).
+
+### Options
+
+A run that returns more than one image lays them out as a 4-wide grid of **options**: items
+with an `option_run_id` and a dashed outline. They make no model calls and are not analysed.
+**Keep** (`POST /api/items/{id}/keep-option`) turns one into an ordinary item and queues its
+(metered) analysis; **Clear options** on the node (`POST /api/nodes/{id}/clear-options`) removes
+the rest; `POST /api/items/{id}/restore` undoes a removal.
 
 Anything else, or a kind the manifest does not declare, fails the run with `PLUGIN_BAD_OUTPUT`.
 
@@ -164,3 +207,26 @@ it. The board's event stream carries `plugin_run.queued`, `plugin_run.progress`,
 | `PLUGIN_MODEL_FAILED` | The model call failed. |
 | `PLUGIN_NOT_CONNECTED` | A required setting is missing. |
 | `PLUGIN_INTERRUPTED` | The app restarted while the run was in progress. |
+
+### fal.ai jobs (3D and Animate)
+
+Image → 3D (`mesh`: fal Hunyuan3D, `quality` fast or detailed, optional `texture`) and Video
+(`video`: fal Kling, `type` standard or pro, `duration` 5 or 10 s, a `prompt`, optional start and
+end frames) need `FAL_KEY` in `.env`; without it they show "not connected". They run on a
+separate long-job queue, poll fal every `FAL_POLL_S` seconds (3) for up to `FAL_TIMEOUT_S`
+(600), and a run in flight when the app restarts is resumed from its stored fal request id
+without submitting (or charging) again. Endpoints can be overridden with `FAL_MESH_FAST`,
+`FAL_MESH_DETAILED`, `FAL_VIDEO_STANDARD` and `FAL_VIDEO_PRO`; `FAL_PROVIDER=mock` swaps in an
+offline stand-in for tests.
+
+### Daily caps
+
+Model work is metered per board per day. The counters are in memory and reset when the app
+restarts. A resumed run neither charges nor refunds.
+
+| Work | Setting | Default |
+|---|---|---|
+| Analysis (also Keep on an option) | `ANALYSE_PER_BOARD_PER_DAY` | 300 |
+| Image renders | `RENDER_PER_BOARD_PER_DAY` | 60 |
+| 3D models | `MESH_PER_BOARD_PER_DAY` | 10 |
+| Video clips | `VIDEO_PER_BOARD_PER_DAY` | 10 |

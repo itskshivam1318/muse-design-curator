@@ -11,6 +11,10 @@ const mockBackendEnv: Record<string, string> = {
   SEGMENTATION_PROVIDER: 'mock',
   IMAGE_PROVIDER: 'mock',
   EMBEDDER: 'mock',
+  // 3D and Animate run against a scripted mock fal (scripts/e2e_server.py); the key just connects them
+  FAL_PROVIDER: 'mock',
+  FAL_KEY: 'e2e-mock-key',
+  FAL_POLL_S: '0.2',
   // explicit blanks override whatever the repo-root .env holds: no key is ever loaded
   MODEL_API_KEY: '',
   BASETEN_API_KEY: '',
@@ -45,7 +49,7 @@ export default defineConfig({
       // prepare (wipe + seed, jobs inline) then serve with background jobs
       command:
         'JOBS_SYNC=1 uv run python scripts/e2e_prepare.py && ' +
-        `uv run uvicorn app.main:app --host 127.0.0.1 --port ${API_PORT}`,
+        `uv run python scripts/e2e_server.py ${API_PORT}`,
       cwd: '../backend',
       url: `${API_URL}/api/health`,
       env: mockBackendEnv,
