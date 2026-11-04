@@ -131,7 +131,7 @@ describe('AgentCard, an agent run', () => {
 
   it('shows the latest say collapsed', () => {
     renderCard({ run: makeRun(), steps: [steps[0]] })
-    expect(screen.getByText('Claude Code')).toBeTruthy()
+    expect(screen.getByText('Muse Code')).toBeTruthy()
     expect(screen.getByText('working')).toBeTruthy()
     expect(screen.getByText('Reading the board')).toBeTruthy()
   })
@@ -262,11 +262,11 @@ describe('AgentCard, an agent run', () => {
     expect((await screen.findByRole('alert')).textContent).toBe('Could not stop the run.')
   })
 
-  it('placeholder says Claude Code is working', () => {
+  it('placeholder says Muse Code is working', () => {
     renderCard({ run: makeRun({ source: 'mcp', status: 'running' }), steps })
     const input = screen.getByLabelText('Message Muse') as HTMLInputElement
     expect(input.disabled).toBe(true)
-    expect(input.placeholder).toBe('Claude Code is working')
+    expect(input.placeholder).toBe('Muse Code is working')
   })
 
   it('placeholder is unchanged once the run is done', () => {
@@ -311,8 +311,8 @@ describe('AgentCard, replay', () => {
     // the run's time tells two runs with the same goal apart
     const at = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     expect([...select.options].map((o) => [o.value, o.textContent])).toEqual([
-      ['r2', `Claude Code · ${at('2026-11-03T15:40:00Z')} · Newer goal`],
-      ['r1', `Claude Code · ${at('2026-11-03T09:05:00Z')} · Older goal`],
+      ['r2', `Muse Code · ${at('2026-11-03T15:40:00Z')} · Newer goal`],
+      ['r1', `Muse Code · ${at('2026-11-03T09:05:00Z')} · Older goal`],
     ])
     expect(screen.getByText('Newer goal')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Show me how' })).toBeNull()

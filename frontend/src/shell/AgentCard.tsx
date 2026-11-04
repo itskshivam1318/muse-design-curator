@@ -37,7 +37,7 @@ function useRun(boardId: string, chosenId: string | null) {
 }
 
 /**
- * Floating bottom-right: who is working ("Muse", or "Claude Code" during an agent run), the latest
+ * Floating bottom-right: who is working ("Muse", or "Muse Code" during an agent run), the latest
  * thing that happened (the run's latest step, else the board's activity), and the agent's input (a
  * shell this round: visible, disabled). Gives way to the right drawer.
  */
@@ -86,7 +86,7 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
       {spotlight ? 'Replaying…' : 'Show me how'}
     </button>
   )
-  const placeholder =run?.source === 'mcp' && run.status === 'running' ? 'Claude Code is working' : 'Agent coming soon'
+  const placeholder =run?.source === 'mcp' && run.status === 'running' ? 'Muse Code is working' : 'Agent coming soon'
   return (
     <aside className="agent-card" aria-label="Muse agent">
       <div className="agent-head">

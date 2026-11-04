@@ -261,7 +261,7 @@ export interface AgentOutput {
   note_ids: string[]
 }
 
-/** One agent working on a board toward a goal (from Claude Code over MCP, or Muse's own). */
+/** One agent working on a board toward a goal (from Muse Code over MCP, or Muse's own). */
 export interface AgentRun {
   id: string
   board_id: string
