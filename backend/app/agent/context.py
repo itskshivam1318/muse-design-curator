@@ -169,7 +169,10 @@ async def _await_job(
         if data.get("job_id") != job_id:
             continue
         if event["type"] == done:
-            return {"job_id": job_id, "item_id": data["item_id"], "item_ids": [data["item_id"]]}
+            return {
+                "job_id": job_id, "item_id": data["item_id"], "item_ids": [data["item_id"]],
+                "check": data.get("check"),
+            }  # fmt: skip
         if event["type"] == failed:
             return {
                 "error": str(data.get("code") or "JOB_FAILED"),

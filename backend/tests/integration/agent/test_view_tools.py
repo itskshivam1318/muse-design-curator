@@ -96,6 +96,7 @@ async def test_put_into_tool_with_a_point(ctx: ToolContext, ids: tuple[str, str]
     assert "error" not in res, res
     item = await require_item(ctx, res["item_id"])
     assert item["parent_item_id"] == target and item["put_source_item_id"] == source
+    assert res["check"] == item["check"] is not None  # the result comes back with its check
 
 
 async def test_put_into_tool_unknown_part(ctx: ToolContext, ids: tuple[str, str]) -> None:
@@ -119,6 +120,25 @@ async def test_wait_job_finds_a_put_result(ctx: ToolContext, ids: tuple[str, str
     assert res["timed_out"] is True and res["job_id"].startswith("put_")
     done = await run_tool(ctx, "wait", {"kind": "job", "id": res["job_id"], "timeout_s": 1})
     assert done["state"] == "done" and done["result"]["item_id"]
+
+
+@pytest.mark.usefixtures("event_never_arrives")
+async def test_wait_job_is_busy_while_the_result_is_checked(
+    ctx: ToolContext, ids: tuple[str, str], world: dict[str, Any]
+) -> None:
+    from app.db.models import BoardItem
+
+    res = await run_tool(ctx, "render_view", {"anchor_id": ids[0], "view": "from the rear"})
+    s = world["session"]
+    s.expire_all()
+    item = next(
+        i for i in s.query(BoardItem).filter(BoardItem.parent_item_id == ids[0])
+        if (i.generation_json or {}).get("view_job") == res["job_id"]
+    )  # fmt: skip
+    item.generation_json = {**item.generation_json, "checking": True}
+    s.commit()
+    busy = await run_tool(ctx, "wait", {"kind": "job", "id": res["job_id"], "timeout_s": 1})
+    assert busy["timed_out"] is True and busy["state"] == "checking"
 
 
 async def test_wait_job_unknown_id_times_out(ctx: ToolContext) -> None:

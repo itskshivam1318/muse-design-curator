@@ -4,9 +4,10 @@ import io
 from typing import Any
 
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app import demo, events, jobs
 from app.analysis import extract, limits
@@ -96,7 +97,7 @@ def test_put_into_creates_a_linked_item_beside_the_target(client: TestClient, wo
     added = next(e for e in seen if e["type"] == "item.added")
     assert added["data"]["id"] == item.id and added["data"]["put_source_item_id"] == source
     done = next(e for e in seen if e["type"] == "put.done")
-    assert done["data"] == {"job_id": got["job_id"], "item_id": item.id}
+    assert done["data"] == {"job_id": got["job_id"], "item_id": item.id, "check": item.check_json}
     assert renders(world) == 1  # a success keeps its render
 
 
@@ -362,3 +363,43 @@ def test_put_check_failure_leaves_the_result_unchecked(
     assert put(client, target, source).status_code == 202
     (item,) = results(world, target)
     assert item.check_json is None and renders(world) == 1
+
+
+@pytest.mark.file_db
+def test_put_result_is_committed_before_its_check(client: TestClient, world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """The check's model call holds no write lock: the result is already the board's, another
+    writer goes ahead, and the job is done only once the check is stored."""
+    from app.api import deps
+    from app.providers.reasoning import MockReasoningProvider
+
+    target, source = two(world)
+    during: list[list[tuple[str, Any]]] = []
+
+    def look(_self: Any, _images: list[bytes], _prompt: str) -> dict[str, Any]:
+        with deps._factory()() as s:
+            s.execute(text("PRAGMA busy_timeout=200"))
+            made = s.scalars(select(BoardItem).where(BoardItem.put_source_item_id == source))
+            during.append([(m.id, (m.generation_json or {}).get("checking")) for m in made])
+            row = s.get(BoardItem, target)
+            assert row is not None
+            row.x += 1  # another writer is not kept waiting
+            s.commit()
+        return {"answer": "yes", "confidence": 0.9, "box": None, "note": ""}
+
+    monkeypatch.setattr(MockReasoningProvider, "check_target", look)
+    with events.subscribe(world["watch"]) as sub:
+        assert put(client, target, source).status_code == 202
+        seen = collect(sub)
+    (item,) = results(world, target)
+    assert during == [[(item.id, True)]]  # committed, and marked as being checked
+    assert "checking" not in item.generation_json and item.check_json["answer"] == "yes"
+    mine = [
+        e["type"] for e in seen
+        if e["type"] in ("item.added", "item.updated", "put.done")
+        and item.id in (e["data"].get("id"), e["data"].get("item_id"))
+    ]  # fmt: skip
+    assert mine[:3] == ["item.added", "item.updated", "put.done"]
+    updated = next(e for e in seen if e["type"] == "item.updated")
+    assert updated["data"]["check"] == item.check_json
+    done = next(e for e in seen if e["type"] == "put.done")
+    assert done["data"]["check"] == item.check_json

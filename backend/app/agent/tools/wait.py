@@ -130,13 +130,16 @@ async def _plugin_run(ctx: ToolContext, run_id: str) -> _Probe | dict[str, Any]:
 
 
 async def _job(ctx: ToolContext, job_id: str) -> _Probe | dict[str, Any]:
-    """Done when an item carries the job id. A failed job leaves no item: it reads as busy."""
+    """Done when an item carries the job id and its check is stored (busy while it is being
+    checked). A failed job leaves no item: it reads as busy."""
     items = await board_items(ctx)
     if isinstance(items, dict):
         return items
     for item in items:
         gen = item.get("generation") or {}
         if job_id in (gen.get("view_job"), gen.get("put_job")):
+            if gen.get("checking"):
+                return True, "checking", {"item_id": item["id"], "check": None}
             return False, "done", _produced(item)
     return True, "busy", {"item_id": None, "check": None}
 

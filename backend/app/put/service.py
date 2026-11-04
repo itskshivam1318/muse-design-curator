@@ -50,6 +50,9 @@ from app.storage import files
 
 log = logging.getLogger(__name__)
 
+# set on a put or view result until its check is stored: wait(kind="job") reads it as busy
+CHECKING = "checking"
+
 JOB = "put_into"
 POINT_NAME = "the marked spot"
 SUBJECT_COVER = 0.6  # a part whose box covers this much of the source is its subject
@@ -270,7 +273,7 @@ def _ingest(
         kind="image", sha256=sha, storage_path=storage, thumb_path=thumb, mime="image/png",
         width=img.size[0], height=img.size[1], w=w, h=h, rights_status="generated",
         parent_item_id=target.id, put_source_item_id=source.id, staged=False,
-        generation_json={"model": model, "prompt": prompt, "put_job": job_id},
+        generation_json={"model": model, "prompt": prompt, "put_job": job_id, CHECKING: True},
     )  # fmt: skip
 
 
@@ -327,6 +330,26 @@ def result_check(session: Session, item: BoardItem, target: str) -> dict[str, An
     return None
 
 
+def finish_checked(session: Session, item: BoardItem, target: str, done: str, job_id: str) -> None:
+    """Finish a job whose result is already committed: check it (no transaction is open, so
+    the model call holds no write lock), store the check, then say so (`item.updated`), announce
+    `done` with the check and queue the result for reading."""
+    item_id, board_id = item.id, item.board_id
+    check = result_check(session, item, target)
+    row = session.get(BoardItem, item_id)
+    if row is not None:
+        row.check_json = check
+        row.generation_json = {
+            k: v for k, v in (row.generation_json or {}).items() if k != CHECKING
+        }
+        session.flush()
+        after_commit(session, partial(events.publish, board_id, "item.updated", item_to_dict(row)))
+    data = {"job_id": job_id, "item_id": item_id, "check": check}
+    after_commit(session, partial(events.publish, board_id, done, data))
+    after_commit(session, partial(jobs.enqueue, "analyse_item", item_id=item_id))  # read it
+    session.commit()
+
+
 def put_into(
     session: Session, job_id: str, target_id: str, source_id: str, spots: list[dict[str, Any]],
     words: str | None, x: float, y: float,
@@ -340,13 +363,9 @@ def put_into(
     source = session.get(BoardItem, source_id)
     name = _name(source) if source else FALLBACK_NAME
     target_text = (words or "").strip() or f"{name} placed at the marked spot"
-    item.check_json = result_check(session, item, target_text)
-    added = item_to_dict(item)
-    done = {"job_id": job_id, "item_id": item.id}
-    after_commit(session, partial(events.publish, item.board_id, "item.added", added))
-    after_commit(session, partial(events.publish, item.board_id, "put.done", done))
-    after_commit(session, partial(jobs.enqueue, "analyse_item", item_id=item.id))  # read it
-    session.commit()
+    after_commit(session, partial(events.publish, item.board_id, "item.added", item_to_dict(item)))
+    session.commit()  # the result is the board's before its check
+    finish_checked(session, item, target_text, "put.done", job_id)
 
 
 def put_into_job(

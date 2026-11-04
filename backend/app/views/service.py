@@ -26,7 +26,7 @@ from app.extraction.service import _image_for, _require_item
 from app.ingest.common import ItemMeta, create_item, default_size
 from app.providers import get_image_provider
 from app.providers.reliability import ModelError
-from app.put.service import _name, _open, _stamped, result_check
+from app.put.service import CHECKING, _name, _open, _stamped, finish_checked
 from app.storage import files
 
 log = logging.getLogger(__name__)
@@ -106,7 +106,9 @@ def _ingest(
         kind="image", sha256=sha, storage_path=storage, thumb_path=thumb, mime="image/png",
         width=img.size[0], height=img.size[1], w=w, h=h, rights_status="generated",
         parent_item_id=anchor.id, staged=False,
-        generation_json={"model": model, "prompt": prompt, "view": view, "view_job": job_id},
+        generation_json={
+            "model": model, "prompt": prompt, "view": view, "view_job": job_id, CHECKING: True,
+        },
     )  # fmt: skip
 
 
@@ -148,13 +150,9 @@ def render_view(
         session.rollback()
         _failed(session, _board_of(session, anchor_id), job_id, exc.code, exc.message)
         return
-    item.check_json = result_check(session, item, f"the same design seen from {view.strip()}")
-    added = item_to_dict(item)
-    done = {"job_id": job_id, "item_id": item.id}
-    after_commit(session, partial(events.publish, item.board_id, "item.added", added))
-    after_commit(session, partial(events.publish, item.board_id, "view.done", done))
-    after_commit(session, partial(jobs.enqueue, "analyse_item", item_id=item.id))  # read it
-    session.commit()
+    after_commit(session, partial(events.publish, item.board_id, "item.added", item_to_dict(item)))
+    session.commit()  # the result is the board's before its check
+    finish_checked(session, item, f"the same design seen from {view.strip()}", "view.done", job_id)
 
 
 def render_view_job(

@@ -2,8 +2,9 @@
 
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app import demo, events, jobs
 from app.analysis import extract
@@ -73,7 +74,7 @@ def test_render_view_publishes_added_then_done(client: TestClient, world) -> Non
     types = [e["type"] for e in seen if e["type"] in ("item.added", "view.done", "view.failed")]
     assert types == ["item.added", "view.done"]
     done = next(e for e in seen if e["type"] == "view.done")
-    assert done["data"] == {"job_id": job, "item_id": item.id}
+    assert done["data"] == {"job_id": job, "item_id": item.id, "check": item.check_json}
 
 
 def test_view_prompt_keeps_the_design_and_adds_words() -> None:
@@ -271,6 +272,17 @@ def test_startup_recovery_leaves_views_alone(client: TestClient, world) -> None:
         s.close()
     (item,) = children(world, anchor)
     assert item.check_json is not None  # its check ran in the job; recovery leaves it alone
+    item.generation_json = {**item.generation_json, "checking": True}  # a check cut off
+    world["session"].commit()
+    s = deps._factory()()
+    try:
+        recover_stuck(s)
+        s.commit()
+    finally:
+        s.close()
+    (item,) = children(world, anchor)
+    assert "checking" not in item.generation_json  # no longer waited on; the check is kept
+    assert item.check_json is not None
 
 
 def test_view_result_has_check(client: TestClient, world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -299,3 +311,36 @@ def test_view_check_failure_leaves_the_result_unchecked(
     assert post(client, anchor, view="from above").status_code == 202
     (item,) = children(world, anchor)
     assert item.check_json is None and renders(world) == 1
+
+
+@pytest.mark.file_db
+def test_view_is_committed_before_its_check(client: TestClient, world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from app.api import deps
+
+    anchor = anchor_of(world)
+    during: list[list[tuple[str, Any]]] = []
+
+    def look(_self: Any, _images: list[bytes], _prompt: str) -> dict[str, Any]:
+        with deps._factory()() as s:
+            s.execute(text("PRAGMA busy_timeout=200"))
+            q = select(BoardItem).where(
+                BoardItem.parent_item_id == anchor, BoardItem.origin == "generated"
+            )
+            during.append([(m.id, (m.generation_json or {}).get("checking")) for m in s.scalars(q)])
+            row = s.get(BoardItem, anchor)
+            assert row is not None
+            row.x += 1  # another writer is not kept waiting
+            s.commit()
+        return {"answer": "yes", "confidence": 0.9, "box": None, "note": ""}
+
+    monkeypatch.setattr(MockReasoningProvider, "check_target", look)
+    with events.subscribe(world["watch"]) as sub:
+        assert post(client, anchor, view="from above").status_code == 202
+        seen = collect(sub)
+    (item,) = children(world, anchor)
+    assert during == [[(item.id, True)]]
+    assert "checking" not in item.generation_json and item.check_json["answer"] == "yes"
+    done = next(e for e in seen if e["type"] == "view.done")
+    assert done["data"]["check"] == item.check_json
+    types = [e["type"] for e in seen if e["type"] in ("item.added", "item.updated", "view.done")]
+    assert types[:3] == ["item.added", "item.updated", "view.done"]
