@@ -7,8 +7,9 @@ from sqlalchemy import delete, select
 
 from app.api.boards import require_board
 from app.api.deps import SessionDep
+from app.api.items import soft_remove
 from app.config import get_settings
-from app.db.models import BoardPlugin, PluginRun
+from app.db.models import BoardItem, BoardPlugin, PluginRun
 from app.errors import AppError
 from app.plugins import registry, service
 from app.plugins.registry import Plugin
@@ -144,6 +145,22 @@ def delete_node(node_id: str, session: SessionDep) -> Response:
     require_enabled()
     service.remove_node(session, node_id)
     return Response(status_code=204)
+
+
+@router.post("/nodes/{node_id}/clear-options")
+def clear_options(node_id: str, session: SessionDep) -> dict[str, Any]:
+    """Remove every option still standing from this node's runs; kept ones are ordinary items."""
+    require_enabled()
+    service.require_node(session, node_id)
+    run_ids = select(PluginRun.id).where(PluginRun.node_id == node_id)
+    flagged = session.scalars(
+        select(BoardItem).where(
+            BoardItem.option_run_id.in_(run_ids), BoardItem.removed_at.is_(None)
+        )
+    ).all()
+    for item in flagged:
+        soft_remove(session, item)
+    return {"removed_item_ids": [i.id for i in flagged]}
 
 
 @router.post("/nodes/{node_id}/run", status_code=202)
