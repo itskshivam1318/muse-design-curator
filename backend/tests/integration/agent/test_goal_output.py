@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import events
-from app.agent import checks, tools
+from app.agent import checks, run_state, tools
 from app.agent.context import ApiClient, ToolContext
 from app.agent.tools import compose_output, read_board
 from app.api.deps import new_session
@@ -425,3 +425,37 @@ async def test_a_contrast_section_is_left_out_of_the_one_design_check(
     res = await tools.run_tool(ctx, "finish", {"summary": "done"})
     assert res == {"status": "done"}
     assert compared == [2]  # the counter-example is on the sheet but not compared
+
+
+async def test_set_goal_refused_while_chat_open(ctx: ToolContext, board: str) -> None:
+    chat, created = await run_state.start(board, "muse", "g", [])
+    assert created
+    res = await tools.run_tool(ctx, "set_goal", {"goal": "g2", "deliverables": ["a"]})
+    assert res["error"] == "CHAT_OPEN"
+    assert ctx.run_id is None
+    assert _run(chat["id"]).status == "running"
+
+
+async def test_set_goal_replace_ends_chat_run(ctx: ToolContext, board: str) -> None:
+    chat, _ = await run_state.start(board, "muse", "g", [])
+    res = await tools.run_tool(
+        ctx, "set_goal", {"goal": "g2", "deliverables": ["a"], "replace": True}
+    )
+    assert "error" not in res, res
+    assert _run(chat["id"]).status == "done"
+    assert _run(res["run_id"]).source == "mcp"
+
+
+async def test_chat_start_refused_while_mcp_run_open(ctx: ToolContext, board: str) -> None:
+    await _goal(ctx, "a")
+    res, created = await run_state.start(board, "muse", "g", [])
+    assert not created and res["error"] == "MCP_RUN_OPEN"
+
+
+async def test_current_does_not_fall_back_across_sources(ctx: ToolContext, board: str) -> None:
+    chat, _ = await run_state.start(board, "muse", "g", [])
+    assert await run_state.current(board, None, "mcp") is None
+    found = await run_state.current(board, None, "muse")
+    assert found is not None and found["id"] == chat["id"]
+    found = await run_state.current(board, None)
+    assert found is not None and found["id"] == chat["id"]

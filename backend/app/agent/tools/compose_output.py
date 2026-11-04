@@ -197,7 +197,7 @@ async def run(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     if isinstance(sections, dict):
         return sections
     assert ctx.board_id is not None
-    current = await run_state.current(ctx.board_id, ctx.run_id)
+    current = await run_state.current(ctx.board_id, ctx.run_id, ctx.source)
     if current is None:
         return run_state.no_run()
     ctx.run_id = current["id"]

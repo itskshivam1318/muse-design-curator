@@ -12,7 +12,8 @@ DEFINITION = {
     "description": "Start a run on the open board: the goal, and the deliverables the output must "
     "show (names such as 'front view'). Call this first; finish checks the output against these "
     "deliverables. If a run is already open on the board you join it instead, unless replace is "
-    "true: then the open run is paused and a new one starts.",
+    "true: then the open run is paused and a new one starts. A run started from the Muse chat is "
+    "never joined: it is refused with CHAT_OPEN unless replace is true, which ends the chat run.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -61,6 +62,8 @@ async def run(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     assert ctx.board_id is not None
     replace = args.get("replace") is True
     data, created = await run_state.start(ctx.board_id, ctx.source, goal, deliverables, replace)
+    if "error" in data:
+        return data
     ctx.run_id = data["id"]
     if not created:
         return {

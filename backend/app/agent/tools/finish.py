@@ -72,7 +72,7 @@ async def run(ctx: ToolContext, args: dict[str, Any]) -> dict[str, Any]:
     if not 0 < len(summary) <= SUMMARY_MAX:
         return {"error": "BAD_SUMMARY", "message": f"The summary is 1 to {SUMMARY_MAX} characters."}
     assert ctx.board_id is not None
-    current = await run_state.current(ctx.board_id, ctx.run_id)
+    current = await run_state.current(ctx.board_id, ctx.run_id, ctx.source)
     if current is None:
         return run_state.no_run()
     ctx.run_id = current["id"]
