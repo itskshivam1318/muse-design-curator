@@ -676,6 +676,8 @@ function version(item: Item): string {
 
 export const itemImageUrl = (item: Item, size: 'thumb' | 'full') =>
   `${BASE}/items/${enc(item.id)}/image?size=${size}&v=${version(item)}`
+/** An item's thumbnail by id alone (no cache-busting token: the caller has no item row). */
+export const itemThumbUrl = (itemId: string) => `${BASE}/items/${enc(itemId)}/image?size=thumb`
 export const frameImageUrl = (itemId: string, frameId: string) =>
   `${BASE}/items/${enc(itemId)}/frames/${enc(frameId)}/image`
 

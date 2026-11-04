@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { keys, listBoards } from '../api'
+import { itemThumbUrl, keys, listBoards } from '../api'
 import { Link } from '../Link'
 import { SHOWCASE } from './showcase'
 import './landing.css'
@@ -25,7 +25,7 @@ export function LandingPage() {
       <div className="landing-cards">
         {cards.map((b) => (
           <article key={b.boardId} className="landing-card">
-            <img src={`/api/items/${b.coverItemId}/image?size=thumb`} alt="" loading="lazy" />
+            <img src={itemThumbUrl(b.coverItemId)} alt="" loading="lazy" />
             <h2>{b.title}</h2>
             <p className="muted">{b.line}</p>
             <div className="landing-actions">

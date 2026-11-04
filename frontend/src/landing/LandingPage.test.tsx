@@ -46,6 +46,23 @@ describe('LandingPage', () => {
     expect(screen.getByRole('link', { name: 'All boards' }).getAttribute('href')).toBe('/boards')
   })
 
+  it("loads each board's cover from the app's API origin", async () => {
+    vi.stubEnv('VITE_API_URL', 'https://api.example/')
+    vi.resetModules()
+    try {
+      const { LandingPage: Fresh } = await import('./LandingPage')
+      serve([CAR.boardId])
+      const { container } = renderWith(<Fresh />)
+      await screen.findByText('Show me how')
+      expect(container.querySelector('.landing-card img')?.getAttribute('src')).toBe(
+        `https://api.example/api/items/${encodeURIComponent(CAR.coverItemId)}/image?size=thumb`,
+      )
+    } finally {
+      vi.unstubAllEnvs()
+      vi.resetModules()
+    }
+  })
+
   it('leaves out boards this server lacks and says so when none are here', async () => {
     serve([])
     renderWith(<LandingPage />)

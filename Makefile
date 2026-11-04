@@ -55,9 +55,9 @@ demo-record:
 	node frontend/scripts/record-board.mjs --board "$(BOARD)" --slug "$(SLUG)" $(if $(APP),--app $(APP)) $(if $(API),--api $(API)) $(if $(MAX_MIN),--max-min $(MAX_MIN))
 
 # Move a finished board between machines (docs/demo/board-bundles.md).
-# make board-export BOARD=<id> OUT=<path.zip>
+# make board-export BOARD=<id> OUT=bundles/<slug>.zip (bundles/ is git-ignored)
 board-export:
-	@test -n "$(BOARD)" -a -n "$(OUT)" || (echo "usage: make board-export BOARD=<id> OUT=<path.zip>"; exit 2)
+	@test -n "$(BOARD)" -a -n "$(OUT)" || (echo "usage: make board-export BOARD=<id> OUT=bundles/<slug>.zip"; exit 2)
 	cd backend && uv run python -m app.bundle export "$(BOARD)" "$(abspath $(OUT))"
 
 # make board-import FILE=<path.zip> [REPLACE=1]

@@ -18,7 +18,12 @@ Run this with the local app's database and `data/` in place:
 make board-export BOARD=<board_id> OUT=bundles/<slug>.zip
 ```
 
-Each prints `exported <title> (<board_id>): <n> rows, <m> files -> <path>`.
+Each first prints `database <url>, files <dir>`: check it is the local app's database and
+`data/`. Then it prints `exported <title> (<board_id>): <n> rows, <m> files -> <path>`. If it
+also prints `note: <n> items are not finished and will be read again on the server (model
+calls)`, some pictures were still being read when you exported; the deployed app reads them
+again, which costs model calls there. Let the local app finish and export again to avoid that.
+(`bundles/` is in `.gitignore`: the zips are never committed.)
 
 ## 2. Snapshot the volume (before touching the deployed data)
 
@@ -29,7 +34,18 @@ fly volumes snapshots create <volume id>
 
 The volume is named `muse_data` (`fly.toml`); take the id from `fly volumes list`.
 
-## 3. Deploy the code first
+## 3. Deploy the code first, with demo mode on
+
+The landing page shows at `/` only in demo mode; with it off, `/` is the board list. `fly.toml`
+has `DEMO_MODE = '0'` under `[env]`, and demo mode refuses to start without a passcode and a
+signing secret. So set those two secrets first:
+
+```
+fly secrets set DEMO_PASSCODE=<a passcode for you> DEMO_SECRET=<32+ random characters>
+```
+
+(`openssl rand -hex 32` makes a secret.) Then change `DEMO_MODE = '0'` to `DEMO_MODE = '1'` in
+`fly.toml` and deploy:
 
 ```
 fly deploy --ha=false
@@ -39,6 +55,18 @@ The container's entrypoint runs `alembic upgrade head` on start, so the deployed
 migrated to this version. The import refuses a bundle made on a different schema
 (`SCHEMA_MISMATCH`), so the deployed code must be the same version as the code that exported:
 export and deploy from the same commit.
+
+Now check which database and data directory the app's shell sees, because the import uses
+the same two variables:
+
+```
+fly ssh console -u user -C "printenv DATABASE_URL DATA_DIR"
+```
+
+It must print `sqlite:////data/dle.sqlite` and `/data`. The image's own defaults point at a
+throwaway database inside the image (`/home/user/app/data`); importing there "succeeds" and the
+live app never sees the board. If you see those, stop: the `[env]` of `fly.toml` is not reaching
+the shell, and the import must be run with `DATABASE_URL` and `DATA_DIR` set by hand.
 
 ## 4. Upload the zips
 
@@ -78,17 +106,26 @@ fly ssh console -C "chown -R user:user /data/bundles"
 fly ssh console -u user -C "python -m app.bundle import /data/bundles/car-3.zip"
 ```
 
-Run it as `user` (`-u user`), never as root: the import writes new image files and the sqlite
+Its first line is `database <url>, files <dir>`: confirm it shows `sqlite:////data/dle.sqlite`
+and `/data`, the same as the check in step 3. Run it as `user` (`-u user`), never as root: the import writes new image files and the sqlite
 `-wal`/`-shm` files under `/data`, and root-owned ones there make the app fail with "attempt to
 write a readonly database" or permission errors. Likewise for `ui`, `room` and `outerwear-2`. (The image puts its virtualenv on `PATH`, so
 `python` is the app's; `uv run python` also works if you prefer it.) Each prints
 `imported <title> (<board_id>): <n> rows, <m> new files`. On an error it prints
-`error <CODE>: <message>` and exits 1, and nothing from that board is kept.
+`error <CODE>: <message>` and exits 1, and nothing from that board is kept. `DB_NOT_MIGRATED`
+means the database it opened is not at this code's schema: either it is the wrong database (see
+the first line) or the deploy did not finish migrating.
 
 Importing a board that is already there refuses (`BOARD_EXISTS`). To overwrite it, add
 `--replace`. That deletes the board's rows and re-inserts them from the bundle, and it also
 removes visitors' Vary runs, their decisions and other things made on that board on the
 server; the command prints a line `removed from this server: ...` listing what went.
+
+Once all four are in, delete the uploaded zips (as the app user, like everything under `/data`):
+
+```
+fly ssh console -u user -C "rm -r /data/bundles"
+```
 
 ## 6. Check
 
