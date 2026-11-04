@@ -327,3 +327,38 @@ def test_a_put_result_is_read_like_any_new_picture(client: TestClient, world) ->
     assert put(client, target, source).status_code == 202
     (item,) = results(world, target)
     assert item.parse_status == "completed"  # queued for analysis, not left pending forever
+
+
+def test_put_result_has_check(client: TestClient, world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from app.providers.reasoning import MockReasoningProvider
+
+    asked: list[str] = []
+
+    def no(_self: Any, _images: list[bytes], prompt: str) -> dict[str, Any]:
+        asked.append(prompt)
+        return {"answer": "no", "confidence": 0.7, "box": None, "note": "not there"}
+
+    monkeypatch.setattr(MockReasoningProvider, "check_target", no)
+    target, source = two(world)
+    assert put(client, target, source, words="a red lamp").status_code == 202
+    (item,) = results(world, target)
+    assert item.check_json == {"target_ok": False, "answer": "no"}
+    assert "a red lamp" in asked[0]
+    listed = client.get(f"/api/boards/{world['watch']}/items").json()
+    listed = listed["items"] if isinstance(listed, dict) else listed
+    assert next(i for i in listed if i["id"] == item.id)["check"]["answer"] == "no"
+
+
+def test_put_check_failure_leaves_the_result_unchecked(
+    client: TestClient, world, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    from app.providers.reasoning import MockReasoningProvider
+
+    def down(*_a: Any, **_k: Any) -> Any:
+        raise ModelError("MODEL_TIMEOUT", message="slow")
+
+    monkeypatch.setattr(MockReasoningProvider, "check_target", down)
+    target, source = two(world)
+    assert put(client, target, source).status_code == 202
+    (item,) = results(world, target)
+    assert item.check_json is None and renders(world) == 1

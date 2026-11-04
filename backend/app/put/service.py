@@ -30,6 +30,7 @@ from app.config import get_settings
 from app.db.models import BoardItem, ItemPart
 from app.db.session import after_commit, on_rollback
 from app.errors import AppError
+from app.explore.check import check_target_only
 from app.extraction.service import _image_for, _require_item
 from app.ingest.common import ItemMeta, create_item, default_size
 from app.providers import get_image_provider
@@ -313,6 +314,19 @@ def _board_of(session: Session, target_id: str) -> str | None:
     return target.board_id if target is not None else None
 
 
+def result_check(session: Session, item: BoardItem, target: str) -> dict[str, Any] | None:
+    """Ask whether the new picture shows `target`: {"target_ok", "answer"} like a visualised
+    note's check. A model failure leaves the item unchecked (None) and is logged."""
+    try:
+        image, _sha = _image_for(session, item)
+        return check_target_only(image, target)
+    except (ModelError, AppError) as exc:
+        log.warning("checking result %s failed: %s", item.id, exc.code)
+    except Exception:
+        log.exception("checking result %s failed", item.id)
+    return None
+
+
 def put_into(
     session: Session, job_id: str, target_id: str, source_id: str, spots: list[dict[str, Any]],
     words: str | None, x: float, y: float,
@@ -323,6 +337,10 @@ def put_into(
         session.rollback()
         _failed(session, _board_of(session, target_id), job_id, exc.code, exc.message)
         return
+    source = session.get(BoardItem, source_id)
+    name = _name(source) if source else FALLBACK_NAME
+    target_text = (words or "").strip() or f"{name} placed at the marked spot"
+    item.check_json = result_check(session, item, target_text)
     added = item_to_dict(item)
     done = {"job_id": job_id, "item_id": item.id}
     after_commit(session, partial(events.publish, item.board_id, "item.added", added))

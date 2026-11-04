@@ -8,6 +8,7 @@ from sqlalchemy import select
 from app import demo, events, jobs
 from app.analysis import extract
 from app.db.models import BoardItem
+from app.providers.reasoning import MockReasoningProvider
 from app.providers.reliability import ModelError
 from app.views import service
 from app.views.service import view_prompt
@@ -256,7 +257,7 @@ def test_a_view_is_read_like_any_new_picture(client: TestClient, world) -> None:
     assert item.parse_status == "completed"  # queued for analysis, not left pending forever
 
 
-def test_startup_recovery_leaves_unchecked_views_alone(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+def test_startup_recovery_leaves_views_alone(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
     from app.api import deps
     from app.explore.visualize import recover_stuck
 
@@ -269,4 +270,32 @@ def test_startup_recovery_leaves_unchecked_views_alone(client: TestClient, world
     finally:
         s.close()
     (item,) = children(world, anchor)
-    assert item.check_json is None  # a view is never checked, so it was never interrupted
+    assert item.check_json is not None  # its check ran in the job; recovery leaves it alone
+
+
+def test_view_result_has_check(client: TestClient, world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    asked: list[str] = []
+
+    def no(_self: Any, _images: list[bytes], prompt: str) -> dict[str, Any]:
+        asked.append(prompt)
+        return {"answer": "no", "confidence": 0.7, "box": None, "note": "other design"}
+
+    monkeypatch.setattr(MockReasoningProvider, "check_target", no)
+    anchor = anchor_of(world)
+    assert post(client, anchor, view="from above").status_code == 202
+    (item,) = children(world, anchor)
+    assert item.check_json == {"target_ok": False, "answer": "no"}
+    assert "the same design seen from from above" in asked[0]
+
+
+def test_view_check_failure_leaves_the_result_unchecked(
+    client: TestClient, world, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    def down(*_a: Any, **_k: Any) -> Any:
+        raise ModelError("MODEL_TIMEOUT", message="slow")
+
+    monkeypatch.setattr(MockReasoningProvider, "check_target", down)
+    anchor = anchor_of(world)
+    assert post(client, anchor, view="from above").status_code == 202
+    (item,) = children(world, anchor)
+    assert item.check_json is None and renders(world) == 1

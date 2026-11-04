@@ -19,14 +19,14 @@ def _explore(answer: str, drifted: list[str] | None = None) -> dict[str, Any]:
 def test_check_passed_explore() -> None:
     assert checks.check_passed(_explore("yes")) is True
     assert checks.check_passed(_explore("no")) is False
-    assert checks.check_passed(_explore("unclear")) is False
+    assert checks.check_passed(_explore("unclear")) is None
     assert checks.check_passed(_explore("yes", ["roofline"])) is False
 
 
 def test_check_passed_note() -> None:
     assert checks.check_passed({"target_ok": True, "answer": "yes"}) is True
     assert checks.check_passed({"target_ok": False, "answer": "no"}) is False
-    assert checks.check_passed({"target_ok": None, "answer": "unclear"}) is False
+    assert checks.check_passed({"target_ok": None, "answer": "unclear"}) is None
 
 
 def test_check_passed_error_and_unchecked() -> None:
@@ -141,3 +141,14 @@ def test_consistency_prompt_allows_a_range_when_the_goal_asks_for_one(
     prompt = fake.calls[0][2]
     assert "same object or space" in prompt  # one design is still the default reading
     assert "several distinct pieces" in prompt and "one range" in prompt
+
+
+def test_unclear_check_does_not_block_finish() -> None:
+    run = _run(["front"], [_section("front", "a", "b")])
+    items = {
+        "a": {"id": "a", "check": {"target_ok": None, "answer": "unclear"}},
+        "b": {"id": "b", "check": _explore("unclear")},
+    }
+    assert checks.deliverable_problems(run, items) == []
+    items["a"]["check"] = {"target_ok": False, "answer": "no"}
+    assert len(checks.deliverable_problems(run, items)) == 1

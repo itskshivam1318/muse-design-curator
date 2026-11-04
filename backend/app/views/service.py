@@ -26,7 +26,7 @@ from app.extraction.service import _image_for, _require_item
 from app.ingest.common import ItemMeta, create_item, default_size
 from app.providers import get_image_provider
 from app.providers.reliability import ModelError
-from app.put.service import _name, _open, _stamped
+from app.put.service import _name, _open, _stamped, result_check
 from app.storage import files
 
 log = logging.getLogger(__name__)
@@ -148,6 +148,7 @@ def render_view(
         session.rollback()
         _failed(session, _board_of(session, anchor_id), job_id, exc.code, exc.message)
         return
+    item.check_json = result_check(session, item, f"the same design seen from {view.strip()}")
     added = item_to_dict(item)
     done = {"job_id": job_id, "item_id": item.id}
     after_commit(session, partial(events.publish, item.board_id, "item.added", added))

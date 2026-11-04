@@ -25,10 +25,12 @@ class CheckUnavailable(Exception):
 
 
 def check_passed(check: dict[str, Any] | None) -> bool | None:
-    """True/False for an item's result check, None when it was never checked (not blocking).
+    """True/False for an item's result check, None when it was never checked or the model could
+    not tell (not blocking).
 
-    Explore render: the target answer is "yes" and nothing drifted. Note render: `target_ok` is
-    True (an unclear answer is None, which fails). Any `error` fails."""
+    Explore render: the target answer is "yes" and nothing drifted; "no" or drift fails, an
+    unclear answer does not block. Note, put and view results: `target_ok` is True/False (an
+    unclear answer is None). Any `error` fails."""
     if not isinstance(check, dict) or not check:
         return None
     if "error" in check:
@@ -36,9 +38,11 @@ def check_passed(check: dict[str, Any] | None) -> bool | None:
     if "target" in check:
         target = check.get("target")
         answer = target.get("answer") if isinstance(target, dict) else None
-        return answer == "yes" and check.get("drifted") == []
+        if check.get("drifted"):
+            return False
+        return {"yes": True, "no": False}.get(str(answer))
     if "target_ok" in check:
-        return check["target_ok"] is True
+        return check["target_ok"] if isinstance(check["target_ok"], bool) else None
     return None
 
 
