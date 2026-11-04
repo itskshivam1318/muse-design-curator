@@ -401,6 +401,34 @@ async def test_message_during_turn_is_picked_up(board: str, run_id: str, api: Ap
         assert agent_repo.unconsumed_messages(s, run_id) == []
 
 
+async def test_message_during_turn_supersedes_a_question(
+    board: str, run_id: str, api: ApiClient
+) -> None:
+    """The person typed while the agent worked, and the model then asked: the question is not
+    posted (they never saw it); the model reads the message instead."""
+    say(board, run_id, "make it warmer")
+    model = FakeChatModel(
+        [call("ask_user", {"question": "Which one?"}, "call_q"), reply("Cooler it is.")]
+    )
+    respond = model.respond
+
+    def typing_meanwhile(*args: Any) -> ModelTurn:
+        if not model.calls:
+            say(board, run_id, "actually, make it cooler")
+        return respond(*args)
+
+    model.respond = typing_meanwhile  # type: ignore[method-assign]
+    assert await loop.run_turn(board, run_id, model, api) == "waiting"
+    msgs = thread(run_id)
+    assert [m["role"] for m in msgs] == ["person", "person", "agent"]
+    second = model.calls[1][1]
+    assert outputs(second)["call_q"]["error"] == "SUPERSEDED"
+    assert "actually, make it cooler" in input_text(second)
+    with deps.new_session() as s:
+        assert agent_repo.unconsumed_messages(s, run_id) == []
+        assert agent_repo.open_question(s, run_id) is None
+
+
 async def test_ended_run_is_left_alone(board: str, run_id: str, api: ApiClient) -> None:
     say(board, run_id, "hello")
     await run_state.update(run_id, status="done")

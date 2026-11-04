@@ -98,6 +98,25 @@ def _add_message(
         return agent_repo.message_to_dict(m)
 
 
+def _ask(
+    run_id: str, board_id: str, text: str, data: dict[str, Any], taken: set[str]
+) -> dict[str, Any] | list[dict[str, Any]]:
+    """Post the question, unless the person has sent a message the turn has not taken in: then
+    those messages, and no question (the person never saw it). Under WRITE_LOCK, like the
+    message route, so a message sent meanwhile is either seen here or becomes the answer."""
+    with agent_repo.WRITE_LOCK, new_session() as session:
+        arrived = [
+            agent_repo.message_to_dict(m)
+            for m in agent_repo.unconsumed_messages(session, run_id)
+            if m.id not in taken
+        ]
+        if arrived:
+            return arrived
+        m = agent_repo.add_message(session, run_id, board_id, "question", text, data)
+        session.commit()
+        return agent_repo.message_to_dict(m)
+
+
 async def _post(
     board_id: str, run_id: str, role: str, text: str, data: dict[str, Any] | None = None
 ) -> dict[str, Any]:
@@ -294,10 +313,13 @@ class _Turn:
 
             asked = await self.run_calls(turn.calls)
             if asked is not None:
-                text, data = asked
-                await _post(self.board_id, self.run_id, "question", text, data)
-                self.trace.message("question", text)
-                return await self.finish("needs_input")
+                sent_first = await self.ask(*asked)
+                if not sent_first:
+                    return await self.finish("needs_input")
+                _insert_output(self.history, _output(asked[1]["call_id"], SUPERSEDED))
+                for message in sent_first:
+                    self.take_person(message)
+                continue
             if self.stopped:
                 return await self.finish("waiting")
             while (arrived := self.next_message()) is not None:
@@ -305,6 +327,17 @@ class _Turn:
 
         await self.say(STEP_CAP_TEXT)
         return await self.finish("waiting")
+
+    async def ask(self, text: str, data: dict[str, Any]) -> list[dict[str, Any]]:
+        """Post the question; or, when the person sent messages first, those messages."""
+        posted = await run_in_threadpool(
+            _ask, self.run_id, self.board_id, text, data, set(self.consumed)
+        )
+        if isinstance(posted, list):
+            return posted
+        events.publish(self.board_id, "agent.question", posted)
+        self.trace.message("question", text)
+        return []
 
     async def run_calls(self, calls: list[ToolCall]) -> tuple[str, dict[str, Any]] | None:
         """Run one model turn's calls, adding their outputs (then any pictures) to the history.
@@ -383,10 +416,12 @@ async def run_turn(
 ) -> str:
     """Run the chat until the agent replies, asks, is stopped, or hits MAX_STEPS.
 
-    Takes the run's unconsumed person messages into its history (an answer as the output of the
-    call it names), then alternates model calls and tool calls. `should_stop` is checked before every
-    model call and tool call; `next_message` is drained after each round of calls for messages
-    the person sent meanwhile. Returns the run's status after the turn: `"waiting"` or
+    Takes the run's unconsumed person messages into its history (an answer as the output of
+    the call it names), then alternates model calls and tool calls. `should_stop` is checked
+    before every model call and tool call; `next_message` is drained after each round of calls
+    for messages the person sent meanwhile. A question is not posted when the person sent a
+    message first (the call's output says so and the model reads the message). Returns the
+    run's status after the turn: `"waiting"` or
     `"needs_input"` (or the run's own status if it was not open, or was ended meanwhile).
     """
     owned = api is None
