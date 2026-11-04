@@ -104,6 +104,8 @@ def _type_ok(t: str, v: Any) -> bool:
         return isinstance(v, int | float) and not isinstance(v, bool)
     if t == "boolean":
         return isinstance(v, bool)
+    if t == "object":
+        return isinstance(v, dict)
     return True  # types the manifests do not use are not checked
 
 
@@ -359,6 +361,8 @@ def _run_python(
             out = json.loads(bytes(stdout))
         except ValueError:
             raise _bad_output(f"{p.manifest.name} printed output that is not JSON") from None
+        if isinstance(out, dict) and isinstance(out.get("error"), str) and out["error"].strip():
+            raise _bad_input(out["error"].strip())  # the plugin's own plain-words refusal
         if (
             isinstance(out, dict)
             and isinstance(out.get("images"), list)

@@ -162,6 +162,15 @@ def test_python_plugin_result_not_object(tmp_path: Path) -> None:
     assert code(e) == "PLUGIN_BAD_OUTPUT"
 
 
+def test_python_plugin_error_result_is_bad_input(tmp_path: Path) -> None:
+    p = py_plugin(
+        tmp_path, "def run(inputs, params, ctx):\n    return {'error': 'needs two parts'}\n"
+    )
+    with pytest.raises(PluginError) as e:
+        run(p, [note()])
+    assert code(e) == "PLUGIN_BAD_INPUT" and e.value.message == "needs two parts"
+
+
 def test_python_plugin_output_too_large(tmp_path: Path) -> None:
     p = py_plugin(tmp_path, "def run(inputs, params, ctx):\n    return {'text': 'x' * 2_000_000}\n")
     with pytest.raises(PluginError) as e:
