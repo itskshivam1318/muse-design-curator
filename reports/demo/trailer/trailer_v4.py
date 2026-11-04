@@ -77,7 +77,8 @@ SHOTS = HERE / "shots"
 GREY = (150, 152, 160)
 STORY = json.loads((SHOTS / "story.check.json").read_text())
 DOMAINS = json.loads((SHOTS / "domains.check.json").read_text())
-SHOW_FIELDS = "--v5" in sys.argv
+INVESTOR = "--investor" in sys.argv  # the investor cut: pain, a new category, the moat
+SHOW_FIELDS = "--v5" in sys.argv or INVESTOR
 
 
 def takes_landed(t: float) -> Image.Image:
@@ -119,6 +120,24 @@ def hook_quote(who: str, quote: str, photo: str, tag: str):
     return frame
 
 
+def agencies(t: float) -> Image.Image:
+    """The investor opener: every agency has AI, so every client gets the same pictures."""
+    c = Image.new("RGB", (W, H), (14, 14, 17))
+    d = ImageDraw.Draw(c)
+    s = "Every agency has AI now."
+    f = font(76, True)
+    d.text(((W - d.textlength(s, font=f)) / 2, 90), s[: int(len(s) * ease(t / 1.2))], font=f, fill=(245, 245, 247))
+    tiles = CARS + ["room0", "look1"]
+    for k, name in enumerate(tiles * 2):
+        if t < 1.4 + k * 0.09:
+            break
+        x, y = 150 + (k % 8) * 205, 260 + (k // 8) * 160
+        c.paste(fit(img(name), 190, 145), (x, y))
+    if t > 3.4:
+        marker(d, 560, 790, "so every client gets the same pictures", t - 3.4, 50, fill=ALERT, ink=(255, 255, 255))
+    return c
+
+
 def nothing(t: float) -> Image.Image:
     c = Image.new("RGB", (W, H), PAPER)
     d = ImageDraw.Draw(c)
@@ -142,7 +161,8 @@ def regenerate(t: float) -> Image.Image:
     """A generic prompt-and-regenerate tool (no real product's look): more images, never the one."""
     c = Image.new("RGB", (W, H), (18, 18, 22))
     d = ImageDraw.Draw(c)
-    prompt = "a new coupe for a 70-year-old brand: heritage, made next year, warm"
+    prompt = ("a coupe for a revived 1962 nameplate: heritage, made next year, warm" if INVESTOR
+              else "a new coupe for a 70-year-old brand: heritage, made next year, warm")
     shown = prompt[: int(len(prompt) * ease(t / 1.6))]
     d.rounded_rectangle([200, 60, 1560, 150], 45, fill=(40, 40, 48))
     d.text((250, 84), shown, font=font(36), fill=(230, 230, 235))
@@ -188,6 +208,8 @@ def positioning(t: float) -> Image.Image:
             w = d.textlength(line, font=f)
             d.rounded_rectangle([960 - w / 2 - 20, 410 + k * 84, 960 + w / 2 + 20, 410 + k * 84 + 74], 10, fill=HL)
             d.text((960 - w / 2, 418 + k * 84), line, font=f, fill=INK)
+    if INVESTOR and t > 5.6:
+        marker(d, 760, 840, "a new category", t - 5.6, 56, fill=INK, ink=HL)
     return c
 
 
@@ -266,19 +288,32 @@ def close(t: float) -> Image.Image:
     c = Image.new("RGB", (W, H), (14, 14, 17))
     d = ImageDraw.Draw(c)
     if SHOW_FIELDS:
-        if t < 5.5:
+        lead = 3.8 if INVESTOR else 5.5
+        if t < lead:
             for k, (photo, tag) in enumerate(FIELDS):
                 if t < 0.3 + k * 0.5:
                     continue
                 x = 110 + k * 440
                 c.paste(fit(img(photo), 400, 300), (x, 300))
                 chip(d, x, 620, tag, 44)
-            if t > 2.6:
+            if t > (1.8 if INVESTOR else 2.6):
                 s = "one way of working, any field"
                 f = font(56, True)
                 d.text(((W - d.textlength(s, font=f)) / 2, 760), s, font=f, fill=(235, 236, 240))
             return c
-        t -= 5.5
+        t -= lead
+    if INVESTOR:
+        if t < 12.5:
+            rows = [(0.0, "the pain", "agencies drowning in generic AI slop"),
+                    (3.6, "the gap", "nothing between the moodboard and the generator"),
+                    (7.0, "the moat", "each client's design language, kept on the board")]
+            for k, (at, head, line) in enumerate(rows):
+                if t > at:
+                    y = 280 + k * 200
+                    chip(d, 200, y, head, 48)
+                    marker(d, 560, y - 4, line, t - at - 0.3, 48, fill=(235, 236, 240), ink=INK)
+            return c
+        t = t - 12.5 + 5.0  # straight to the end card
     s = "Agencies are drowning in generic AI slop."
     f = font(60, True)
     if t < 5.0:
@@ -362,20 +397,36 @@ def main() -> None:
             anim(p, secs, frame)
             beats.append((vo, label, [p]))
 
-        drawn("h1", "Hook: the brand director (heritage)", 5.6,
-              hook_quote("Brand director, at kickoff", "“We're a 70-year-old company. Heritage is the whole point.”",
-                         "etype", "heritage"))
-        drawn("h2", "Hook: the marketing head (made next year)", 6.1,
-              hook_quote("Marketing head, two minutes later",
-                         "“If it looks old, we're dead. It has to feel like it was made next year.”", "taycan",
-                         "made next year"))
-        drawn("h3", "Hook: the CEO (warm)", 5.2,
-              hook_quote("CEO, in the lift", "“And warm. People should feel something. Our competitors are cold.”",
-                         "seats_wood", "warm"))
+        if INVESTOR:
+            drawn("i0", "Opener: every agency has AI, every client the same pictures", 6.0, agencies)
+            drawn("h1i", "Hook: the founder (borrowed heritage)", 6.4,
+                  hook_quote("Founder, at kickoff",
+                             "“We bought a nameplate that died in 1962. Its heritage is borrowed. We have to earn it.”",
+                             "etype", "heritage"))
+            drawn("h2i", "Hook: the head of product (made next year)", 5.6,
+                  hook_quote("Head of product, two minutes later",
+                             "“If it looks old, we're dead. It has to feel like it was made next year.”", "taycan",
+                             "made next year"))
+            drawn("h3i", "Hook: the lead investor (warm)", 5.0,
+                  hook_quote("Lead investor, on the call", "“And warm. People should feel something. Every EV is cold.”",
+                             "seats_wood", "warm"))
+        else:
+            drawn("h1", "Hook: the brand director (heritage)", 5.6,
+                  hook_quote("Brand director, at kickoff", "“We're a 70-year-old company. Heritage is the whole point.”",
+                             "etype", "heritage"))
+            drawn("h2", "Hook: the marketing head (made next year)", 6.1,
+                  hook_quote("Marketing head, two minutes later",
+                             "“If it looks old, we're dead. It has to feel like it was made next year.”", "taycan",
+                             "made next year"))
+            drawn("h3", "Hook: the CEO (warm)", 5.2,
+                  hook_quote("CEO, in the lift", "“And warm. People should feel something. Our competitors are cold.”",
+                             "seats_wood", "warm"))
         drawn("n1", "What do they have in common? Nothing.", 5.2, nothing)
-        drawn("n2", "The supermarket: type, regenerate, regenerate", 11.8, regenerate)
+        drawn("n2i" if INVESTOR else "n2", "The supermarket: type, regenerate, regenerate", 7.0 if INVESTOR else 11.8,
+              regenerate)
         drawn("n3", "The turn: push what she trusts, keep the other two", 8.8, turn)
-        drawn("n4", "Positioning: the language in between", 7.0, positioning)
+        drawn("n4i" if INVESTOR else "n4", "Positioning: the language in between" + (", a new category" if INVESTOR else ""),
+              9.0 if INVESTOR else 7.0, positioning)
         drawn("n5", "Muse reads what each word means (real readings)", 14.6, read_refs)
 
         # n6 LIVE: the board glides in on the coupe; its parts light up (shots/story.webm, real board zoom)
@@ -433,7 +484,10 @@ def main() -> None:
             beats.append(("n9", "LIVE: explore the wheels, draw one, keep it, zoom out", ps))
 
         drawn("n10", "The answer: one car, all three asks", 7.0, answer)
-        drawn("n11", "Close: any field; taste for AI exploration", 15.6 if SHOW_FIELDS else 11.0, close)
+        if INVESTOR:
+            drawn("n11i", "Close: any field; the pain, the gap, the moat", 21.6, close)
+        else:
+            drawn("n11", "Close: any field; taste for AI exploration", 15.6 if SHOW_FIELDS else 11.0, close)
 
         timeline, video_parts, audio_at = [], [], []
         clock = 0.0
@@ -485,16 +539,16 @@ def main() -> None:
             mix += ";[key]anullsink"
         mix += (f";{layers}amix=inputs={layers.count('[')}:normalize=0,loudnorm=I=-16:TP=-1.5:LRA=11,"
                 f"apad=whole_dur={clock:.2f}[aout]")
-        name = "muse-trailer-v5" if SHOW_FIELDS else "muse-trailer-v4"
+        name = "muse-trailer-investor" if INVESTOR else "muse-trailer-v5" if SHOW_FIELDS else "muse-trailer-v4"
         final = tmp / f"{name}.mp4"
         run("-i", str(silent), *inputs, "-filter_complex", mix + ";[0:v]noise=alls=5:allf=t[vout]",
             "-map", "[vout]", "-map", "[aout]", *ENC, "-c:a", "aac", "-b:a", "192k", "-t", f"{clock:.2f}",
             "-movflags", "+faststart", str(final))
         shutil.move(final, OUT / f"{name}.mp4")
-        (OUT / f"timeline-{name[-2:]}.txt").write_text("\n".join(timeline) + f"\n{int(clock // 60)}:{clock % 60:04.1f}  end\n")
-    name = "muse-trailer-v5" if SHOW_FIELDS else "muse-trailer-v4"
+        (OUT / f"timeline-{name.removeprefix('muse-trailer-')}.txt").write_text("\n".join(timeline) + f"\n{int(clock // 60)}:{clock % 60:04.1f}  end\n")
+    name = "muse-trailer-investor" if INVESTOR else "muse-trailer-v5" if SHOW_FIELDS else "muse-trailer-v4"
     print(OUT / f"{name}.mp4")
-    print((OUT / f"timeline-{name[-2:]}.txt").read_text())
+    print((OUT / f"timeline-{name.removeprefix('muse-trailer-')}.txt").read_text())
 
 
 if __name__ == "__main__":

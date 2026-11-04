@@ -15,3 +15,10 @@ d1|am_michael|And it isn't only cars. In a room, pick the sofa, explore its mate
 d2|am_michael|A coat: try it in a new cloth. When a take changes more than the cloth, Muse won't add it to the board.
 d3|am_michael|A screen: explore the balance typeface, and Muse sets it in a gold serif.
 n11|am_michael|Cars, rooms, clothes, screens: one way of working, any field. Agencies are drowning in generic AI slop. It's time to bring taste to AI exploration. Muse. Explore... don't regenerate.
+i0|am_michael|Every agency has AI now. So every client gets the same pictures.
+h1i|bm_george|We bought a nameplate that died in 1962. Its heritage is borrowed. We have to earn it.
+h2i|af_bella|But if it looks old, we're dead. It has to feel like it was made next year.
+h3i|am_adam|And warm. People should feel something. Every EV out there is cold.
+n4i|am_michael|Boards hold images. AI makes images. Nothing holds the language in between. That's a new category. That's Muse.
+n11i|am_michael|Cars, rooms, clothes, screens: any field. Agencies already pay for AI, and they're drowning in generic slop. Nothing sits between the moodboard and the generator. Muse does, and it keeps each client's design language, so the work stays theirs. Muse. Explore... don't regenerate.
+n2i|am_michael|So she types a prompt, and regenerates. Again. A supermarket of almost right.
