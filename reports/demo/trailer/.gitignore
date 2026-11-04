@@ -5,3 +5,4 @@ shots/*
 assets/
 vo/*.aiff
 vo/**/*.wav
+vo4/*.wav

@@ -1,0 +1,65 @@
+{
+ "board": "copy of brd_01m6h989kz0tz8xjvjbp6zbz9x (data/copy-car)",
+ "chat_run": "arun_01m6k0ca6mpjyxbtz8zz85tesy",
+ "chat_turns": "24-29",
+ "chat_takes": [
+  {
+   "option": "Moss Onyx Noir",
+   "item_id": "itm_01m6k4xp1v7bcbdfab80bfj033",
+   "check": {
+    "target": {
+     "answer": "yes",
+     "confidence": 0.88,
+     "box": [
+      0.11,
+      0.44,
+      0.6,
+      0.62
+     ],
+     "note": "Car is almost-black with green visible only in bonnet highlight."
+    },
+    "kept": 4,
+    "of": 4,
+    "drifted": [],
+    "unknown": 8
+   }
+  },
+  {
+   "option": "Charred Fern Black",
+   "item_id": "itm_01m6k4xwrvwc30f32mfhhxtwx6",
+   "check": {
+    "target": {
+     "answer": "no",
+     "confidence": 0.82,
+     "box": [
+      0.05,
+      0.33,
+      0.969,
+      0.85
+     ],
+     "note": "The fastback is glossy deep green-black with sharp reflections, not smoky matte."
+    },
+    "kept": 4,
+    "of": 4,
+    "drifted": [],
+    "unknown": 8
+   }
+  }
+ ],
+ "explore_take": {
+  "option": "Shadow Graphite Turbine",
+  "item_id": "itm_01m6k4v8kz8pb4q7sc0xb39qv8",
+  "dimension": "wheel design",
+  "check": {
+   "target": {
+    "answer": "yes",
+    "confidence": 0.85,
+    "note": "Front wheel shows fine turbine fan in dark graphite."
+   },
+   "kept": 4,
+   "of": 4,
+   "drifted": [],
+   "unknown": 8
+  }
+ }
+}

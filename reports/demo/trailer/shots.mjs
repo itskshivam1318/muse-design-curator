@@ -85,15 +85,149 @@ async function typeSlowly(page, locator, text) {
 }
 
 async function clickGlide(page, locator) {
-  await locator.scrollIntoViewIfNeeded()
+  // the board can't scroll and its cards drift a little with the physics, so no scroll-into-view
+  // or stability wait: glide to where it is and press there
+  await locator.waitFor({ state: 'visible', timeout: 30000 })
   await glide(page, locator, 25)
   await page.waitForTimeout(350)
-  await locator.click()
+  const b = await locator.boundingBox()
+  await page.mouse.click(b.x + b.width / 2, b.y + Math.min(b.height / 2, 24))
 }
 
-const LIVE = new Set(['car-explore', 'car-chat'])
+
+// the screen box of an element (or the union of several), logged with the time, for the camera
+let boxes = []
+async function box(page, name, target) {
+  const r = await page.evaluate((sel) => {
+    const els = typeof sel === 'string' ? [...document.querySelectorAll(sel)] : []
+    const rs = els.map((e) => e.getBoundingClientRect()).filter((b) => b.width > 0 && b.height > 0)
+    if (!rs.length) return null
+    const x = Math.min(...rs.map((b) => b.left)), y = Math.min(...rs.map((b) => b.top))
+    const X = Math.max(...rs.map((b) => b.right)), Y = Math.max(...rs.map((b) => b.bottom))
+    return [x, y, X - x, Y - y]
+  }, typeof target === 'string' ? target : null)
+  let b = r
+  if (!b && target && typeof target !== 'string') {
+    const bb = await target.boundingBox()
+    if (bb) b = [bb.x, bb.y, bb.width, bb.height]
+  }
+  if (b) boxes.push({ name, t: +((Date.now() - t0) / 1000).toFixed(2), box: b.map((v) => Math.round(v)) })
+}
+const cardOf = (page, title) =>
+  page.locator('.callout-title', { hasText: title }).first().locator('xpath=ancestor::*[.//*[contains(@class,"callout-head")]][1]')
+
+// a real camera move on the board: smooth ctrl+wheel steps anchored at (x, y), in (k < 0) or out (k > 0)
+async function smoothZoom(page, x, y, steps, delta = -30) {
+  await page.mouse.move(x, y, { steps: 18 })
+  await page.keyboard.down('Control')
+  for (let i = 0; i < steps; i++) {
+    await page.mouse.wheel(0, delta)
+    await page.waitForTimeout(110)
+  }
+  await page.keyboard.up('Control')
+  await page.waitForTimeout(400)
+}
+
+const LIVE_API = 'http://localhost:8100'
+async function agentKept(sentAt) {
+  // done when the board's newest run (a chat may continue an open one) keeps a take after we sent
+  const r = await (await fetch(`${LIVE_API}/api/boards/${args.car}/agent-runs`)).json()
+  const run = (r.runs ?? r)[0]
+  if (!run) return false
+  const d = await (await fetch(`${LIVE_API}/api/agent-runs/${run.id}`)).json()
+  return d.steps.some((s) => s.tool === 'keep_option' && s.ok && Date.parse(s.created_at) > sentAt)
+}
+
+const LIVE = new Set(['car-explore', 'car-chat', 'story'])
+const HIRES = new Set() // Chrome's headless screencast films at CSS size too, so no HIRES shot for now
 
 const SHOTS = {
+  // LIVE, 2x resolution, one take: the board, the coupe's parts, explore paint, then ask Muse.
+  // Writes boxes into marks (marks.boxes) so the trailer's camera can zoom to each action.
+  story: async (page) => {
+    await page.goto(`${args.app}/boards/${args.car}`)
+    await page.waitForTimeout(4000)
+    mark('board')
+    await page.mouse.move(1500, 900)
+    await pick(page, 'note.png', 0) // selected and centred, still at the wide view
+    const st = await page.locator('.board-stage').boundingBox()
+    const cx = st.x + st.width / 2, cy = st.y + st.height / 2
+    await page.waitForTimeout(1200)
+    mark('zoom-in')
+    await smoothZoom(page, cx, cy, 4) // glide in on the coupe (about 3.3x)
+    await page.waitForTimeout(1800)
+    mark('callouts')
+    await box(page, 'callouts', '.callout-head')
+    for (const part of ['Wheels', 'Headlamps']) {
+      const card = cardOf(page, part)
+      if (!(await card.count())) continue
+      await glide(page, page.locator('.callout-title', { hasText: part }).first())
+      await box(page, `part-${part.toLowerCase()}`, card)
+      mark(`part-${part.toLowerCase()}`)
+      await page.waitForTimeout(2400)
+    }
+    const dim = page.locator('.callout-dim', { hasText: /wheel design/i }).first()
+    await box(page, 'explore-dim', dim)
+    await clickGlide(page, dim)
+    mark('explore')
+    const flower = page.getByRole('group', { name: /wheel.*flower/i })
+    const petal = flower.locator('[data-testid="petal"].is-note').first()
+    await petal.waitFor({ timeout: 120000 })
+    await page.waitForTimeout(1500)
+    await box(page, 'flower', '[role=group][aria-label*="heel"] [data-testid="petal"]')
+    await box(page, 'petal', petal)
+    mark('petals')
+    await clickGlide(page, petal)
+    await page.waitForTimeout(1200)
+    await box(page, 'card', '.petal-card')
+    mark('card')
+    await clickGlide(page, page.locator('.petal-render, .petal-primary').first())
+    mark('render')
+    await page.locator('.petal-check').first().waitFor({ timeout: 240000 })
+    await box(page, 'card-checked', '.petal-card')
+    mark('checked')
+    await page.waitForTimeout(2500)
+    const keep = page.locator('button.petal-primary', { hasText: 'Keep' }).first()
+    if (await keep.count()) {
+      await clickGlide(page, keep)
+      mark('kept')
+      await page.waitForTimeout(2500)
+    }
+    await page.waitForTimeout(800)
+    mark('zoom-out')
+    await smoothZoom(page, cx, cy, 4, 30) // glide back out: the kept take is on the board
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(2000)
+    mark('board-again')
+    // ask Muse
+    const ask = page.getByPlaceholder('Ask Muse about this board')
+    await glide(page, ask)
+    await box(page, 'chat', '.agent-card')
+    mark('ask')
+    await typeSlowly(page, ask, 'Give me a darker colourway. Keep everything else exactly as it is.')
+    await page.waitForTimeout(400)
+    await page.keyboard.press('Enter')
+    mark('sent')
+    const sentAt = Date.now()
+    const q = page.locator('.question-card:not(.is-answered)').first()
+    const until = Date.now() + 6 * 60000
+    let answered = false
+    while (Date.now() < until) {
+      if (!answered && (await q.count())) {
+        await page.waitForTimeout(800)
+        await box(page, 'question', q)
+        mark('question')
+        await page.waitForTimeout(2200)
+        await clickGlide(page, q.locator('.question-choice').first())
+        mark('answered')
+        answered = true
+      }
+      if (await agentKept(sentAt)) { await box(page, 'chat-done', '.agent-card'); mark('landed'); break }
+      await page.waitForTimeout(1500)
+    }
+    await page.waitForTimeout(3000)
+    mark('end')
+  },
   // LIVE. The core loop on one picture: dimension -> flower of options -> render one -> check -> keep.
   'car-explore': async (page) => {
     await page.goto(`${args.app}/boards/${args.car}`)
@@ -189,24 +323,53 @@ const browser = await chromium.launch()
 for (const [name, shot] of Object.entries(SHOTS)) {
   if (args.only && args.only !== name) continue
   if (LIVE.has(name) && !args.live && args.only !== name) continue
+  // A HIRES shot is captured at 2x pixel density through Chrome's screencast (each frame saved with
+  // its time), because Playwright's recorder always films at the viewport's CSS size.
+  const hi = HIRES.has(name)
   const ctx = await browser.newContext({
     viewport: { width: 1920, height: 1080 },
-    recordVideo: { dir: out, size: { width: 1920, height: 1080 } },
+    deviceScaleFactor: hi ? 2 : 1,
+    ...(hi ? {} : { recordVideo: { dir: out, size: { width: 1920, height: 1080 } } }),
   })
   await ctx.addInitScript(CURSOR)
   const page = await ctx.newPage()
+  const frames = []
+  let cdp = null
+  const fdir = join(out, `${name}.frames`)
+  if (hi) {
+    mkdirSync(fdir, { recursive: true })
+    cdp = await ctx.newCDPSession(page)
+    cdp.on('Page.screencastFrame', async ({ data, sessionId }) => {
+      const t = (Date.now() - t0) / 1000
+      const f = `${String(frames.length).padStart(6, '0')}.jpg`
+      writeFileSync(join(fdir, f), Buffer.from(data, 'base64'))
+      frames.push([f, t])
+      await cdp.send('Page.screencastFrameAck', { sessionId }).catch(() => {})
+    })
+    await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 88, maxWidth: 3840, maxHeight: 2160, everyNthFrame: 1 })
+  }
   t0 = Date.now()
   marks = {}
+  boxes = []
   try {
     await shot(page)
   } catch (err) {
     console.error(`${name}: ${err.message}`)
   }
   await page.waitForTimeout(800)
-  const video = page.video()
-  await ctx.close()
-  renameSync(await video.path(), join(out, `${name}.webm`))
-  writeFileSync(join(out, `${name}.marks.json`), JSON.stringify(marks, null, 1))
+  if (hi) {
+    await cdp.send('Page.stopScreencast').catch(() => {})
+    // a concat list: each frame held until the next one arrived
+    const lines = frames.map(([f, t], k) => `file '${f}'\nduration ${((frames[k + 1]?.[1] ?? t + 0.5) - t).toFixed(3)}`)
+    writeFileSync(join(fdir, 'frames.txt'), lines.join('\n') + `\nfile '${frames.at(-1)[0]}'\n`)
+    writeFileSync(join(fdir, 'start.json'), JSON.stringify({ first_frame_t: frames[0]?.[1] ?? 0 }))
+    await ctx.close()
+  } else {
+    const video = page.video()
+    await ctx.close()
+    renameSync(await video.path(), join(out, `${name}.webm`))
+  }
+  writeFileSync(join(out, `${name}.marks.json`), JSON.stringify(boxes.length ? { ...marks, boxes } : marks, null, 1))
   console.log(`${name} done`)
 }
 await browser.close()
