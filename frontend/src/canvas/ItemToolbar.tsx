@@ -50,13 +50,21 @@ export function ItemToolbar({
   useLayoutEffect(() => {
     onSizeRef.current = onSize
   })
+  // The bar is drawn upwards from `top` (translateY -100%), so its own height keeps it inside the stage.
+  const [height, setHeight] = useState(0)
   useLayoutEffect(() => {
     const el = ref.current
-    if (el) onSizeRef.current?.({ width: el.offsetWidth, height: el.offsetHeight })
+    if (!el) return
+    onSizeRef.current?.({ width: el.offsetWidth, height: el.offsetHeight })
   })
+  useLayoutEffect(() => setHeight(ref.current?.offsetHeight ?? 0), [])
   useEffect(() => {
     const el = ref.current
-    const report = () => el && onSizeRef.current?.({ width: el.offsetWidth, height: el.offsetHeight })
+    const report = () => {
+      if (!el) return
+      onSizeRef.current?.({ width: el.offsetWidth, height: el.offsetHeight })
+      setHeight(el.offsetHeight)
+    }
     const ro = el && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(report) : null
     if (el) ro?.observe(el)
     return () => {
@@ -91,7 +99,7 @@ export function ItemToolbar({
       className="item-toolbar"
       role="toolbar"
       aria-label={single ? 'Item actions' : `${items.length} items selected`}
-      style={{ left: screen.x + screen.width / 2, top: Math.max(8, screen.y - TOOLBAR_GAP) }}
+      style={{ left: screen.x + screen.width / 2, top: Math.max(8 + height, screen.y - TOOLBAR_GAP) }}
       onMouseDown={(e) => e.stopPropagation()}
     >
       {single?.option_run_id && onKeep && (

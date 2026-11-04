@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { makeItem } from '../test/fixtures'
 
@@ -26,5 +26,16 @@ describe('ModelViewer', () => {
     expect(link.getAttribute('download')).toBe('chair.glb')
     rerender(<ModelViewer item={model} onClose={() => {}} />)
     expect(loaded).toHaveBeenCalledTimes(1)
+  })
+
+  it('Escape closes it without reaching the canvas handlers', () => {
+    const onClose = vi.fn()
+    const other = vi.fn()
+    window.addEventListener('keydown', other)
+    render(<ModelViewer item={model} onClose={onClose} />)
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    window.removeEventListener('keydown', other)
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(other).not.toHaveBeenCalled()
   })
 })

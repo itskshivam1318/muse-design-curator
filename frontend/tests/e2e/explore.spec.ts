@@ -5,6 +5,7 @@ import {
   createBoard,
   escapeRe,
   expectItemCount,
+  hoverItem,
   openDimension,
   openLibrary,
   panToReach,
@@ -54,7 +55,9 @@ test('explore option then render', async ({ page }) => {
   const gen = (await boardItems(boardId)).find((i) => i.id === generatedId)!
   const label = gen.original_filename ?? gen.page_title ?? gen.page_url ?? gen.id
   await page.keyboard.press('Escape')
-  await selectItem(page, new RegExp(escapeRe(label)))
+  // Hover the result instead of selecting it: its analysis is queued, and once that lands a selected
+  // item shows part callouts in place of its caption. A hovered one keeps the caption.
+  await hoverItem(page, new RegExp(escapeRe(label)), page.getByRole('note', { name: 'Generated image' }))
   await expect(page.getByRole('note', { name: 'Generated image' })).toHaveText('generated · mock-image', { timeout: 10_000 })
   await expect(page.locator('.credit-caption .verdict')).toBeVisible()
   await expect(page.locator('.credit-caption .verdict')).not.toHaveText('Checking…', { timeout: 15_000 })

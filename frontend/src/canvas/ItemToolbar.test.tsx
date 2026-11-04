@@ -12,6 +12,13 @@ const screenBox = { x: 0, y: 100, width: 100, height: 100 }
 const names = () => screen.getAllByRole('button').map((b) => b.textContent).concat(screen.queryAllByRole('link').map((a) => a.textContent))
 
 describe('ItemToolbar', () => {
+  it('stays inside the stage when the item is at its top edge', () => {
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(32)
+    render(<ItemToolbar items={[makeItem()]} screen={{ ...screenBox, y: 4 }} onInspect={noop} onCompare={noop} onNotThis={noop} onRemove={noop} />)
+    // drawn upwards from `top`, so top >= its height + the 8 px margin
+    expect(screen.getByRole('toolbar').style.top).toBe('40px')
+  })
+
   it('toolbar has Inspect, Not this, Remove and no Explore', () => {
     render(<ItemToolbar items={[makeItem({ page_url: 'https://example.org' })]} screen={screenBox} onInspect={noop} onCompare={noop} onNotThis={noop} onRemove={noop} />)
     expect(names()).toEqual(['Inspect', 'Not this', 'Remove', 'Open source ↗'])

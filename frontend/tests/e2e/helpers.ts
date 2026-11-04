@@ -197,3 +197,20 @@ export async function panToReach(page: Page, f: Locator): Promise<void> {
     .poll(async () => (await f.locator('.flower-hub').boundingBox())!.y)
     .toBeLessThan(c.y + c.height * 0.4)
 }
+
+/**
+ * Hover an item on the canvas until `shown` is visible. A selected item with an analysis shows part
+ * callouts in place of its caption, so caption checks hover instead. Selecting once only finds the
+ * item: its toolbar sits just above it.
+ */
+export async function hoverItem(page: Page, name: string | RegExp, shown: Locator): Promise<void> {
+  await selectItem(page, name)
+  const bar = (await page.getByRole('toolbar', { name: 'Item actions' }).boundingBox())!
+  await page.keyboard.press('Escape')
+  await expect(itemButton(page, name)).toHaveAttribute('aria-pressed', 'false')
+  await expect(async () => {
+    await page.mouse.move(5, 5)
+    await page.mouse.move(bar.x + bar.width / 2, bar.y + bar.height + 30, { steps: 4 })
+    await expect(shown).toBeVisible({ timeout: 2_000 })
+  }).toPass({ timeout: 15_000 })
+}

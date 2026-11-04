@@ -5,7 +5,6 @@ import {
   closeLibrary,
   createBoard,
   expectItemCount,
-  itemButton,
   openLibrary,
   selectItem,
   sitePath,
@@ -22,6 +21,8 @@ interface NodeJson {
   id: string
   params: Record<string, unknown>
 }
+
+const GRID = 20 // distinct colourways of the fixture's three parts under the default palette
 
 const items = (boardId: string) => boardItems(boardId) as Promise<OptionItem[]>
 const options = async (boardId: string) => (await items(boardId)).filter((i) => i.option_run_id)
@@ -75,37 +76,39 @@ test('variation: 24 options, shuffle, keep two, clear, undo', async ({ page }) =
   await expect(card).toBeVisible()
 
   await card.getByRole('button', { name: 'Run', exact: true }).click()
-  // asks for 24; the mock-read item has few parts, so a little under 24 distinct colourways exist
-  await expect.poll(async () => (await options(boardId)).length, { timeout: 90_000 }).toBeGreaterThanOrEqual(16)
-  const grid = (await options(boardId)).length
-  expect(grid).toBeLessThanOrEqual(24)
-  await expectItemCount(page, grid + 1)
-  const first = (await options(boardId))[0]
-  const firstHash = await hash(first.id)
+  // asks for 24; the mock-read item has three mask parts, so only GRID distinct colourways exist
+  await expect.poll(async () => (await options(boardId)).length, { timeout: 90_000 }).toBe(GRID)
+  await expectItemCount(page, GRID + 1)
+  const run1 = await options(boardId)
+  const run1Ids = new Set(run1.map((i) => i.id))
+  const run1Hashes = await Promise.all(run1.map((i) => hash(i.id)))
+  expect(new Set(run1Hashes).size).toBe(GRID) // every tile is its own colourway
 
   // Shuffle sets a new seed: running again lays out a different grid
   await card.locator('.node-summary').click()
   await card.getByRole('button', { name: 'Shuffle' }).click()
-  await card.getByRole('button', { name: 'Run again' }).dispatchEvent('click')
+  await card.locator('.node-summary').click() // fold the settings so the card clears the dock
+  await card.getByRole('button', { name: 'Run again' }).click()
   await expect
-    .poll(async () => (await options(boardId)).filter((i) => i.id !== first.id).length, { timeout: 90_000 })
-    .toBeGreaterThanOrEqual(grid)
-  const latest = (await options(boardId)).filter((i) => i.id !== first.id)
-  expect(new Set(await Promise.all(latest.slice(0, grid).map((i) => hash(i.id)))).has(firstHash)).toBe(false)
+    .poll(async () => (await options(boardId)).filter((i) => !run1Ids.has(i.id)).length, { timeout: 90_000 })
+    .toBe(GRID)
+  const run2 = (await options(boardId)).filter((i) => !run1Ids.has(i.id))
+  const run2Hashes = await Promise.all(run2.map((i) => hash(i.id)))
+  expect(run2Hashes[0]).not.toBe(run1Hashes[0]) // a different first tile
+  expect([...run2Hashes].sort()).not.toEqual([...run1Hashes].sort()) // and a different set of tiles
 
   // keep two (Keep makes them ordinary items), then Clear drops the rest
-  const all = await options(boardId)
-  const [a, b] = [all[0], all[1]]
+  const [a, b] = [run2[0], run2[1]]
   await post(`/items/${a.id}/keep-option`)
   await post(`/items/${b.id}/keep-option`)
   await page.reload()
-  await card.getByRole('button', { name: /^Clear options/ }).dispatchEvent('click')
+  await card.getByRole('button', { name: /^Clear options/ }).click()
   await expect.poll(async () => (await options(boardId)).length).toBe(0)
   await expect.poll(async () => (await items(boardId)).length).toBe(3)
   await expectItemCount(page, 3)
 
   // undo: restore brings a cleared option back
-  const gone = all[5]
+  const gone = run2[5]
   await post(`/items/${gone.id}/restore`)
   await expect.poll(async () => (await options(boardId)).length).toBe(1)
 })
@@ -132,11 +135,11 @@ test('3D and Animate: a model opens the viewer, a video plays', async ({ page })
   await mesh.getByRole('button', { name: 'Run', exact: true }).click()
   await expect.poll(async () => (await items(boardId)).some((i) => i.kind === 'model'), { timeout: 60_000 }).toBe(true)
   await selectItem(page, /^model /)
-  await page.getByRole('toolbar', { name: 'Item actions' }).getByRole('button', { name: 'Open 3D' }).dispatchEvent('click')
+  await page.getByRole('toolbar', { name: 'Item actions' }).getByRole('button', { name: 'Open 3D' }).click()
   const viewer = page.getByRole('dialog', { name: '3D viewer' })
   await expect(viewer).toBeVisible()
   await expect(viewer.getByText('Download .glb')).toBeVisible()
-  await viewer.getByRole('button', { name: 'Close' }).click()
+  await page.keyboard.press('Escape')
   await expect(viewer).toHaveCount(0)
 
   const video = page.getByRole('group', { name: 'Video node' })
@@ -178,5 +181,4 @@ test('without a fal key, 3D and Animate show not connected', async ({ page }) =>
     await expect(card.getByRole('button', { name: 'Run', exact: true })).toBeDisabled()
   }
   expect(await items(boardId)).toHaveLength(1)
-  void itemButton
 })

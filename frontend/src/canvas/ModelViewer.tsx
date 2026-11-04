@@ -22,10 +22,12 @@ export function ModelViewer({ item, onClose }: Props) {
   }, [])
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key !== 'Escape') return
+      e.stopPropagation() // closes the viewer only; the canvas keeps its selection
+      onClose()
     }
-    window.addEventListener('keydown', key)
-    return () => window.removeEventListener('keydown', key)
+    window.addEventListener('keydown', key, true) // capture: runs before the canvas's own handlers
+    return () => window.removeEventListener('keydown', key, true)
   }, [onClose])
   const src = itemModelUrl(item)
   const name = item.original_filename?.endsWith('.glb') ? item.original_filename : `${item.original_filename ?? 'model'}.glb`
