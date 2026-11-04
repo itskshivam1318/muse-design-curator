@@ -61,7 +61,7 @@ def _recover_visualizing() -> None:
             if n := recover_stuck_notes(session):
                 log.info("freed %d notes left visualizing", n)
             if n := recover_stuck_runs(session):
-                log.info("marked %d plugin runs interrupted", n)
+                log.info("recovered %d plugin runs (interrupted or resumed)", n)
             if n := recover_stuck_analyses(session):
                 log.info("re-queued %d analyses left pending or processing", n)
             session.commit()

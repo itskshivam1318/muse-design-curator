@@ -172,6 +172,12 @@ def run_node(node_id: str, session: SessionDep) -> JSONResponse:
     return JSONResponse(service.run_to_dict(run), status_code=202)
 
 
+@router.post("/nodes/{node_id}/describe")
+def describe_node(node_id: str, session: SessionDep) -> dict[str, str]:
+    require_enabled()
+    return {"prompt": service.describe_node(session, node_id)}
+
+
 @router.get("/plugin-runs/{run_id}")
 def get_run(run_id: str, session: SessionDep) -> dict[str, Any]:
     require_enabled()

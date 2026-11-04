@@ -58,7 +58,8 @@ def item_image(
         return _serve(item.thumb_path)
     if item.kind == "video":  # the full view of a video is its chosen frame, not the video
         return _serve(_chosen_frame_path(session, item) or item.thumb_path)
-    # model (.glb) items rely on this serving storage_path: Task 10's viewer uses image?size=full
+    if item.kind == "model":  # the 3D viewer loads the .glb itself (image?size=full)
+        return _serve(item.storage_path, "model/gltf-binary")
     return _serve(item.storage_path)
 
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import io
 import json
 import os
 import re
@@ -19,14 +20,19 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+import numpy as np
 
 from app.config import Settings, get_settings
-from app.plugins.manifest import Manifest
+from app.plugins.manifest import Manifest, ModelName
 from app.plugins.registry import Plugin, status
-from app.providers import get_image_provider, get_reasoning
+from app.providers import get_fal, get_image_provider, get_reasoning
 from app.providers.reasoning import MAX_STRUCTURED_IMAGES
 from app.providers.reliability import ModelError, user_message
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 SHIM = Path(__file__).parent / "shim.py"
 SHIM_BAD_RESULT_EXIT = 3  # shim.py: run() returned something json.dumps cannot encode
@@ -56,6 +62,15 @@ class BoardCtx:
     title: str
     context: str | None
     notes: list[str]
+
+
+@dataclass
+class JobCtx:
+    """The run a model handler is working for: a long (fal) handler persists its job's state on
+    it mid-run through this session (see `longjob.run_fal`)."""
+
+    session: Session
+    run_id: str
 
 
 class PluginError(Exception):
@@ -208,6 +223,27 @@ def validate_output(manifest: Manifest, out: Any) -> dict[str, Any]:
                 a["confidence"] = max(0.0, min(1.0, float(x["confidence"])))
             attrs.append(a)
         clean["attributes"] = attrs
+    if out.get("model3d") is not None:
+        if manifest.runner != "model":
+            raise _bad_output("only the model runner may return a 3D model")
+        models = []
+        for x in _list_of_dicts(out, "model3d"):
+            glb, poster, caption = x.get("glb"), x.get("poster"), x.get("caption", "")
+            ok = isinstance(glb, bytes) and bool(glb) and isinstance(poster, bytes) and bool(poster)
+            if not ok or not isinstance(caption, str):
+                raise _bad_output("each 3D model needs glb and poster bytes and a text caption")
+            models.append({"glb": glb, "poster": poster, "caption": caption})
+        clean["model3d"] = models
+    if out.get("video") is not None:
+        if manifest.runner != "model":
+            raise _bad_output("only the model runner may return a video")
+        clips = []
+        for x in _list_of_dicts(out, "video"):
+            data, caption = x.get("data"), x.get("caption", "")
+            if not isinstance(data, bytes) or not data or not isinstance(caption, str):
+                raise _bad_output("each video needs bytes and a text caption")
+            clips.append({"data": data, "caption": caption})
+        clean["video"] = clips
     if out.get("text") is not None:
         if not isinstance(out["text"], str):
             raise _bad_output("text must be a string")
@@ -464,13 +500,11 @@ def _model_prompt(params: dict[str, Any], inputs: list[RunInput]) -> str:
     return whole
 
 
-def _run_model(
+def _run_image(
     p: Plugin, inputs: list[RunInput], params: dict[str, Any], board: BoardCtx,
-    settings: Settings, progress: Callable[[str], None],
+    settings: Settings, progress: Callable[[str], None], job: JobCtx | None,
 ) -> Any:  # fmt: skip
     m = p.manifest
-    if m.model not in ("image.edit", "image.generate"):
-        raise PluginError("PLUGIN_NOT_CONNECTED", f"the {m.name} model is not connected")
     prompt = _model_prompt(params, inputs)
     count = max(1, int(params.get("count") or 1))  # results per input image
     sources = [i.image for i in inputs if i.image is not None] if m.model == "image.edit" else []
@@ -497,6 +531,228 @@ def _run_model(
                        for b in images]}  # fmt: skip
 
 
+MAX_GLB_BYTES = 50 * 1024 * 1024
+
+
+def _mesh_source(inputs: list[RunInput]) -> bytes:
+    """The cleaned cut-out as PNG: the picture cut along its object mask on transparent, or the
+    whole picture when no object was found. It is both the upload and the poster."""
+    from PIL import Image
+
+    from app.plugins.registry import load_builtin_module
+
+    src = inputs[0].image
+    if src is None:
+        raise _bad_input("connect a picture")
+    with Image.open(io.BytesIO(src)) as im:
+        rgb = im.convert("RGB")
+    mask = None
+    if inputs[0].object_mask:
+        with Image.open(io.BytesIO(inputs[0].object_mask)) as m:
+            mask = np.asarray(m.convert("L").resize(rgb.size, Image.Resampling.NEAREST)) > 127
+    try:
+        cut = load_builtin_module("cleanup", "cutout").cutout(rgb, mask, None, "transparent", 0.04)
+    except ValueError:
+        cut = rgb.convert("RGBA")  # nothing to cut out: send the whole picture
+    buf = io.BytesIO()
+    cut.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def _run_mesh(
+    p: Plugin, inputs: list[RunInput], params: dict[str, Any], board: BoardCtx,
+    settings: Settings, progress: Callable[[str], None], job: JobCtx | None,
+) -> Any:  # fmt: skip
+    from app.analysis import limits
+    from app.db.models import PluginRun
+    from app.plugins import longjob
+
+    if job is None:
+        raise PluginError("PLUGIN_NOT_CONNECTED", "the 3D model runs only as a queued job")
+    run = job.session.get(PluginRun, job.run_id)
+    if run is None:
+        raise PluginError("PLUGIN_CRASHED", "the run is gone")
+    detailed = params.get("quality", "fast") == "detailed"
+    endpoint = settings.FAL_MESH_DETAILED if detailed else settings.FAL_MESH_FAST
+    textured = bool(params.get("texture", True))
+    png = _mesh_source(inputs)
+
+    def payload(hb: Callable[[str], None]) -> dict[str, Any]:
+        url = get_fal(settings).upload(png, "image/png")
+        hb("Uploaded the picture")
+        return {"input_image_url": url, "textured_mesh": textured}
+
+    resumed = bool((run.external_json or {}).get("request_id"))
+
+    def fail(err: PluginError) -> PluginError:
+        # a resumed run never took a slot in this process; refunding would free someone else's
+        if not resumed:
+            limits.refund(run.board_id, "mesh")
+        return err
+
+    result = longjob.run_fal(job.session, run, endpoint, payload, "mesh", progress)
+    mesh = result.get("model_mesh")
+    url = mesh.get("url") if isinstance(mesh, dict) else None
+    if not isinstance(url, str) or not url:
+        raise fail(_bad_output("the model returned no 3D file"))
+    progress("Fetching the 3D file")
+    try:
+        glb = get_fal(settings).download(url, MAX_GLB_BYTES)
+    except ModelError as e:
+        if e.code == "PAYLOAD_TOO_LARGE":
+            raise fail(_bad_output("the 3D file is larger than 50 MB")) from None
+        raise fail(
+            PluginError(
+                "PLUGIN_MODEL_FAILED", f"the 3D file could not be fetched: {user_message(e)}"
+            )
+        ) from None
+    if not glb:
+        raise fail(_bad_output("the 3D file is empty"))
+    return {"model3d": [{"glb": glb, "poster": png,
+                         "caption": f"{inputs[0].label}, as a 3D model"}]}  # fmt: skip
+
+
+def frame_image(session: Any, board_id: str, item_id: str, which: str) -> bytes:
+    """The picture of a frame the person chose: an image on this board, not removed, not staged.
+    Anything else is PLUGIN_BAD_INPUT."""
+    from app.db.models import BoardItem
+    from app.errors import AppError
+    from app.extraction.service import _image_for
+
+    item = session.get(BoardItem, item_id)
+    ok = (
+        item is not None and item.board_id == board_id and item.kind == "image"
+        and item.removed_at is None and not item.staged
+    )  # fmt: skip
+    if not ok:
+        raise _bad_input(f"the {which} frame is not a picture on this board")
+    try:
+        return _image_for(session, item)[0]
+    except AppError:
+        raise _bad_input(f"the {which} frame's picture is missing") from None
+
+
+def _mime(data: bytes) -> str:
+    from app.ingest.sniff import sniff_image
+
+    sniffed = sniff_image(data)
+    return sniffed[0] if sniffed else "image/png"
+
+
+def _video_payload(endpoint_is_pro: bool, prompt: str, duration: int, start: str,
+                   end: str | None) -> dict[str, Any]:  # fmt: skip
+    """The two Kling tiers name their frame fields differently; pro also makes sound unless told
+    not to (playback is muted and sound costs more)."""
+    body: dict[str, Any] = {"prompt": prompt, "duration": str(duration)}
+    if endpoint_is_pro:
+        body |= {"start_image_url": start, "generate_audio": False}
+        if end:
+            body["end_image_url"] = end
+    else:
+        body["image_url"] = start
+        if end:
+            body["tail_image_url"] = end
+    return body
+
+
+def _run_video(
+    p: Plugin, inputs: list[RunInput], params: dict[str, Any], board: BoardCtx,
+    settings: Settings, progress: Callable[[str], None], job: JobCtx | None,
+) -> Any:  # fmt: skip
+    from app.analysis import limits
+    from app.db.models import PluginRun
+    from app.plugins import longjob
+
+    if job is None:
+        raise PluginError("PLUGIN_NOT_CONNECTED", "video runs only as a queued job")
+    run = job.session.get(PluginRun, job.run_id)
+    if run is None:
+        raise PluginError("PLUGIN_CRASHED", "the run is gone")
+    resumed = bool((run.external_json or {}).get("request_id"))
+    pro = params.get("type", "standard") == "pro"
+    endpoint = settings.FAL_VIDEO_PRO if pro else settings.FAL_VIDEO_STANDARD
+    payload: Callable[[Callable[[str], None]], dict[str, Any]]
+    if resumed:
+        # the clip is already paid for and in flight: frames deleted meanwhile no longer matter
+
+        def payload(hb: Callable[[str], None]) -> dict[str, Any]:
+            raise PluginError("PLUGIN_CRASHED", "a resumed run never submits")
+
+    else:
+        # everything that can be wrong with the inputs is checked before a slot or a submit
+        start_id = str(params.get("start") or "").strip()
+        end_id = str(params.get("end") or "").strip()
+        if start_id:
+            start_png = frame_image(job.session, run.board_id, start_id, "start")
+        elif inputs and inputs[0].image is not None:
+            start_png = inputs[0].image
+        else:
+            raise _bad_input("connect a picture")
+        end_png = frame_image(job.session, run.board_id, end_id, "end") if end_id else None
+        if not str(params.get("prompt") or "").strip():
+            raise _bad_input("write a direction for the clip, or use Describe")
+        duration = int(params.get("duration") or 5)
+
+        def payload(hb: Callable[[str], None]) -> dict[str, Any]:
+            fal = get_fal(settings)
+            start = fal.upload(start_png, _mime(start_png))
+            hb("Uploaded the start frame")
+            end = None
+            if end_png is not None:
+                end = fal.upload(end_png, _mime(end_png))
+                hb("Uploaded the end frame")
+            return _video_payload(pro, str(params["prompt"]).strip(), duration, start, end)
+
+    def fail(err: PluginError) -> PluginError:
+        if not resumed:  # a resumed run holds no slot of this process
+            limits.refund(run.board_id, "video")
+        return err
+
+    result = longjob.run_fal(job.session, run, endpoint, payload, "video", progress)
+    video = result.get("video")
+    url = video.get("url") if isinstance(video, dict) else None
+    if not isinstance(url, str) or not url:
+        raise fail(_bad_output("the model returned no video"))
+    progress("Fetching the video")
+    try:
+        data = get_fal(settings).download(url, settings.MAX_VIDEO_BYTES)
+    except ModelError as e:
+        if e.code == "PAYLOAD_TOO_LARGE":
+            raise fail(_bad_output("the video is larger than the size limit")) from None
+        raise fail(
+            PluginError("PLUGIN_MODEL_FAILED", f"the video could not be fetched: {user_message(e)}")
+        ) from None
+    if not data:
+        raise fail(_bad_output("the video is empty"))
+    prompt = str(params.get("prompt") or "").strip()
+    caption = prompt if len(prompt) <= 200 else prompt[:199] + "…"
+    return {"video": [{"data": data, "caption": caption}]}
+
+
+ModelHandler = Callable[
+    [Plugin, list[RunInput], dict[str, Any], BoardCtx, Settings, Callable[[str], None],
+     JobCtx | None],
+    Any,
+]  # fmt: skip
+# mesh.from_image and video.generate are added by their plugins' handlers
+MODEL_HANDLERS: dict[ModelName, ModelHandler] = {
+    "image.edit": _run_image,
+    "image.generate": _run_image,
+    "mesh.from_image": _run_mesh,
+    "video.generate": _run_video,
+}
+
+
+def _run_model(
+    p: Plugin, inputs: list[RunInput], params: dict[str, Any], board: BoardCtx,
+    settings: Settings, progress: Callable[[str], None], job: JobCtx | None = None,
+) -> Any:  # fmt: skip
+    handler = MODEL_HANDLERS.get(p.manifest.model) if p.manifest.model else None
+    if handler is None:
+        raise PluginError("PLUGIN_NOT_CONNECTED", f"the {p.manifest.name} model is not connected")
+    return handler(p, inputs, params, board, settings, progress, job)
+
+
 # ---- entry point ---------------------------------------------------------------------------
 
 RUNNERS = {"python": _run_python, "llm": _run_llm, "model": _run_model}
@@ -508,15 +764,21 @@ def run_plugin(
     params: dict[str, Any],
     board: BoardCtx,
     progress: Callable[[str], None],
+    job: JobCtx | None = None,
 ) -> dict[str, Any]:
-    """Run one plugin to a validated result; raises PluginError."""
+    """Run one plugin to a validated result; raises PluginError. `job` reaches model handlers
+    only (a long fal job stores its request on the run through it)."""
     settings = get_settings()
     m = plugin.manifest
     if status(plugin, settings) == "not_connected":
         raise PluginError("PLUGIN_NOT_CONNECTED", f"{m.name} is not connected")
     check_inputs(m, inputs)
     params = check_params(m, params)
-    out = validate_output(m, RUNNERS[m.runner](plugin, inputs, params, board, settings, progress))
+    if m.runner == "model":
+        raw = _run_model(plugin, inputs, params, board, settings, progress, job)
+    else:
+        raw = RUNNERS[m.runner](plugin, inputs, params, board, settings, progress)
+    out = validate_output(m, raw)
     ids = {i.id for i in inputs}
     for a in out.get("attributes", []):
         if a["item_id"] not in ids:
