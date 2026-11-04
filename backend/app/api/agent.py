@@ -62,23 +62,30 @@ def get_run(run_id: str, session: SessionDep) -> dict[str, Any]:
     return {**agent_repo.run_to_dict(run), "steps": steps}
 
 
+def _pause(run_id: str, status: str) -> dict[str, Any]:
+    with new_session() as session:
+        run = agent_repo.get_run(session, run_id)
+        if run is None:
+            raise AppError(404, "RUN_NOT_FOUND", "Agent run not found")
+        if run.status not in (*OPEN, status):  # pausing a paused run changes nothing
+            raise AppError(409, "RUN_NOT_OPEN", f"The run is {run.status}; only an open run pauses")
+        if run.source == "muse":
+            run.status = "waiting" if run.status in OPEN else run.status
+        else:
+            run.status = status
+        session.commit()
+        return agent_repo.run_to_dict(run)
+
+
 @router.patch("/agent-runs/{run_id}")
-def patch_run(run_id: str, body: RunPatch, session: SessionDep) -> dict[str, Any]:
+async def patch_run(run_id: str, body: RunPatch) -> dict[str, Any]:
     """Pause an open run. A chat (`muse`) run's turn in flight is stopped and the run waits for
-    the next message instead (it stays the board's chat); an MCP run is set `paused`."""
-    run = agent_repo.get_run(session, run_id)
-    if run is None:
-        raise AppError(404, "RUN_NOT_FOUND", "Agent run not found")
-    if run.status not in (*OPEN, body.status):  # pausing a paused run changes nothing
-        raise AppError(409, "RUN_NOT_OPEN", f"The run is {run.status}; only an open run pauses")
-    if run.source == "muse":
-        runner.stop(run.id)
-        run.status = "waiting" if run.status in OPEN else run.status
-    else:
-        run.status = body.status
-    session.flush()
-    data = agent_repo.run_to_dict(run)
-    after_commit(session, partial(events.publish, run.board_id, "agent.run", data))
+    the next message instead (it stays the board's chat); an MCP run is set `paused`. (Async:
+    the chat runner's state belongs to the event loop.)"""
+    data = await run_in_threadpool(_pause, run_id, body.status)
+    if data["source"] == "muse":
+        runner.stop(run_id)
+    events.publish(data["board_id"], "agent.run", data)
     return data
 
 
@@ -182,21 +189,29 @@ def list_messages(run_id: str, session: SessionDep) -> dict[str, Any]:
     }
 
 
-@router.post("/agent-runs/{run_id}/new-chat")
-def new_chat(run_id: str, session: SessionDep) -> dict[str, Any]:
-    """End the chat run (`done`), stopping its turn in flight; the next message opens a new one."""
-    run = agent_repo.get_run(session, run_id)
-    if run is None:
-        raise AppError(404, "RUN_NOT_FOUND", "Agent run not found")
-    if run.source != "muse":
-        raise AppError(409, "NOT_A_CHAT", "Only a chat run is ended by New chat")
-    runner.stop(run.id)
-    if run.status != "done":
+def _end_chat(run_id: str) -> tuple[dict[str, Any], bool]:
+    """The chat run, now `done`, and whether it changed."""
+    with new_session() as session:
+        run = agent_repo.get_run(session, run_id)
+        if run is None:
+            raise AppError(404, "RUN_NOT_FOUND", "Agent run not found")
+        if run.source != "muse":
+            raise AppError(409, "NOT_A_CHAT", "Only a chat run is ended by New chat")
+        changed = run.status != "done"
         run.status = "done"
-        session.flush()
-        after_commit(session, partial(events.publish, run.board_id, "agent.run",
-                                      agent_repo.run_to_dict(run)))  # fmt: skip
-    return agent_repo.run_to_dict(run)
+        session.commit()
+        return agent_repo.run_to_dict(run), changed
+
+
+@router.post("/agent-runs/{run_id}/new-chat")
+async def new_chat(run_id: str) -> dict[str, Any]:
+    """End the chat run (`done`), stopping its turn in flight; the next message opens a new one.
+    (Async: the chat runner's state belongs to the event loop.)"""
+    data, changed = await run_in_threadpool(_end_chat, run_id)
+    runner.stop(run_id)
+    if changed:
+        events.publish(data["board_id"], "agent.run", data)
+    return data
 
 
 @router.get("/agent-runs/{run_id}/trace", response_class=PlainTextResponse)

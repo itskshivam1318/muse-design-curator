@@ -418,3 +418,14 @@ def test_startup_resets_running_chat_runs(client: TestClient, board: str) -> Non
         s.commit()
     assert runner.reset_running_on_startup() == 1
     assert runner.reset_running_on_startup() == 0
+
+
+def test_stop_routes_run_on_the_event_loop() -> None:
+    """runner.stop touches the runner's state, which belongs to the event loop: the routes
+    that call it are async, not run in the threadpool."""
+    import inspect
+
+    from app.api import agent as agent_api
+
+    assert inspect.iscoroutinefunction(agent_api.patch_run)
+    assert inspect.iscoroutinefunction(agent_api.new_chat)
