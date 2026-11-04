@@ -572,25 +572,32 @@ def _run_mesh(
         hb("Uploaded the picture")
         return {"input_image_url": url, "textured_mesh": textured}
 
+    resumed = bool((run.external_json or {}).get("request_id"))
+
+    def fail(err: PluginError) -> PluginError:
+        # a resumed run never took a slot in this process; refunding would free someone else's
+        if not resumed:
+            limits.refund(run.board_id, "mesh")
+        return err
+
     result = longjob.run_fal(job.session, run, endpoint, payload, "mesh", progress)
     mesh = result.get("model_mesh")
     url = mesh.get("url") if isinstance(mesh, dict) else None
     if not isinstance(url, str) or not url:
-        limits.refund(run.board_id, "mesh")
-        raise _bad_output("the model returned no 3D file")
+        raise fail(_bad_output("the model returned no 3D file"))
     progress("Fetching the 3D file")
     try:
         glb = get_fal(settings).download(url, MAX_GLB_BYTES)
     except ModelError as e:
-        limits.refund(run.board_id, "mesh")
         if e.code == "PAYLOAD_TOO_LARGE":
-            raise _bad_output("the 3D file is larger than 50 MB") from None
-        raise PluginError(
-            "PLUGIN_MODEL_FAILED", f"the 3D file could not be fetched: {user_message(e)}"
+            raise fail(_bad_output("the 3D file is larger than 50 MB")) from None
+        raise fail(
+            PluginError(
+                "PLUGIN_MODEL_FAILED", f"the 3D file could not be fetched: {user_message(e)}"
+            )
         ) from None
     if not glb:
-        limits.refund(run.board_id, "mesh")
-        raise _bad_output("the 3D file is empty")
+        raise fail(_bad_output("the 3D file is empty"))
     return {"model3d": [{"glb": glb, "poster": png,
                          "caption": f"{inputs[0].label}, as a 3D model"}]}  # fmt: skip
 

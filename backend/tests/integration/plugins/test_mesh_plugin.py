@@ -126,3 +126,50 @@ def test_mesh_glb_over_50mb_fails_and_refunds(
     assert run["status"] == "failed" and run["error_code"] == "PLUGIN_BAD_OUTPUT"
     assert len(demo.windows._hits.get(f"mesh:{board}", ())) == 0
     assert fal.count("submit") == 1
+
+
+def hits(board: str) -> int:
+    return len(demo.windows._hits.get(f"mesh:{board}", ()))
+
+
+def test_mesh_resumed_download_failure_keeps_other_slots(
+    client: TestClient, board: str, db: Session, fal: MockFal, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.db.models import PluginRun
+    from app.plugins import runners
+
+    monkeypatch.setattr(runners, "MAX_GLB_BYTES", 8)
+    _, node = start(client, board, db)
+    monkeypatch.setattr("app.jobs.enqueue", lambda *_a, **_k: None)
+    rid = client.post(f"/api/nodes/{node['id']}/run").json()["id"]
+    run = db.get(PluginRun, rid)
+    assert run is not None
+    ep = get_settings().FAL_MESH_FAST
+    run.external_json = {"endpoint": ep, "request_id": "mock-old", "status": "IN_QUEUE",
+                         "cap": "mesh", "submitted_at": "2026-11-04T00:00:00Z"}  # fmt: skip
+    db.commit()
+    demo.windows._hits.pop(f"mesh:{board}", None)
+    from app.analysis import limits
+
+    limits.check_and_count(board, "mesh", get_settings())  # another run's hit
+    from app.plugins import service
+
+    service.execute_run(db, rid)
+    db.expire_all()
+    assert db.get(PluginRun, rid).status == "failed"  # type: ignore[union-attr]
+    assert fal.count("submit") == 0 and hits(board) == 1
+
+
+@pytest.mark.parametrize("case", ["no_url", "empty"])
+def test_mesh_missing_url_and_empty_glb_refund(
+    client: TestClient, board: str, db: Session, fal: MockFal, case: str
+) -> None:
+    ep = get_settings().FAL_MESH_FAST
+    if case == "no_url":
+        fal.results[ep] = {"seed": 1}
+    else:
+        fal.files[GLB_URL] = b""
+    _, node = start(client, board, db)
+    run = run_node(client, node["id"])
+    assert run["status"] == "failed" and run["error_code"] == "PLUGIN_BAD_OUTPUT"
+    assert hits(board) == 0
