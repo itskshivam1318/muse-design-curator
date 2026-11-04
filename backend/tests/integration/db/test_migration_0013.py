@@ -38,7 +38,7 @@ def test_migration_0013_round_trip(tmp_path: Path) -> None:
         )
         assert c.execute(text("SELECT option_run_id FROM board_items WHERE id='itm_a'")).scalar() is None
         assert c.exec_driver_sql("PRAGMA foreign_key_check").fetchall() == []
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0013_round3_plugins"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0014_item_subject"
     cfg = alembic_config()
     with migration_transaction(engine) as conn:
         cfg.attributes["connection"] = conn

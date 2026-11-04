@@ -66,9 +66,13 @@ class DimensionOut(BaseModel):
         return self
 
 
+MAX_SUBJECT_WORDS = 4
+
+
 class Analysis(BaseModel):
     content_type: ContentType
     summary: str
+    subject: str = ""  # a short noun phrase naming the whole item ("running shoe"), <= 4 words
     parts: list[PartOut]
     dimensions: list[DimensionOut]
 

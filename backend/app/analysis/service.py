@@ -45,6 +45,7 @@ def merge_analysis(session: Session, item: BoardItem, a: Analysis) -> None:
     AI rows the analysis no longer has are deleted, or marked stale when they were explored."""
     if not item.content_type_locked:  # the person said what this item is
         item.content_type = a.content_type
+    item.subject = a.subject or None  # overwritten on every re-analysis
     _merge_dimensions(session, item, a)
     _merge_parts(session, item, a)
 

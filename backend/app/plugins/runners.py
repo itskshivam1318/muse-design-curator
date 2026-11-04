@@ -47,6 +47,8 @@ class RunInput:
     attributes: dict[str, Any]
     note_text: str | None
     image: bytes | None
+    parts: list[tuple[str, str, bytes]] | None = None  # (key, label, PNG mask)
+    object_mask: bytes | None = None  # PNG, 255 = inside
 
 
 @dataclass
@@ -249,6 +251,13 @@ def _image_paths_to_b64(out: Any, tmp: Path) -> Any:
     return {**out, "images": images}
 
 
+def _write_ro(tmp: Path, name: str, data: bytes) -> str:
+    f = tmp / "in" / f"{name}.png"
+    f.write_bytes(data)
+    f.chmod(0o444)
+    return str(f)
+
+
 def _run_python(
     p: Plugin, inputs: list[RunInput], params: dict[str, Any], board: BoardCtx,
     settings: Settings, progress: Callable[[str], None],
@@ -265,9 +274,19 @@ def _run_python(
                 f.write_bytes(i.image)
                 f.chmod(0o444)
                 path = str(f)
-            payload_inputs.append({"id": i.id, "kind": i.kind, "label": i.label,
-                                   "attributes": i.attributes, "note_text": i.note_text,
-                                   "image_path": path})  # fmt: skip
+            entry: dict[str, Any] = {"id": i.id, "kind": i.kind, "label": i.label,
+                     "attributes": i.attributes, "note_text": i.note_text,
+                     "image_path": path}  # fmt: skip
+            stem = i.id if SAFE_ID.match(i.id) else f"input-{n}"
+            if i.parts is not None:
+                entry["parts"] = [
+                    {"key": k, "label": lb, "mask_path": _write_ro(tmp, f"{stem}-part-{k}", png)}
+                    for k, lb, png in i.parts
+                    if SAFE_ID.match(k)
+                ]
+            if i.object_mask is not None:
+                entry["object_mask_path"] = _write_ro(tmp, f"{stem}-object", i.object_mask)
+            payload_inputs.append(entry)
         request = json.dumps({
             "inputs": payload_inputs, "params": params,
             "board": {"title": board.title, "context": board.context, "notes": board.notes},

@@ -319,6 +319,7 @@ def _mock_item_analysis(images: list[bytes], prompt: str) -> dict[str, Any]:
         return {
             "content_type": "text",
             "summary": "A short note.",
+            "subject": "",
             "parts": [{"key": "opening", "label": "Opening", "region_kind": "text_range",
                        "region": [0, max(1, min(text_len, 40))]}],
             "dimensions": [
@@ -337,6 +338,7 @@ def _mock_item_analysis(images: list[bytes], prompt: str) -> dict[str, Any]:
         return {
             "content_type": "ui",
             "summary": "A software screen.",
+            "subject": "software screen",
             "parts": [
                 {"key": "header", "label": "Header", "region_kind": "box",
                  "region": [0.0, 0.0, 1.0, 0.15]},
@@ -355,6 +357,7 @@ def _mock_item_analysis(images: list[bytes], prompt: str) -> dict[str, Any]:
     return {
         "content_type": "image",
         "summary": "An image.",
+        "subject": "main object",
         "parts": [
             {"key": "body", "label": "Body", "region_kind": "mask", "region": None},
             {"key": "detail", "label": "Detail", "region_kind": "mask", "region": None},

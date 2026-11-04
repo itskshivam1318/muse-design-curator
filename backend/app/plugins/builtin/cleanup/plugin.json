@@ -1,37 +1,38 @@
 {
   "id": "cleanup",
   "name": "Clean-up",
-  "description": "Removes background, upscales, crops to the part.",
+  "description": "Cuts the object out of each picture and drops the background, on transparent or white.",
   "mark": "CLN",
   "tint": "#f3f4f6",
   "ink": "#3a4350",
-  "runner": "llm",
+  "runner": "python",
   "runs_on": "SAM 3.1",
   "inputs": {
     "kinds": [
       "image"
-    ]
+    ],
+    "min": 1,
+    "max": 4
   },
   "params": {
     "type": "object",
-    "properties": {}
+    "properties": {
+      "background": {
+        "type": "string",
+        "enum": [
+          "transparent",
+          "white"
+        ],
+        "default": "transparent"
+      }
+    }
   },
   "outputs": [
     "images"
   ],
-  "requires": [
-    "PLUGIN_PLACEHOLDER"
-  ],
-  "prompt": "prompt.md",
-  "output_schema": {
-    "type": "object",
-    "properties": {
-      "text": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "text"
-    ]
-  }
+  "requires": [],
+  "entry": "main.py",
+  "needs": [
+    "object_mask"
+  ]
 }

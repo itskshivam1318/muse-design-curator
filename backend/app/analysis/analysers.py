@@ -15,6 +15,7 @@ from app.analysis.types import (
     ANALYSIS_SCHEMA,
     MAX_DIMENSIONS,
     MAX_PARTS,
+    MAX_SUBJECT_WORDS,
     Analysis,
     DimensionOut,
     PartOut,
@@ -106,6 +107,10 @@ def build_prompt(content: ItemContent, board_context: str, hints: Hints) -> str:
         (
             "4. Give 2 to 6 abstract dimensions about the whole item (type 'abstract', part "
             "null), each with a one-sentence `prompt` that asks the question it answers."
+        ),
+        (
+            f"5. Give `subject`: a short noun phrase of at most {MAX_SUBJECT_WORDS} words naming "
+            "the whole item, e.g. 'running shoe' or 'lounge chair' (empty for a note)."
         ),
         (
             f"At most {MAX_DIMENSIONS} dimensions in total. Each needs a snake_case key, "
@@ -247,7 +252,9 @@ def run_analyser(content: ItemContent, board_context: str, hints: Hints) -> Anal
     dims = dims[:MAX_DIMENSIONS]
 
     summary = raw.get("summary")
+    subject = raw.get("subject")
     return Analysis(
+        subject=" ".join(subject.split()[:MAX_SUBJECT_WORDS]) if isinstance(subject, str) else "",
         content_type=content_type,  # type: ignore[arg-type]
         summary=summary if isinstance(summary, str) else "",
         parts=parts,
