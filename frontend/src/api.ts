@@ -609,6 +609,13 @@ export const patchItem = (
   body: Partial<Pick<Item, 'x' | 'y' | 'w' | 'h' | 'z' | 'role' | 'note_text' | 'content_type'>> & { chosen_frame_id?: string },
 ) => request<Item>(`/items/${enc(id)}`, { method: 'PATCH', json: body })
 export const deleteItem = (id: string) => request<void>(`/items/${enc(id)}`, { method: 'DELETE' })
+/** Keep a plugin option: it stops being an option and is an ordinary item. */
+export const keepOption = (id: string) => request<Item>(`/items/${enc(id)}/keep-option`, { method: 'POST' })
+/** Remove every option still standing from a node's runs. */
+export const clearOptions = (nodeId: string) =>
+  request<{ removed_item_ids: string[] }>(`/nodes/${enc(nodeId)}/clear-options`, { method: 'POST' })
+/** Bring a removed item back (undo of a removal); an option stays flagged as one. */
+export const restoreItem = (id: string) => request<Item>(`/items/${enc(id)}/restore`, { method: 'POST' })
 export const listFrames = (itemId: string) =>
   request<{ frames: Frame[] }>(`/items/${enc(itemId)}/frames`).then((r) => r.frames)
 
@@ -725,6 +732,10 @@ function version(item: Item): string {
 
 export const itemImageUrl = (item: Item, size: 'thumb' | 'full') =>
   `${BASE}/items/${enc(item.id)}/image?size=${size}&v=${version(item)}`
+/** A 3D item's .glb: the media route serves a model's stored file as its full size. */
+export const itemModelUrl = (item: Item) => itemImageUrl(item, 'full')
+/** A video item's file, for inline playback. */
+export const itemVideoUrl = (item: Item) => `${BASE}/items/${enc(item.id)}/video?v=${version(item)}`
 /** An item's thumbnail by id alone (no cache-busting token: the caller has no item row). */
 export const itemThumbUrl = (itemId: string) => `${BASE}/items/${enc(itemId)}/image?size=thumb`
 export const frameImageUrl = (itemId: string, frameId: string) =>

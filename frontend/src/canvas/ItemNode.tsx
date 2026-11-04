@@ -42,6 +42,8 @@ export interface ItemHandlers {
   onLeave: (item: Item) => void
   /** Double-click / double-tap: open the item (Inspect). */
   onOpen?: (item: Item) => void
+  /** A plain click (not a drag): a video plays or pauses in place. */
+  onActivate?: (item: Item) => void
 }
 
 interface NodeProps {
@@ -68,6 +70,7 @@ function common(item: Item, draggable: boolean, h: ItemHandlers) {
     onDragEnd: (e: KEvent<DragEvent>) => h.onDragEnd(e, item),
     onMouseEnter: () => h.onEnter(item),
     onMouseLeave: () => h.onLeave(item),
+    onClick: () => h.onActivate?.(item),
     onDblClick: () => h.onOpen?.(item),
     onDblTap: () => h.onOpen?.(item),
   }
@@ -81,7 +84,7 @@ function common(item: Item, draggable: boolean, h: ItemHandlers) {
 function PictureNode({ item, scale, draggable, handlers }: NodeProps) {
   const dpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1
   const thumb = useImage(itemImageUrl(item, 'thumb'))
-  const full = useImage(wantsFull(item, scale, dpr) ? itemImageUrl(item, 'full') : null)
+  const full = useImage(item.kind !== 'model' && wantsFull(item, scale, dpr) ? itemImageUrl(item, 'full') : null)
   const [shown, setShown] = useState<HTMLImageElement | undefined>(undefined)
   const image = full ?? thumb
   if (image && image !== shown) setShown(image)
@@ -277,6 +280,9 @@ export function ItemDecorations({ item, bounds, scale, hovered, selected, reduce
       {(hovered || selected) && (
         <Rect name="item-outline" {...hoverOutlineRect(bounds, scale)} stroke={selected ? palette.accent : palette.ink} opacity={selected ? 1 : 0.55} />
       )}
+      {item.option_run_id && (
+        <Rect name="option-outline" {...hoverOutlineRect(bounds, scale)} stroke={palette.muted} strokeWidth={1.5 / scale} dash={[6 / scale, 4 / scale]} opacity={0.8} listening={false} />
+      )}
       {showDot && <Circle {...statusDot(bounds, scale, selected)} fill={statusColor(item.parse_status, palette)} />}
       {selected &&
         handleRects(bounds, scale).map(({ key, ...h }) => (
@@ -286,6 +292,12 @@ export function ItemDecorations({ item, bounds, scale, hovered, selected, reduce
         <Label x={bounds.x + inset} y={bounds.y + bounds.height - inset - badgeFont - badgePad * 2} listening={false}>
           <Tag fill="rgba(20,24,30,0.72)" cornerRadius={8 / scale} />
           <Text text="▶ video" fontSize={badgeFont} padding={badgePad} fill="#ffffff" />
+        </Label>
+      )}
+      {item.kind === 'model' && (
+        <Label x={bounds.x + inset} y={bounds.y + bounds.height - inset - badgeFont - badgePad * 2} listening={false}>
+          <Tag fill="rgba(20,24,30,0.72)" cornerRadius={8 / scale} />
+          <Text text="3D" fontSize={badgeFont} padding={badgePad} fill="#ffffff" />
         </Label>
       )}
       {item.role === 'counter_example' && (
