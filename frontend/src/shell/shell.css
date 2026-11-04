@@ -642,6 +642,77 @@ button.agent-step:hover .agent-say {
   opacity: 0.35;
 }
 
+.agent-send:not(:disabled) {
+  opacity: 1;
+  cursor: pointer;
+}
+.agent-trace {
+  align-self: flex-start;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.chat-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.chat-message {
+  max-width: 85%;
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.chat-message[data-role='person'] {
+  align-self: flex-end;
+  background: var(--ink);
+  color: var(--paper);
+}
+.chat-message[data-role='agent'],
+.chat-message[data-role='question'] {
+  align-self: flex-start;
+  background: var(--well);
+}
+.chat-step {
+  font-size: 12px;
+}
+.chat-step.refused .agent-call {
+  text-decoration: line-through;
+}
+.chat-item-ref {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-family: var(--f-mono);
+  font-size: 0.92em;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.chat-chip {
+  align-self: flex-start;
+  margin: 0 8px 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--well);
+  color: var(--ink-2);
+  font-size: 11.5px;
+}
+.chat-input {
+  display: flex;
+  flex-direction: column;
+}
+.chat-send-error {
+  margin: -4px 12px 8px;
+}
+
 @media (max-width: 900px) {
   .board-stage .maybe-strip {
     right: 16px;

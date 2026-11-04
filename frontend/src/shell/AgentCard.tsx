@@ -1,11 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import {
+  type AgentMessage,
+  type AgentRun,
   type AgentRunWithSteps,
   type AgentStep,
+  agentTraceUrl,
+  getAgentMessages,
   getAgentRun,
   getAgentRuns,
+  getChatStatus,
   keys,
+  newChat,
   patchAgentRun,
   patchAgentStep,
 } from '../api'
@@ -15,6 +21,9 @@ import { applyEvent } from '../events'
 import { useActivity } from './activity'
 import { startSpotlight, replaySteps, useSpotlight } from './spotlight'
 import { agentName, deliverableStatus, mergeFetched, mergeSteps, STATUS_TEXT, toolCall } from './agentRun'
+import { ChatInput } from './chat/ChatInput'
+import { ChatThread } from './chat/ChatThread'
+import { type Entry, threadEntries } from './chat/thread'
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
@@ -36,21 +45,42 @@ function useRun(boardId: string, chosenId: string | null) {
   return { runs: all, run, steps: detail.data?.steps ?? [], loaded: runs.isSuccess && (run === undefined || detail.isSuccess) }
 }
 
+const isOpen = (run: AgentRun) => run.status === 'running' || run.status === 'needs_input'
+
+/** Why the person cannot chat right now, or null when they can. */
+function chatOffReason(demoMode: boolean, runs: AgentRun[], available: boolean): string | null {
+  if (demoMode) return 'Chat is off in the demo. Use “Show me how” to watch a run.'
+  if (runs.some((r) => r.source === 'mcp' && isOpen(r))) return 'Claude Code is working'
+  if (!available) return 'Chat needs Muse Spark (REASONING_PROVIDER=muse-spark)'
+  return null
+}
+
+/** The latest line of the thread, as plain text. */
+const entryText = (e: Entry) => (e.kind === 'message' ? e.message.text : (e.step.say ?? e.step.tool))
+
 /**
  * Floating bottom-right: who is working ("Muse", or "Claude Code" during an agent run), the latest
- * thing that happened (the run's latest step, else the board's activity), and the agent's input (a
- * shell this round: visible, disabled). Gives way to the right drawer.
+ * thing that happened (the run's latest step or chat line, else the board's activity), and the chat
+ * input (disabled, saying why, in the demo, while Claude Code works or without a chat model). A Muse
+ * run shows its chat thread; a Claude Code run its steps. Gives way to the right drawer.
  */
 export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusItem: (itemId: string) => void }) {
   const entries = useActivity()
-  const { drawer } = useSelection()
-  const { locked } = useDemo()
+  const { drawer, selected } = useSelection()
+  const { demoMode, locked } = useDemo()
   // a link /boards/<id>?replay=<run> opens that run's replay, once
   const [linked] = useState(() => new URLSearchParams(window.location.search).get('replay'))
   const [pick, setPick] = useState<string | null>(linked)
   const { runs, run, steps, loaded } = useRun(boardId, pick)
   const spotlight = useSpotlight()
   const qc = useQueryClient()
+  const chat = run?.source === 'muse'
+  const messages = useQuery({
+    queryKey: keys.agentMessages(run?.id ?? ''),
+    queryFn: () => getAgentMessages(run!.id),
+    enabled: chat,
+  })
+  const chatStatus = useQuery({ queryKey: keys.chatStatus(), queryFn: getChatStatus, staleTime: 60_000, retry: false })
   const star = useMutation({
     mutationFn: (step: AgentStep) => patchAgentStep(step.id, { highlight: !step.highlight }),
     onSuccess: (step) =>
@@ -63,6 +93,18 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
     mutationFn: (runId: string) => patchAgentRun(runId, { status: 'paused' }),
     onSuccess: (paused) => applyEvent(qc, boardId, 'agent.run', paused),
   })
+  // the run's chat ends; the next message starts a fresh run
+  const fresh = useMutation({
+    mutationFn: (runId: string) => newChat(runId),
+    onSuccess: (ended) => applyEvent(qc, boardId, 'agent.run', ended),
+  })
+  // a sent message shows its run's thread, the way its events would
+  const onSent = (sent: { run: AgentRun; message: AgentMessage }) => {
+    applyEvent(qc, boardId, 'agent.run', sent.run)
+    applyEvent(qc, boardId, 'agent.message', sent.message)
+    setPick(sent.run.id)
+    setExpanded(true)
+  }
   const linkHandled = useRef(linked === null)
   useEffect(() => {
     if (linkHandled.current || !loaded) return
@@ -78,15 +120,17 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
   if (drawer) return null
   const latest = entries.at(-1)
   const lastStep = steps.at(-1)
-  const inputId = `agent-input-${boardId}`
-  const open = run?.status === 'running' || run?.status === 'needs_input'
+  const thread = chat ? threadEntries(messages.data ?? [], steps) : []
+  const lastEntry = thread.at(-1)
+  const open = run !== undefined && isOpen(run)
+  // an open chat that is not mid-turn: waiting for the person, or for an answer
+  const canNewChat = chat && (run.status === 'waiting' || run.status === 'needs_input') && !locked
   const canReplay = run?.status === 'done' && replaySteps(steps).length > 0
   const showMeHow = run && canReplay && (
     <button type="button" className="agent-replay" disabled={spotlight !== null} onClick={() => startSpotlight(boardId, run.id, steps)}>
       {spotlight ? 'Replaying…' : 'Show me how'}
     </button>
   )
-  const placeholder =run?.source === 'mcp' && run.status === 'running' ? 'Claude Code is working' : 'Agent coming soon'
   return (
     <aside className="agent-card" aria-label="Muse agent">
       <div className="agent-head">
@@ -99,6 +143,11 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
             {open && !locked && (
               <button type="button" className="agent-stop" disabled={stop.isPending} onClick={() => stop.mutate(run.id)}>
                 Stop run
+              </button>
+            )}
+            {canNewChat && (
+              <button type="button" className="agent-stop" disabled={fresh.isPending} onClick={() => fresh.mutate(run.id)}>
+                New chat
               </button>
             )}
           </span>
@@ -122,6 +171,11 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
           Could not stop the run.
         </p>
       )}
+      {fresh.isError && (
+        <p className="agent-error agent-stop-error" role="alert">
+          Could not start a new chat.
+        </p>
+      )}
       {run ? (
         expanded ? (
           <div className="agent-run">
@@ -134,7 +188,13 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
                 ))}
               </select>
             )}
-            <p className="agent-goal">{run.goal}</p>
+            {chat ? (
+              <a className="agent-trace" href={agentTraceUrl(run.id)} download>
+                Download trace
+              </a>
+            ) : (
+              <p className="agent-goal">{run.goal}</p>
+            )}
             {run.deliverables.length > 0 && (
               <ul className="agent-deliverables" aria-label="Deliverables">
                 {deliverableStatus(run).map((d) => (
@@ -147,7 +207,9 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
               </ul>
             )}
             {showMeHow}
-            {steps.length > 0 && (
+            {chat ? (
+              thread.length > 0 && <ChatThread entries={thread} onFocusItem={onFocusItem} />
+            ) : steps.length > 0 && (
               <ol className="agent-log agent-steps" aria-label="Steps">
                 {[...steps].reverse().map((step) => {
                   const body = (
@@ -194,7 +256,7 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
         ) : (
           <>
             <p className="agent-latest" aria-live="polite">
-              {lastStep ? (lastStep.say ?? lastStep.tool) : run.goal}
+              {chat ? (lastEntry ? entryText(lastEntry) : run.goal) : lastStep ? (lastStep.say ?? lastStep.tool) : run.goal}
             </p>
             {showMeHow}
           </>
@@ -216,17 +278,12 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
           {latest?.text ?? 'Nothing yet.'}
         </p>
       )}
-      <div className="agent-ask">
-        <label htmlFor={inputId} className="sr-only">
-          Message Muse
-        </label>
-        <input id={inputId} type="text" placeholder={placeholder} disabled />
-        <button type="button" className="agent-send" aria-label="Send" disabled>
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
-            <path d="M7 11.5v-9M3 6.5l4-4 4 4" />
-          </svg>
-        </button>
-      </div>
+      <ChatInput
+        boardId={boardId}
+        disabledReason={chatOffReason(demoMode, runs, chatStatus.data?.available === true)}
+        selection={selected}
+        onSend={onSent}
+      />
     </aside>
   )
 }

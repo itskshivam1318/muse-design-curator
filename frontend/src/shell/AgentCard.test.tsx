@@ -1,11 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { type AgentRun, type AgentStep, keys } from '../api'
+import { type AgentMessage, type AgentRun, type AgentStep, keys } from '../api'
 import { selection } from '../canvas/selection'
 import { applyEvent, boardActivity } from '../events'
 import { setBoard, track } from '../telemetry'
-import { makeRun, makeStep } from '../test/fixtures'
+import { makeMessage, makeRun, makeStep } from '../test/fixtures'
 import { AgentCard } from './AgentCard'
 import { closeSpotlight, spotlightStore } from './spotlight'
 
@@ -30,11 +30,16 @@ function renderCard(
     runs?: AgentRun[]
     stepsByRun?: Record<string, AgentStep[]>
     locked?: boolean
+    /** the server's chat model; off unless given */
+    chat?: boolean
+    messagesByRun?: Record<string, AgentMessage[]>
     onFocusItem?: (id: string) => void
   } = {},
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   qc.setQueryData(keys.demo, { demo_mode: opts.locked === true, unlocked: false })
+  qc.setQueryData(keys.chatStatus(), { available: opts.chat === true, reason: opts.chat ? null : 'no model' })
+  for (const [runId, messages] of Object.entries(opts.messagesByRun ?? {})) qc.setQueryData(keys.agentMessages(runId), messages)
   const runs = opts.runs ?? (opts.run ? [opts.run] : [])
   qc.setQueryData(keys.agentRuns('b1'), runs)
   for (const r of runs) {
@@ -70,7 +75,7 @@ describe('AgentCard', () => {
     renderCard()
     const input = screen.getByLabelText('Message Muse') as HTMLInputElement
     expect(input.disabled).toBe(true)
-    expect(input.placeholder).toBe('Agent coming soon')
+    expect(input.placeholder).toBe(NO_MODEL)
     expect(screen.getByText('Message Muse').className).toContain('sr-only')
   })
 
@@ -271,7 +276,108 @@ describe('AgentCard, an agent run', () => {
 
   it('placeholder is unchanged once the run is done', () => {
     renderCard({ run: makeRun({ source: 'mcp', status: 'done' }), steps })
-    expect((screen.getByLabelText('Message Muse') as HTMLInputElement).placeholder).toBe('Agent coming soon')
+    expect((screen.getByLabelText('Message Muse') as HTMLInputElement).placeholder).toBe(NO_MODEL)
+  })
+})
+
+const NO_MODEL = 'Chat needs Muse Spark (REASONING_PROVIDER=muse-spark)'
+
+describe('AgentCard, chat', () => {
+  const input = () => screen.getByLabelText('Message Muse') as HTMLInputElement
+
+  it('is open when the server has a chat model', () => {
+    renderCard({ chat: true })
+    expect(input().disabled).toBe(false)
+    expect(input().placeholder).toBe('Ask Muse about this board')
+  })
+
+  it('is off in the demo, before anything else', () => {
+    renderCard({ chat: true, locked: true, run: makeRun({ source: 'mcp', status: 'running' }) })
+    expect(input().disabled).toBe(true)
+    expect(input().placeholder).toBe('Chat is off in the demo. Use “Show me how” to watch a run.')
+  })
+
+  it('waits while a Claude Code run is open, even one not shown', () => {
+    const mcp = makeRun({ id: 'r1', source: 'mcp', status: 'needs_input', created_at: '2026-11-03T09:00:00Z' })
+    const muse = makeRun({ id: 'r2', source: 'muse', status: 'waiting', created_at: '2026-11-03T10:00:00Z' })
+    renderCard({ chat: true, runs: [muse, mcp] })
+    expect(input().disabled).toBe(true)
+    expect(input().placeholder).toBe('Claude Code is working')
+  })
+
+  it('shows the chat chip for the selection', () => {
+    act(() => selection.select(['itm_1', 'itm_2']))
+    renderCard({ chat: true })
+    expect(screen.getByText('About: 2 pictures selected')).toBeTruthy()
+  })
+
+  it('AgentCard shows New chat for a waiting muse run', async () => {
+    const run = makeRun({ source: 'muse', status: 'waiting' })
+    vi.mocked(fetch).mockImplementation(async (url) =>
+      String(url).endsWith('/agent-runs/r1/new-chat')
+        ? new Response(JSON.stringify({ ...run, status: 'done' }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+        : new Response('{}', { status: 500 }),
+    )
+    const qc = renderCard({ chat: true, run, messagesByRun: { r1: [] } })
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }))
+    await waitFor(() => expect(qc.getQueryData<AgentRun[]>(keys.agentRuns('b1'))?.[0].status).toBe('done'))
+    expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull()
+  })
+
+  it('no New chat while the muse run is working, for a Claude Code run, or when locked', () => {
+    renderCard({ chat: true, run: makeRun({ source: 'muse', status: 'running' }), messagesByRun: { r1: [] } })
+    expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Stop run' })).toBeTruthy()
+    cleanup()
+    renderCard({ chat: true, run: makeRun({ source: 'mcp', status: 'needs_input' }) })
+    expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull()
+    cleanup()
+    renderCard({ locked: true, run: makeRun({ source: 'muse', status: 'waiting' }), messagesByRun: { r1: [] } })
+    expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull()
+  })
+
+  it('a muse run shows the thread, not the step list', () => {
+    const run = makeRun({ source: 'muse', status: 'waiting', goal: 'Warmer palette' })
+    renderCard({
+      chat: true,
+      run,
+      steps: [makeStep({ say: 'Reading the board', created_at: '2026-11-04T10:00:01Z' })],
+      messagesByRun: {
+        r1: [
+          makeMessage({ id: 'm1', role: 'person', text: 'Warmer palette', created_at: '2026-11-04T10:00:00Z' }),
+          makeMessage({ id: 'm2', role: 'agent', text: 'Try itm_1', created_at: '2026-11-04T10:00:02Z' }),
+        ],
+      },
+    })
+    expect(screen.getByText('Try itm_1')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Show activity' }))
+    const thread = screen.getByRole('list', { name: 'Chat' })
+    expect(within(thread).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      expect.stringContaining('Warmer palette'),
+      expect.stringContaining('Reading the board'),
+      expect.stringContaining('Try itm_1'),
+    ])
+    expect(screen.queryByRole('list', { name: 'Steps' })).toBeNull()
+    expect(screen.getByRole('link', { name: 'Download trace' }).getAttribute('href')).toBe('/api/agent-runs/r1/trace')
+  })
+
+  it('a sent message shows its run', async () => {
+    const run = makeRun({ id: 'r9', source: 'muse', status: 'running', goal: 'Warmer' })
+    const message = makeMessage({ id: 'm9', run_id: 'r9', role: 'person', text: 'Warmer' })
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    vi.mocked(fetch).mockImplementation(async (url) => {
+      if (String(url).endsWith('/boards/b1/agent/messages')) return json({ run, message })
+      // a run the card has no messages for is fetched afresh
+      if (String(url).endsWith('/agent-runs/r9/messages')) return json({ messages: [message] })
+      return new Response('{}', { status: 500 })
+    })
+    const old = makeRun({ id: 'r1', source: 'mcp', status: 'done', goal: 'Old goal' })
+    const qc = renderCard({ chat: true, run: old })
+    qc.setQueryData(keys.agentRun('r9'), { ...run, steps: [] })
+    fireEvent.change(input(), { target: { value: 'Warmer' } })
+    fireEvent.keyDown(input(), { key: 'Enter' })
+    expect(await screen.findByRole('list', { name: 'Chat' })).toBeTruthy()
+    expect(within(screen.getByRole('list', { name: 'Chat' })).getByText('Warmer')).toBeTruthy()
   })
 })
 

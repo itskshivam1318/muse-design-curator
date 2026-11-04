@@ -545,6 +545,7 @@ export const keys = {
   agentRuns: (boardId: string) => ['agentRuns', boardId] as const,
   agentRun: (runId: string) => ['agentRun', runId] as const,
   agentMessages: (runId: string) => ['agentMessages', runId] as const,
+  chatStatus: () => ['chatStatus'] as const,
 }
 
 /** The API origin with no trailing slash; empty means same origin (the dev proxy). */
