@@ -4,7 +4,7 @@
 
 Each beat is a motion graphic drawn here (Pillow frames piped to ffmpeg), a live UI shot
 (shots/, from shots.mjs) or a spotlight replay card (../replays/, from record_replays.mjs), with
-labels laid over it. The voiceover (vo/NN.aiff, from `say`) starts at its beat's start; a beat is
+labels laid over it. The voiceover (vo/NN.wav from Kokoro via vo/kokoro_vo.py, else vo/NN.aiff from `say`) starts at its beat's start; a beat is
 as long as its pictures or its voiceover plus a beat of air, whichever is longer.
 Writes reports/demo/trailer/out/muse-trailer.mp4 (git-ignored) and out/timeline.txt.
 """
@@ -371,9 +371,15 @@ def end_card(t: float) -> Image.Image:
 # ---------------------------------------------------------------- assembly
 
 
+def vo_file(n: str) -> Path:
+    """The Kokoro take (vo/NN.wav) if there is one, else the macOS `say` take (vo/NN.aiff)."""
+    wav = HERE / "vo" / f"{n}.wav"
+    return wav if wav.is_file() else HERE / "vo" / f"{n}.aiff"
+
+
 def vo_secs(n: str) -> float:
     r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
-                        str(HERE / "vo" / f"{n}.aiff")], capture_output=True, text=True, check=True)
+                        str(vo_file(n))], capture_output=True, text=True, check=True)
     return float(r.stdout)
 
 
@@ -451,10 +457,10 @@ def main() -> None:
         concat(video_parts, silent)
         inputs, chains = [], []
         for k, (vo, at) in enumerate(audio_at):
-            inputs += ["-i", str(HERE / "vo" / f"{vo}.aiff")]
+            inputs += ["-i", str(vo_file(vo))]
             chains.append(f"[{k + 1}:a]adelay={int(at * 1000)}|{int(at * 1000)}[a{k}]")
         mix = ";".join(chains) + ";" + "".join(f"[a{k}]" for k in range(len(audio_at))) + \
-            f"amix=inputs={len(audio_at)}:normalize=0,apad[aout]"
+            f"amix=inputs={len(audio_at)}:normalize=0,loudnorm=I=-16:TP=-1.5:LRA=11,apad[aout]"
         final = tmp / "muse-trailer.mp4"
         run("-i", str(silent), *inputs, "-filter_complex", mix, "-map", "0:v", "-map", "[aout]",
             "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", str(final))
