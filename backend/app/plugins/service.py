@@ -27,6 +27,7 @@ from app.explore.visualize import _iso
 from app.extraction.service import _image_for
 from app.notes.service import board_notes_context
 from app.plugins import longjob, writeback
+from app.plugins.masks import png_bytes, prepare_masks
 from app.plugins.registry import Plugin, get_registry, status
 from app.plugins.runners import (
     BoardCtx,
@@ -254,8 +255,15 @@ def _inputs(session: Session, run: PluginRun, p: Plugin) -> list[RunInput]:
             except AppError:
                 image = None
         attrs = {r.key: r.value_json for r in attrs_repo.for_item(session, item.id) if r.enabled}
-        out.append(RunInput(id=item.id, kind=item.kind, label=_label(item), attributes=attrs,
-                            note_text=item.note_text, image=image))  # fmt: skip
+        ri = RunInput(id=item.id, kind=item.kind, label=_label(item), attributes=attrs,
+                      note_text=item.note_text, image=image)  # fmt: skip
+        if p.manifest.needs:
+            m = prepare_masks(session, run.board_id, item, list(p.manifest.needs))
+            if "parts" in p.manifest.needs:
+                ri.parts = [(k, lb, png_bytes(mk)) for k, lb, mk in m["parts"]]
+            if m["object"] is not None:
+                ri.object_mask = png_bytes(m["object"])
+        out.append(ri)
     return out
 
 

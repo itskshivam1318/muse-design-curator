@@ -347,3 +347,19 @@ def test_startup_recovery_calls_recover_stuck_analyses(
     monkeypatch.setattr(session, "close", lambda: None)
     main._recover_visualizing()
     assert len(calls) == 1
+
+
+def test_analysis_subject_is_stored_and_overwritten(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = boards_repo.create(session, "B")
+    item = add_image(session, board.id)
+    service.analyse(session, item.id)
+    assert items_repo.get(session, item.id).subject == "main object"  # type: ignore[union-attr]
+    answer = Analysis(
+        content_type="image", summary="", subject="running shoe", parts=[], dimensions=[]
+    )
+    monkeypatch.setattr(service, "run_analyser", lambda *_a: answer)
+    service.analyse(session, item.id)
+    session.expire_all()
+    assert items_repo.get(session, item.id).subject == "running shoe"  # type: ignore[union-attr]

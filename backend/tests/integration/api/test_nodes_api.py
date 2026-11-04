@@ -178,10 +178,10 @@ def test_run_image_plugin_creates_generated_items_with_lineage(
         assert it.generation_json == {
             "plugin": "image", "model": "Muse Spark · Baseten", "run_id": run["id"],
         }  # fmt: skip
-        assert it.x == 0 + 300 + 40
+        assert it.option_run_id == run["id"]  # more than one image: options in a grid
     a, b = items
     assert a is not None and b is not None
-    assert a.y == 0 and b.y == a.h + 24
+    assert a.y == b.y and b.x == a.x + a.w + 24
     # plugin outputs are never checked: startup recovery must not mark them interrupted
     assert recover_stuck(db) == 0
     db.commit()

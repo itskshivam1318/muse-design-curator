@@ -232,3 +232,25 @@ describe('nodeAt', () => {
     expect(nodeAt(nodes, { x: 700, y: 50 })).toBeNull()
   })
 })
+
+describe('widget fields', () => {
+  it('paramFields reads x-widget and presets', () => {
+    const f = paramFields({
+      properties: {
+        palette: { type: 'object', 'x-widget': 'palette', properties: { colors: { type: 'array', minItems: 3, maxItems: 5 } }, 'x-presets': [{ name: 'Warm', colors: ['#ff0000', '#00ff00', 'nope'] }] },
+        first: { type: 'string', 'x-widget': 'frame', 'x-swap-with': 'last' },
+        prompt: { type: 'string', 'x-widget': 'prompt', 'x-describe': true },
+        duration: { type: 'integer', enum: [5, 10], 'x-widget': 'segmented' },
+      },
+    })
+    expect(f[0]).toMatchObject({ widget: 'palette', minItems: 3, maxItems: 5, presets: [{ name: 'Warm', colors: ['#ff0000', '#00ff00'] }] })
+    expect(f[1]).toMatchObject({ widget: 'frame', swapWith: 'last' })
+    expect(f[2]).toMatchObject({ widget: 'prompt', describe: true })
+    expect(f[3]).toMatchObject({ widget: 'segmented', type: 'enum', options: ['5', '10'], numeric: true })
+  })
+  it('unknown x-widget falls back to string', () => {
+    const [f] = paramFields({ properties: { a: { type: 'string', 'x-widget': 'sparkle' } } })
+    expect(f.widget).toBeUndefined()
+    expect(f.type).toBe('string')
+  })
+})

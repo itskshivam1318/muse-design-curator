@@ -3,10 +3,11 @@
  * (drag to move), input chips, the settings line and its fields, the output area, Run and the
  * plugin's secondary action. Nothing is generated until Run is clicked.
  */
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { type KeyboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent, useEffect, useRef, useState } from 'react'
 import {
   ApiError,
+  getAttributes,
   type Item,
   itemImageUrl,
   keys,
@@ -22,6 +23,12 @@ import { itemTitle } from '../format'
 import { useBoardPlugins } from '../queries'
 import { canRun, effective, type Field, nodeBounds, paramFields, previewNode, removeNode, shownFields, summaryLine, updateNode } from './nodeLogic'
 import { PluginTile } from './PluginsPanel'
+import { PaletteField } from './widgets/PaletteField'
+import { PartColors } from './widgets/PartColors'
+import { PromptField } from './widgets/PromptField'
+import { FrameSlot } from './widgets/FrameSlot'
+import { SeedButton } from './widgets/SeedButton'
+import { Segmented } from './widgets/Segmented'
 
 interface Props {
   boardId: string
@@ -177,7 +184,16 @@ function Output({ plugin, run, items, running }: { plugin: PluginInfo | undefine
   )
 }
 
-function ParamField({ field, value, nodeId, readOnly, onSave }: { field: Field; value: unknown; nodeId: string; readOnly: boolean; onSave: (v: unknown) => void }) {
+interface FieldCtx {
+  items: ReadonlyMap<string, Item>
+  /** The first live input image: whose parts a part-colours field lists. */
+  inputItemId: string | null
+  boardPalettes: string[][]
+  values: Record<string, unknown>
+  saveMany: (patch: Record<string, unknown>) => void
+}
+
+function ParamField({ field, value, nodeId, readOnly, onSave, ctx }: { field: Field; value: unknown; nodeId: string; readOnly: boolean; onSave: (v: unknown) => void; ctx: FieldCtx }) {
   const id = `node-${nodeId}-${field.key}`
   const initial = value === undefined ? '' : field.type === 'json' ? JSON.stringify(value) : String(value)
   const [draft, setDraft] = useState(initial)
@@ -220,10 +236,36 @@ function ParamField({ field, value, nodeId, readOnly, onSave }: { field: Field; 
     }
   }
 
+  const saveEnum = (v: string) => onSave(field.numeric ? Number(v) : v)
   let control
-  if (field.type === 'enum')
+  if (field.widget === 'segmented')
+    control = <Segmented id={id} label={field.label} options={field.options ?? []} numeric={field.numeric} value={value} readOnly={readOnly} onSave={onSave} />
+  else if (field.widget === 'seed')
+    control = <SeedButton id={id} value={value} min={field.min} max={field.max} readOnly={readOnly} onSave={onSave} />
+  else if (field.widget === 'palette')
     control = (
-      <select id={id} value={String(value ?? '')} disabled={readOnly} onChange={(e) => onSave(e.target.value)}>
+      <PaletteField id={id} value={value} presets={field.presets} boardPalettes={ctx.boardPalettes} minItems={field.minItems} maxItems={field.maxItems} readOnly={readOnly} onSave={onSave} />
+    )
+  else if (field.widget === 'part-colors')
+    control = <PartColors id={id} itemId={ctx.inputItemId} value={value} readOnly={readOnly} onSave={onSave} />
+  else if (field.widget === 'frame') {
+    const other = field.swapWith
+    control = (
+      <FrameSlot
+        id={id}
+        label={field.label}
+        value={value}
+        items={ctx.items}
+        readOnly={readOnly}
+        onSave={onSave}
+        onSwap={other ? () => ctx.saveMany({ [field.key]: ctx.values[other], [other]: value }) : undefined}
+      />
+    )
+  } else if (field.widget === 'prompt')
+    control = <PromptField id={id} nodeId={nodeId} value={value} describe={field.describe} readOnly={readOnly} onSave={onSave} />
+  else if (field.type === 'enum')
+    control = (
+      <select id={id} value={String(value ?? '')} disabled={readOnly} onChange={(e) => saveEnum(e.target.value)}>
         {(field.options ?? []).map((o) => (
           <option key={o} value={o}>
             {o}
@@ -305,12 +347,15 @@ export function NodeCard({ boardId, node, plugin, run, items, view, readOnly = f
   }, [settingsOpen, node.id])
 
   const fail = (msg: string) => () => setError(msg)
-  const saveParam = (key: string, v: unknown) => {
+  const saveParams = (patch: Record<string, unknown>) => {
     const params = { ...node.params }
-    if (v === undefined) delete params[key]
-    else params[key] = v
+    for (const [key, v] of Object.entries(patch)) {
+      if (v === undefined) delete params[key]
+      else params[key] = v
+    }
     void updateNode(qc, node.id, { params }).catch(fail('Could not save the setting'))
   }
+  const saveParam = (key: string, v: unknown) => saveParams({ [key]: v })
 
   const run_ = async () => {
     setStarting(true)
@@ -380,6 +425,23 @@ export function NodeCard({ boardId, node, plugin, run, items, view, readOnly = f
   const liveInputs = node.input_item_ids.flatMap((id) => items.get(id) ?? [])
   const removedInputs = node.input_item_ids.length - liveInputs.length
   const shown = shownFields(fields, node.params)
+  const wantsPalettes = fields.some((f) => f.widget === 'palette')
+  const paletteQueries = useQueries({
+    queries: [...items.values()]
+      .filter((i) => wantsPalettes && i.kind === 'image')
+      .map((i) => ({ queryKey: keys.attributes(i.id), queryFn: () => getAttributes(i.id) })),
+  })
+  const boardPalettes = paletteQueries.flatMap((q) => {
+    const v = q.data?.attributes.find((a) => a.key === 'palette')?.value
+    return typeof v === 'string' ? [v.match(/#[0-9a-fA-F]{6}/g) ?? []] : []
+  })
+  const ctx: FieldCtx = {
+    items,
+    inputItemId: liveInputs.find((i) => i.kind === 'image')?.id ?? null,
+    boardPalettes,
+    values,
+    saveMany: saveParams,
+  }
 
   return (
     <section
@@ -484,7 +546,7 @@ export function NodeCard({ boardId, node, plugin, run, items, view, readOnly = f
             <div className="node-fields" ref={fieldsRef}>
               {shown.length === 0 && <p className="muted small">This plugin has no settings.</p>}
               {shown.map((f) => (
-                <ParamField key={f.key} field={f} value={values[f.key]} nodeId={node.id} readOnly={readOnly} onSave={(v) => saveParam(f.key, v)} />
+                <ParamField key={f.key} field={f} value={values[f.key]} nodeId={node.id} readOnly={readOnly} onSave={(v) => saveParam(f.key, v)} ctx={ctx} />
               ))}
             </div>
           )}

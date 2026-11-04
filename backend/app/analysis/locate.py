@@ -1,6 +1,7 @@
 """Lazy part regions: box and text parts are stored; a mask part runs SAM the first time it is asked for."""
 
 import io
+from typing import Any
 
 import numpy as np
 from PIL import Image
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.analysis.types import Region
 from app.config import get_settings
 from app.db.models import ItemAttribute, ItemPart
+from app.db.repos import masks as masks_repo
 from app.errors import AppError
 from app.extraction.service import _fit, _image_for, _mask_rel, _part_mask, _require_item
 from app.measure.palette import mask_ratio
@@ -141,3 +143,85 @@ def locate(session: Session, item_id: str, part_key: str) -> Region:
     part.region_json = [round(c, 6) for c in bbox]
     session.commit()
     return _mask_region(part)
+
+
+# ---- the whole object ----
+
+
+class _ObjectSeg:
+    """Caches under "object:<text>" but asks SAM for <text>."""
+
+    def __init__(self, seg: SegmentationProvider) -> None:
+        self._seg, self.id = seg, seg.id
+
+    def localize(self, image: bytes, sha: str, noun: str) -> Any:
+        return self._seg.localize(image, sha, noun.removeprefix("object:"))
+
+
+def object_subject(item: Any) -> str | None:
+    """What SAM is asked for to find the whole item: the analysis subject, cut to
+    MAX_PROMPT_WORDS. None for an item that was never analysed (or has no subject)."""
+    words = (item.subject or "").split()[:MAX_PROMPT_WORDS]
+    return " ".join(words) or None
+
+
+def part_cached(session: Session, sha: str, part: ItemPart) -> bool:
+    """True when locating this part needs no SAM call: it is located, or (a part without a
+    rough box) its prompt has a cached row in part_masks, found or not."""
+    if part.mask_path and files.abs_path(part.mask_path).is_file():
+        return True
+    if part.region_kind != "mask" or _hint(part) is not None:
+        return part.region_kind != "mask"
+    row = masks_repo.get(session, sha, " ".join(part.label.split()[:MAX_PROMPT_WORDS]))
+    return row is not None and (not row.found or _row_file(row))
+
+
+def _row_file(row: Any) -> bool:
+    return bool(row.mask_path and files.abs_path(row.mask_path).is_file())
+
+
+def object_cached(session: Session, item: Any) -> bool:
+    """True when locate_object needs no SAM call."""
+    subject = object_subject(item)
+    if subject is None:
+        return True  # only the part union is tried
+    row = masks_repo.get(session, _image_for(session, item)[1], "object:" + subject)
+    return row is not None and (not row.found or _row_file(row))
+
+
+def locate_object(session: Session, item_id: str) -> Region:
+    """The whole item: SAM prompted with the analysis subject (cached under "object:<subject>");
+    falls back to the union of the item's located mask parts. An item without a subject skips
+    SAM."""
+    item = _require_item(session, item_id)
+    image, sha = _image_for(session, item)
+    subject = object_subject(item)
+    prompt = "object:" + (subject or "")
+    with Image.open(io.BytesIO(image)) as im:
+        width, height = im.size
+    if subject is not None:
+        try:
+            mask, _ = _part_mask(
+                session, _ObjectSeg(get_segmentation(get_settings())), image, sha, prompt,
+                (height, width),
+            )  # fmt: skip
+        except ModelError as e:
+            raise AppError(502, "REGION_FAILED", "Could not locate the object") from e
+        if mask is not None and mask_ratio(mask, np.ones_like(mask)) >= MIN_MASK_RATIO:
+            return Region(kind="mask", mask_url=_mask_url(_mask_rel(sha, prompt)))
+    union = np.zeros((height, width), dtype=bool)
+    for part in session.scalars(
+        select(ItemPart).where(ItemPart.item_id == item.id, ItemPart.removed.is_(False))
+    ):
+        if part.region_kind == "mask" and part.mask_path:
+            path = files.abs_path(part.mask_path)
+            if path.is_file():
+                with Image.open(path) as im:
+                    union |= _fit(np.asarray(im.convert("L")) > 127, height, width)
+    if mask_ratio(union, np.ones_like(union)) < MIN_MASK_RATIO:
+        raise AppError(422, "REGION_EMPTY", "Nothing found for this object")
+    rel = _mask_rel(sha, prompt + "@parts")
+    path = files.abs_path(rel)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(union.astype(np.uint8) * 255).save(path, "PNG")
+    return Region(kind="mask", mask_url=_mask_url(rel))

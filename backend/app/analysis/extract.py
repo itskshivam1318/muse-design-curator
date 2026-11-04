@@ -23,6 +23,7 @@ from app.errors import AppError
 from app.extraction.service import _image_for, _require_item
 from app.ingest.common import ItemMeta, create_item, default_size
 from app.notes.service import NOTE_H, NOTE_W
+from app.plugins.registry import load_builtin_module
 from app.storage import files
 
 GAP = 40
@@ -123,17 +124,15 @@ def _crop(source: BoardItem, image: bytes, box: list[float], mask_rel: str | Non
     width, height = rgb.size
     x0, y0 = int(box[0] * width), int(box[1] * height)
     x1, y1 = int(np.ceil(box[2] * width)), int(np.ceil(box[3] * height))
-    x0, y0, x1, y1 = max(x0, 0), max(y0, 0), min(x1, width), min(y1, height)
-    if x1 <= x0 or y1 <= y0:
-        raise _empty()
-    out = rgb.crop((x0, y0, x1, y1)).convert("RGBA")
+    keep = None
     if mask_rel is not None:
         with Image.open(files.abs_path(mask_rel)) as m:
             alpha = m.convert("L").resize((width, height), Image.Resampling.NEAREST)
-        alpha = alpha.crop((x0, y0, x1, y1)).point(lambda v: 255 if v > 127 else 0)
-        if not np.asarray(alpha).any():
-            raise _empty()
-        out.putalpha(alpha)
+        keep = np.asarray(alpha) > 127
+    try:
+        out = load_builtin_module("cleanup", "cutout").cutout(rgb, keep, (x0, y0, x1, y1))
+    except ValueError:
+        raise _empty() from None
     info = PngInfo()
     info.add_text("muse:extracted_from", source.id)
     info.add_text("muse:nonce", uuid.uuid4().hex)  # an equal crop is still its own item
