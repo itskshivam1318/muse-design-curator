@@ -38,6 +38,7 @@ import { ConnectLayer } from '../put/ConnectLayer'
 import { useGhosts } from '../put/ghosts'
 import { useConnect } from '../put/useConnect'
 import { useAnalysis, useBoardLens, useExplorations, useRegion, visibleItems } from '../queries'
+import { usePartConfirm } from '../shell/partConfirm'
 import { closeSpotlight, currentStep, spotlightStore, useSpotlight } from '../shell/spotlight'
 import { setTool, useTool } from '../shell/tools'
 import type { ItemActions } from './actions'
@@ -60,6 +61,7 @@ import { ItemDecorations, type ItemHandlers, ItemNode, NoteVisualizing } from '.
 import { CreditCaption } from './CreditCaption'
 import { creditTargets } from './credit'
 import { ItemToolbar, TOOLBAR_GAP } from './ItemToolbar'
+import { PartConfirmLayer } from './PartConfirmLayer'
 import { SpotlightLayer } from './SpotlightLayer'
 import { itemBounds, lineagePoints, statusLabel } from './nodeProps'
 import { NoteBar } from './NoteBar'
@@ -187,6 +189,8 @@ export function Canvas({
   const fitted = useRef(false)
   // the replay step last framed (mirrors framedSpot below): the first fit stands aside only once one is
   const framedRef = useRef<string | null>(null)
+  // the part confirmation last framed (mirrors framedConfirm below): the first fit stands aside for it too
+  const framedConfirmRef = useRef<string | null>(null)
   const viewport = useMemo(
     () => ({ x: -view.x / view.scale, y: -view.y / view.scale, width: size.width / view.scale, height: size.height / view.scale }),
     [view, size],
@@ -239,7 +243,7 @@ export function Canvas({
     const t = setTimeout(() => {
       fitted.current = true
       // a replay that has framed a step keeps it; fitting the whole board would undo that
-      if (!(spotlightStore.get() && framedRef.current)) fit()
+      if (!(spotlightStore.get() && framedRef.current) && !framedConfirmRef.current) fit()
     }, 300) // let a batch of item.added events settle first
     return () => clearTimeout(t)
   }, [items.length, size.width, fit])
@@ -268,6 +272,20 @@ export function Canvas({
     setFramedSpot(spotKey)
     // room under the lit pictures for the caption card
     if (spotKey !== null) setView(fitView(lit.map(itemBounds), size, { ...fitInsets(size.width), bottom: 240 }))
+  }
+
+  // ---- part confirmation: the item the agent asks about, framed once per question (as a replay step is) ----
+  const partConfirm = usePartConfirm()
+  const confirmItem = partConfirm ? byId.get(partConfirm.itemId) : undefined
+  const confirmKey = partConfirm && confirmItem ? partConfirm.callId : null
+  const [framedConfirm, setFramedConfirm] = useState<string | null>(null)
+  useEffect(() => {
+    framedConfirmRef.current = framedConfirm
+  }, [framedConfirm])
+  // the item may arrive after the question: framed once it is on the board
+  if (confirmKey !== framedConfirm && (confirmKey === null || size.width > 0)) {
+    setFramedConfirm(confirmKey)
+    if (confirmKey !== null && confirmItem) setView(fitView([itemBounds(confirmItem)], size, fitInsets(size.width)))
   }
 
   useImperativeHandle(
@@ -940,6 +958,9 @@ export function Canvas({
           </button>
         )}
         {dropActive && <div className="drop-hint">Drop to add here</div>}
+        {partConfirm && confirmItem && !spotlight && (
+          <Live items={[confirmItem]}>{(b) => <PartConfirmLayer confirm={partConfirm} screen={toScreenBounds(b, view)} />}</Live>
+        )}
         {spotlight && (
           <LiveEach items={lit}>
             {(boxes) => (

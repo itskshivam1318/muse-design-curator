@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 import {
+  type AgentAnswer,
   type AgentMessage,
   type AgentRun,
   type AgentRunWithSteps,
@@ -14,6 +15,7 @@ import {
   newChat,
   patchAgentRun,
   patchAgentStep,
+  sendAgentMessage,
 } from '../api'
 import { useSelection } from '../canvas/selection'
 import { useDemo } from '../demo'
@@ -23,7 +25,8 @@ import { startSpotlight, replaySteps, useSpotlight } from './spotlight'
 import { agentName, deliverableStatus, mergeFetched, mergeSteps, STATUS_TEXT, toolCall } from './agentRun'
 import { ChatInput } from './chat/ChatInput'
 import { ChatThread } from './chat/ChatThread'
-import { type Entry, threadEntries } from './chat/thread'
+import { QuestionCard } from './chat/QuestionCard'
+import { answerLine, type Entry, threadEntries } from './chat/thread'
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
@@ -105,6 +108,11 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
     setPick(sent.run.id)
     setExpanded(true)
   }
+  // an answer to the agent's question; its line is what the person's bubble says
+  const answer = useMutation({
+    mutationFn: (a: AgentAnswer) => sendAgentMessage(boardId, { text: answerLine(a), selection: [...selected], answer: a }),
+    onSuccess: onSent,
+  })
   const linkHandled = useRef(linked === null)
   useEffect(() => {
     if (linkHandled.current || !loaded) return
@@ -125,6 +133,7 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
   const open = run !== undefined && isOpen(run)
   // an open chat that is not mid-turn: waiting for the person, or for an answer
   const canNewChat = chat && (run.status === 'waiting' || run.status === 'needs_input') && !locked
+  const offReason = chatOffReason(demoMode, runs, chatStatus.data?.available === true)
   const canReplay = run?.status === 'done' && replaySteps(steps).length > 0
   const showMeHow = run && canReplay && (
     <button type="button" className="agent-replay" disabled={spotlight !== null} onClick={() => startSpotlight(boardId, run.id, steps)}>
@@ -208,7 +217,20 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
             )}
             {showMeHow}
             {chat ? (
-              thread.length > 0 && <ChatThread entries={thread} onFocusItem={onFocusItem} />
+              thread.length > 0 && (
+                <ChatThread
+                  entries={thread}
+                  onFocusItem={onFocusItem}
+                  renderQuestion={(m) => (
+                    <QuestionCard
+                      message={m}
+                      onAnswer={(a) => answer.mutate(a)}
+                      onFocusItem={onFocusItem}
+                      disabled={answer.isPending || offReason !== null}
+                    />
+                  )}
+                />
+              )
             ) : steps.length > 0 && (
               <ol className="agent-log agent-steps" aria-label="Steps">
                 {[...steps].reverse().map((step) => {
@@ -247,6 +269,11 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
                 })}
               </ol>
             )}
+            {answer.isError && (
+              <p className="agent-error" role="alert">
+                Could not send your answer.
+              </p>
+            )}
             {star.isError && (
               <p className="agent-error" role="alert">
                 Could not highlight that step.
@@ -280,7 +307,7 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
       )}
       <ChatInput
         boardId={boardId}
-        disabledReason={chatOffReason(demoMode, runs, chatStatus.data?.available === true)}
+        disabledReason={offReason}
         selection={selected}
         onSend={onSent}
       />

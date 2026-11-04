@@ -10,6 +10,7 @@ import { makeItem } from '../test/fixtures'
 import { KEPT_EXTRA, petalRadius } from '../living/ring'
 import { selection } from './selection'
 import { closeSpotlight, spotlightStore, startSpotlight } from '../shell/spotlight'
+import { partConfirmStore } from '../shell/partConfirm'
 import type { AgentStep } from '../api'
 
 // remember each world the canvas makes, so a test can watch it
@@ -670,5 +671,51 @@ describe('Canvas spotlight replay', () => {
     act(() => closeSpotlight())
     expect(screen.getByRole('toolbar', { name: 'Item actions' })).toBeTruthy()
     expect(screen.queryByRole('dialog', { name: 'Replay' })).toBeNull()
+  })
+})
+
+describe('Canvas part confirmation', () => {
+  const sized = () => {
+    stubCanvasContext()
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1600)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(1200)
+  }
+  afterEach(() => partConfirmStore.set(null))
+
+  it('frames the asked-about item and draws its part over it', () => {
+    sized()
+    const all = [makeItem({ id: 'a', board_id: 'b1', x: 0, y: 0 }), makeItem({ id: 'far', board_id: 'b1', x: 9000, y: 7000 })]
+    renderBoard(client([], all))
+    const stage = Konva.stages.at(-1)!
+    act(() =>
+      partConfirmStore.set({ callId: 'c1', itemId: 'far', maskUrl: '/api/media/masks/m.png', box: [0, 0, 0.5, 0.5], mode: 'show', answer: vi.fn() }),
+    )
+    const far = all[1]
+    const s = stage.scaleX()
+    expect(far.x * s + stage.x()).toBeGreaterThanOrEqual(0)
+    expect((far.x + far.w) * s + stage.x()).toBeLessThanOrEqual(1600)
+    expect(far.y * s + stage.y()).toBeGreaterThanOrEqual(0)
+    expect((far.y + far.h) * s + stage.y()).toBeLessThanOrEqual(1200)
+    expect(document.querySelector('.part-confirm-mask')).toBeTruthy()
+    expect(document.querySelector('.part-confirm-box')).toBeTruthy()
+  })
+
+  it('the board\'s first fit does not undo the framing', async () => {
+    sized()
+    const all = [makeItem({ id: 'a', board_id: 'b1', x: 0, y: 0 }), makeItem({ id: 'far', board_id: 'b1', x: 9000, y: 7000 })]
+    renderBoard(client([], all))
+    const stage = Konva.stages.at(-1)!
+    act(() => partConfirmStore.set({ callId: 'c1', itemId: 'far', maskUrl: null, box: null, mode: 'show', answer: vi.fn() }))
+    const framed = { x: stage.x(), y: stage.y(), scale: stage.scaleX() }
+    await act(() => new Promise((r) => setTimeout(r, 400)))
+    expect({ x: stage.x(), y: stage.y(), scale: stage.scaleX() }).toEqual(framed)
+  })
+
+  it('shows nothing for an item not on the board', () => {
+    sized()
+    renderBoard(client([], [makeItem({ id: 'a', board_id: 'b1', x: 0, y: 0 })]))
+    act(() => partConfirmStore.set({ callId: 'c1', itemId: 'gone', maskUrl: null, box: [0, 0, 1, 1], mode: 'draw', answer: vi.fn() }))
+    expect(document.querySelector('.part-confirm-box')).toBeNull()
+    expect(document.querySelector('.part-confirm-draw')).toBeNull()
   })
 })

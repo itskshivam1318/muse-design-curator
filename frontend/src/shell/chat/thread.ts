@@ -1,5 +1,5 @@
 /** Pure helpers for the chat thread in the agent card. */
-import type { AgentMessage, AgentStep } from '../../api'
+import type { AgentAnswer, AgentMessage, AgentStep } from '../../api'
 
 /** One line of the thread: something said, or a tool call the agent made between messages. */
 export type Entry = { kind: 'message'; message: AgentMessage } | { kind: 'step'; step: AgentStep }
@@ -31,4 +31,12 @@ export function textParts(text: string): TextPart[] {
   }
   if (from < text.length) parts.push({ text: text.slice(from) })
   return parts
+}
+
+/** The person's answer as the short line their chat shows. */
+export function answerLine(answer: AgentAnswer): string {
+  if (answer.choice !== undefined) return answer.choice
+  if (answer.box) return 'Fixed with a box'
+  if (answer.text?.trim().toLowerCase() === 'yes') return 'Yes'
+  return answer.text ?? ''
 }

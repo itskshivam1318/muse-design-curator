@@ -381,6 +381,43 @@ describe('AgentCard, chat', () => {
   })
 })
 
+describe('AgentCard, questions', () => {
+  it('a choice answers the question with a short line', async () => {
+    const run = makeRun({ source: 'muse', status: 'needs_input', goal: 'Warmer' })
+    const question = makeMessage({
+      id: 'q1',
+      role: 'question',
+      text: 'Which palette?',
+      data: { call_id: 'c1', tool: 'ask_user', args: { question: 'Which palette?', choices: ['Warm', 'Cool'] } },
+    })
+    const reply = makeMessage({ id: 'm9', role: 'person', text: 'Warm', created_at: '2026-11-04T10:00:05Z' })
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    vi.mocked(fetch).mockImplementation(async (url) =>
+      String(url).endsWith('/boards/b1/agent/messages') ? json({ run: { ...run, status: 'running' }, message: reply }) : new Response('{}', { status: 500 }),
+    )
+    renderCard({ chat: true, run, messagesByRun: { r1: [question] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Show activity' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Warm' }))
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([u]) => String(u).endsWith('/boards/b1/agent/messages'))).toBe(true))
+    const [, init] = vi.mocked(fetch).mock.calls.find(([u]) => String(u).endsWith('/boards/b1/agent/messages'))!
+    expect(JSON.parse(String(init?.body))).toEqual({ text: 'Warm', selection: [], answer: { call_id: 'c1', choice: 'Warm' } })
+  })
+
+  it('says so when the answer cannot be sent', async () => {
+    const run = makeRun({ source: 'muse', status: 'needs_input', goal: 'Warmer' })
+    const question = makeMessage({
+      id: 'q1',
+      role: 'question',
+      text: 'Is this the shade?',
+      data: { call_id: 'c2', tool: 'confirm_part', args: { item_id: 'itm_7', part: 'shade', why: 'recolour' }, region: null },
+    })
+    renderCard({ chat: true, run, messagesByRun: { r1: [question] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Show activity' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }))
+    expect(await screen.findByText('Could not send your answer.')).toBeTruthy()
+  })
+})
+
 describe('AgentCard, replay', () => {
   it('shows Show me how on a finished run with starred steps', () => {
     renderCard({ run: makeRun({ status: 'done' }), steps: [makeStep({ highlight: true })] })
