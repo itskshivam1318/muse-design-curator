@@ -56,7 +56,7 @@ def prepare_masks(
             for p in session.scalars(
                 select(ItemPart).where(ItemPart.item_id == item.id).order_by(ItemPart.id)
             )
-            if not p.removed and p.region_kind in ("mask", "box")
+            if not p.removed and p.region_kind == "mask"  # box parts are not SAM masks
         ]
         if "parts" in needs
         else []

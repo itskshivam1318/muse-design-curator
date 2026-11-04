@@ -2,8 +2,8 @@
 helpers live here rather than being imported from `app`).
 
 A part keeps its lightness detail (L minus the part's mean L); its mean L moves partway toward
-the target colour's L and its a/b become the target's. Edges are feathered a couple of pixels;
-pixels outside every part are never touched."""
+the target colour's L and its a/b become the target's. Seams between parts are feathered a
+couple of pixels; pixels outside every part are never touched."""
 
 import itertools
 import random
@@ -63,8 +63,28 @@ def parse_hex(h):
     return tuple(int(body[i : i + 2], 16) for i in (0, 2, 4))
 
 
+def norm_hex(h):
+    """'#rrggbb', lower case, for any colour `parse_hex` accepts."""
+    r, g, b = parse_hex(h)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 def hex_to_lab(h):
     return rgb_to_lab(np.array([parse_hex(h)], np.uint8))[0]
+
+
+def parse_palette(value):
+    """(name, distinct #rrggbb colours) of a palette param; ValueError in plain words."""
+    value = value if isinstance(value, dict) else {}
+    colors = value.get("colors")
+    if not isinstance(colors, list) or not 2 <= len(colors) <= 8:
+        raise ValueError("A palette needs 2 to 8 colours")
+    # one entry per colour: "#ABC" and "#aabbcc" are the same swatch
+    unique = list(dict.fromkeys(norm_hex(c) for c in colors))
+    if len(unique) < 2:
+        raise ValueError("A palette needs at least 2 different colours")
+    name = value.get("name") if isinstance(value.get("name"), str) else ""
+    return name.strip() or "Palette", unique
 
 
 # ---- regions -----------------------------------------------------------------------------
@@ -174,8 +194,12 @@ def assignments(n_parts, n_colors, touching, count, seed):
 
 
 class Recolorer:
-    """Precomputes the Lab picture and feathered part weights once, so many colourings of the
-    same picture are cheap. Work is done only on the pixels inside some part."""
+    """Precomputes the Lab picture and part weights once, so many colourings of the same picture
+    are cheap. Work is done only on the pixels inside some part.
+
+    A part's own pixels are fully its colour, so thin parts (laces) and edges against the
+    background recolour completely. Where two parts meet, the smaller part's colour is feathered
+    `feather_px` into the larger one, the same way round as the label map resolves overlaps."""
 
     def __init__(self, rgb, labels, feather_px=2):
         self.rgb = np.asarray(rgb, np.uint8)
@@ -188,10 +212,21 @@ class Recolorer:
         lab = rgb_to_lab(self.rgb[ys, xs]).reshape(-1, 3)[self.idx]
         self.lab = lab
         flat = sub.reshape(-1)[self.idx]
-        self.mean_l = [float(lab[flat == i, 0].mean()) if (flat == i).any() else 0.0
+        own = [flat == i for i in range(self.n)]
+        self.mean_l = [float(lab[own[i], 0].mean()) if own[i].any() else 0.0
                        for i in range(self.n)]  # fmt: skip
-        self.weights = [box_blur(sub == i, feather_px).reshape(-1)[self.idx]
-                        for i in range(self.n)]  # fmt: skip
+        areas = [int(o.sum()) for o in own]
+        rank = np.empty(self.n + 1, np.int32)  # smallest part first; rank[-1] for no part
+        rank[sorted(range(self.n), key=lambda i: (areas[i], i))] = np.arange(self.n)
+        rank[self.n] = -1
+        pixel_rank = rank[flat]
+        blur = [box_blur(sub == i, feather_px).reshape(-1)[self.idx] for i in range(self.n)]
+        # weight of a smaller neighbour's colour that a pixel takes (0 inside the smallest part)
+        taken = np.zeros(len(self.idx), np.float32)
+        for i in range(self.n):
+            taken += np.where(pixel_rank > rank[i], blur[i], 0)
+        self.weights = [np.where(own[i], 1 - taken, np.where(pixel_rank > rank[i], blur[i], 0))
+                        .astype(np.float32) for i in range(self.n)]  # fmt: skip
 
     def apply(self, colors, l_pull=0.6):
         """A copy of the picture with part i in colour colors[i] (hex); other parts untouched."""

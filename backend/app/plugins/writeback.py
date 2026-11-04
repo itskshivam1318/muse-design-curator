@@ -109,6 +109,8 @@ def _image_item(
         parent_item_id=parent,
         generation_json={"plugin": run.plugin_id, "model": model, "run_id": run.id},
         option_run_id=run.id if option else None,
+        # an option is not analysed until it is kept: a grid of 24 must not cost 24 model calls
+        **({"parse_status": "completed"} if option else {}),
     )  # fmt: skip
 
 
@@ -251,7 +253,8 @@ def apply_output(
             y += item.h + STACK_GAP
         added = item_to_dict(item)
         after_commit(session, partial(events.publish, item.board_id, "item.added", added))
-        after_commit(session, partial(jobs.enqueue, "analyse_item", item_id=item.id))
+        if not options:
+            after_commit(session, partial(jobs.enqueue, "analyse_item", item_id=item.id))
     option_ids = list(created) if options else []
     for note in out.get("notes", []):
         item = create_note(session, node.board_id, note["text"], x, y)

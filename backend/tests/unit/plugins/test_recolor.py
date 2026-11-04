@@ -1,15 +1,13 @@
 """Variation · Color: label map, adjacency, assignments and the Lab recolour (pure numpy)."""
 
-import io
-import time
 from itertools import combinations
 
 import numpy as np
-from PIL import Image
+import pytest
 
 from app.plugins.manifest import load_manifest
-from app.plugins.registry import BUILTIN_DIR, Plugin, load_builtin_module
-from app.plugins.runners import BoardCtx, RunInput, check_params, run_plugin
+from app.plugins.registry import BUILTIN_DIR, load_builtin_module
+from app.plugins.runners import check_params
 
 rc = load_builtin_module("recolor", "recolor")
 
@@ -101,33 +99,30 @@ def test_params_schema_defaults_are_runnable() -> None:
     assert m.needs == ["parts"] and m.outputs == ["images"]
 
 
-def png(a: np.ndarray) -> bytes:
-    buf = io.BytesIO()
-    Image.fromarray(a).save(buf, "PNG")
-    return buf.getvalue()
+def test_thin_parts_are_fully_recoloured() -> None:
+    """A 2 px lace, against the background and lying on a coloured upper, takes its colour."""
+    rng = np.random.default_rng(1)
+    rgb = np.clip(rng.normal(120, 12, (60, 80, 3)), 0, 255).astype(np.uint8)
+    upper = box(60, 80, 10, 50, 10, 50)
+    lace_on_upper = box(60, 80, 20, 40, 29, 31)
+    lace_alone = box(60, 80, 20, 40, 65, 67)  # only background around it
+    labels = rc.label_map([upper, lace_on_upper, lace_alone])
+    out = rc.recolor(rgb, labels, {0: "#264653", 1: "#f6a04d", 2: "#f6a04d"})
+    target = rc.hex_to_lab("#f6a04d")
+    lab = rc.rgb_to_lab(out)
+    for lace in (lace_on_upper, lace_alone):
+        got = lab[lace]
+        de = np.hypot(got[:, 1] - target[1], got[:, 2] - target[2])
+        assert de.max() < 8, de.max()
+    # the seam is feathered on the larger part's side, and the background is untouched
+    assert (out[labels == -1] == rgb[labels == -1]).all()
+    beside = lab[30, 28]  # upper pixel next to the lace: part-way to the lace colour
+    upper_target = rc.hex_to_lab("#264653")
+    assert abs(beside[2] - upper_target[2]) > 3
 
 
-def test_24_recolours_of_a_large_image_fit_the_timeout() -> None:
-    """3000 px square source: downscaled to 2048 x 2048, 24 options well inside PLUGIN_TIMEOUT_S."""
-    h, w = 3000, 3000
-    rng = np.random.default_rng(3)
-    rgb = rng.integers(60, 200, (h, w, 3), dtype=np.uint8)
-    masks = [box(h, w, 200, 1100, 300, 2700), box(h, w, 1100, 1600, 300, 2700),
-             box(h, w, 1600, 1900, 300, 2700), box(h, w, 500, 800, 1000, 2000)]  # fmt: skip
-    parts = [(k, k.title(), png(m.astype(np.uint8) * 255))
-             for k, m in zip(["upper", "midsole", "outsole", "laces"], masks, strict=True)]  # fmt: skip
-    inp = RunInput(id="itm_big", kind="image", label="Shoe", attributes={}, note_text=None,
-                   image=png(rgb), parts=parts)  # fmt: skip
-    d = BUILTIN_DIR / "recolor"
-    p = Plugin(load_manifest(d, builtin=True), d, True)
-    start = time.monotonic()
-    out = run_plugin(p, [inp], {"count": 24}, BoardCtx("", None, []), lambda _m: None)
-    took = time.monotonic() - start
-    print(f"24 recolours at 2048 px: {took:.1f} s")
-    assert len(out["images"]) == 24
-    assert took < 20  # PLUGIN_TIMEOUT_S is 30
-    import base64
-
-    with Image.open(io.BytesIO(base64.b64decode(out["images"][0]["data_b64"]))) as im:
-        assert max(im.size) == 2048
-    assert out["images"][0]["caption"].startswith("Coral Bay · ")
+def test_palette_colours_are_normalised_and_deduped() -> None:
+    name, colors = rc.parse_palette({"name": "X", "colors": ["#ABC", "#aabbcc", "#112233"]})
+    assert (name, colors) == ("X", ["#aabbcc", "#112233"])
+    with pytest.raises(ValueError, match="different"):
+        rc.parse_palette({"name": "X", "colors": ["#fff", "#FFFFFF"]})

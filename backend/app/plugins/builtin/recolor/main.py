@@ -5,22 +5,19 @@ import os
 
 import numpy as np
 from PIL import Image
-from recolor import Recolorer, adjacency, assignments, label_map, parse_hex
+from recolor import (
+    Recolorer,
+    adjacency,
+    assignments,
+    label_map,
+    norm_hex,
+    parse_hex,
+    parse_palette,
+)
 
 MAX_SIDE = 2048  # long side the work (and the options) are done at
 CAPTION_PARTS = 4
 TOO_FEW_PARTS = "This item needs at least two parts to recolour"
-
-
-def _palette(value):
-    value = value if isinstance(value, dict) else {}
-    colors = value.get("colors")
-    if not isinstance(colors, list) or not 2 <= len(colors) <= 8:
-        raise ValueError("A palette needs 2 to 8 colours")
-    for c in colors:
-        parse_hex(c)
-    name = value.get("name") if isinstance(value.get("name"), str) else ""
-    return name.strip() or "Palette", [c.lower() for c in colors]
 
 
 def _load(item):
@@ -64,7 +61,7 @@ def run(inputs, params, ctx):
     item = images[0]
     mode = params.get("mode", "auto")
     try:
-        name, palette = _palette(params.get("palette"))
+        name, palette = parse_palette(params.get("palette"))
     except ValueError as e:
         if mode == "auto":
             return {"error": str(e)}
@@ -95,7 +92,7 @@ def run(inputs, params, ctx):
                     parse_hex(h)
                 except ValueError:
                     return {"error": f"{h!r} is not a colour"}
-                colors[keys.index(key)] = h.lower()
+                colors[keys.index(key)] = norm_hex(h)
         if not colors:
             return {"error": "Choose a colour for at least one part"}
         path = _save(painter.apply(colors), alpha, 0)

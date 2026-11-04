@@ -8,6 +8,7 @@ from starlette.datastructures import UploadFile
 
 from app import demo, events, jobs
 from app.analysis import limits
+from app.analysis import service as analysis_service
 from app.analysis.label import set_content_type
 from app.api.boards import require_board
 from app.api.deps import SessionDep
@@ -242,6 +243,9 @@ def keep_option(item_id: str, session: SessionDep) -> dict[str, Any]:
         raise AppError(404, "OPTION_NOT_FOUND", "This item is not an option")
     item.option_run_id = None
     session.flush()
+    # options are created unanalysed; a kept one becomes a full item (one "analyse" slot)
+    analysis_service.queue_analyse(session, item_id, count=True)
+    session.refresh(item)
     data = item_to_dict(item)
     board_id = item.board_id
     after_commit(session, lambda: events.publish(board_id, "item.updated", data))

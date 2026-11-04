@@ -3,6 +3,7 @@ with no model calls."""
 
 import base64
 import io
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -13,12 +14,15 @@ from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import jobs
+from app.analysis import limits
 from app.analysis import locate as locate_mod
 from app.db.models import BoardItem, ItemPart, PluginRun
+from app.errors import AppError
 from app.plugins import service
 from app.plugins.manifest import load_manifest
 from app.plugins.registry import BUILTIN_DIR, Plugin, load_builtin_module
-from app.plugins.runners import BoardCtx, PluginError, check_params, run_plugin
+from app.plugins.runners import BoardCtx, PluginError, RunInput, check_params, run_plugin
 from app.providers.image_gen import MockImageProvider
 from app.providers.reasoning import MockReasoningProvider
 from app.providers.segmentation import MockSegmentationProvider, SegInstance, SegResult
@@ -67,11 +71,22 @@ def model_calls(monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
     return calls
 
 
+def record_jobs(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, Any]]:
+    """Jobs enqueued from now on, as (name, item_id); they still run."""
+    seen: list[tuple[str, Any]] = []
+    real = jobs.enqueue
+
+    def enqueue(name: str, **kwargs: Any) -> None:
+        seen.append((name, kwargs.get("item_id")))
+        real(name, **kwargs)
+
+    monkeypatch.setattr(jobs, "enqueue", enqueue)
+    return seen
+
+
 def mask_parts(db: Session, item_id: str) -> list[ItemPart]:
     return [
-        p
-        for p in db.scalars(select(ItemPart).where(ItemPart.item_id == item_id))
-        if not p.removed and p.region_kind in ("mask", "box")
+        p for p in db.scalars(select(ItemPart).where(ItemPart.item_id == item_id)) if not p.removed
     ]
 
 
@@ -120,7 +135,8 @@ def test_recolor_plugin_24_options_zero_model_calls(
     assert len(seg.nouns) == seg_calls  # masks cached: nothing new located
     assert model_calls == {"image": 0, "reasoning": 0}
 
-    # through the node: 24 options laid out as a grid
+    # through the node: 24 options laid out as a grid, none of them analysed
+    enqueued = record_jobs(monkeypatch)
     add_plugin(client, board, "recolor")
     node = make_node(client, board, "recolor", [item_id])
     assert node["params"]["palette"]["name"] == "Coral Bay"
@@ -131,7 +147,55 @@ def test_recolor_plugin_24_options_zero_model_calls(
     assert len(ids) == 24 and done["output"]["option_item_ids"] == ids
     items = [db.get(BoardItem, i) for i in ids]
     assert all(it is not None and it.option_run_id == done["id"] for it in items)
-    assert model_calls["image"] == 0
+    assert all(it is not None and it.parse_status == "completed" for it in items)
+    assert [j for j in enqueued if j[0] == "analyse_item"] == []
+    assert model_calls == {"image": 0, "reasoning": 0}
+
+    # keeping an option makes it a full item: its analysis is queued (one analyse slot)
+    kept = client.post(f"/api/items/{ids[0]}/keep-option")
+    assert kept.status_code == 200, kept.text
+    assert kept.json()["option_run_id"] is None
+    assert ("analyse_item", ids[0]) in enqueued
+    assert [j for j in enqueued if j[0] == "analyse_item"] == [("analyse_item", ids[0])]
+
+
+def test_single_output_is_still_analysed(
+    client: TestClient, board: str, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seg = BandSeg()
+    monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: seg)
+    item_id = shoe(client, board, db, ("upper", "midsole"))
+    enqueued = record_jobs(monkeypatch)
+    add_plugin(client, board, "recolor")
+    node = make_node(client, board, "recolor", [item_id])
+    client.patch(f"/api/nodes/{node['id']}", json={"params": {**node["params"], "count": 1}})
+    done = run_node(client, node["id"])
+    (made,) = done["output"]["created_item_ids"]
+    assert done["output"]["option_item_ids"] == []
+    assert ("analyse_item", made) in enqueued
+
+
+def test_keep_option_at_the_daily_limit_fails_clearly(
+    client: TestClient, board: str, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seg = BandSeg()
+    monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: seg)
+    item_id = shoe(client, board, db, ("upper", "midsole"))
+    add_plugin(client, board, "recolor")
+    node = make_node(client, board, "recolor", [item_id])
+    done = run_node(client, node["id"])
+    ids = done["output"]["created_item_ids"]
+    assert len(ids) >= 2
+
+    def full(board_id: str, kind: str) -> None:
+        raise AppError(429, "DAILY_LIMIT", "This board has used today's analyses")
+
+    monkeypatch.setattr(limits, "check_and_count", full)
+    r = client.post(f"/api/items/{ids[0]}/keep-option")
+    assert r.status_code == 429 and r.json()["error"]["code"] == "DAILY_LIMIT"
+    db.expire_all()
+    item = db.get(BoardItem, ids[0])
+    assert item is not None and item.option_run_id == done["id"]  # still an option
 
 
 def test_recolor_plugin_one_part_fails_clearly(
@@ -193,3 +257,34 @@ def test_recolor_manual_mode_uses_part_colors(
     # the upper (first band) was not given a colour: untouched
     upper = (slice(int(h * 0.1) + 4, int(h * 0.3) - 4), slice(int(w * 0.1) + 4, int(w * 0.9) - 4))
     assert (got[upper] == src[upper]).all()
+
+
+def png(a: np.ndarray) -> bytes:
+    buf = io.BytesIO()
+    Image.fromarray(a).save(buf, "PNG")
+    return buf.getvalue()
+
+
+def test_24_recolours_of_a_large_image_fit_the_timeout() -> None:
+    """3000 px square source: downscaled to 2048 x 2048, 24 options well inside the 30 s
+    PLUGIN_TIMEOUT_S, through the real python runner."""
+    h = w = 3000
+    rgb = np.random.default_rng(3).integers(60, 200, (h, w, 3), dtype=np.uint8)
+    boxes = [(200, 1100, 300, 2700), (1100, 1600, 300, 2700), (1600, 1900, 300, 2700),
+             (500, 800, 1000, 2000)]  # fmt: skip
+    parts = []
+    for key, (y1, y2, x1, x2) in zip(["upper", "midsole", "outsole", "laces"], boxes, strict=True):
+        m = np.zeros((h, w), np.uint8)
+        m[y1:y2, x1:x2] = 255
+        parts.append((key, key.title(), png(m)))
+    inp = RunInput(id="itm_big", kind="image", label="Shoe", attributes={}, note_text=None,
+                   image=png(rgb), parts=parts)  # fmt: skip
+    d = BUILTIN_DIR / "recolor"
+    p = Plugin(load_manifest(d, builtin=True), d, True)
+    start = time.monotonic()
+    out = run_plugin(p, [inp], {"count": 24}, BoardCtx("", None, []), lambda _m: None)
+    assert time.monotonic() - start < 20
+    assert len(out["images"]) == 24
+    with Image.open(io.BytesIO(base64.b64decode(out["images"][0]["data_b64"]))) as im:
+        assert im.size == (2048, 2048)
+    assert out["images"][0]["caption"].startswith("Coral Bay · ")

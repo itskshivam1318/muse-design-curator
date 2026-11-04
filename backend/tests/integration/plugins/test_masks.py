@@ -144,3 +144,15 @@ def test_cached_not_found_part_takes_no_slot(
     calls, before = seg.calls, slots(board)
     prepare_masks(db, board, item, ["parts"])
     assert seg.calls == calls and slots(board) == before
+
+
+def test_box_parts_are_not_handed_over_as_masks(
+    client: TestClient, board: str, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: MockSegmentationProvider())
+    item = item_with_parts(client, board, db)
+    db.add(ItemPart(item_id=item.id, key="arm", label="Arm", region_kind="box", source="ai",
+                    region_json=[0.1, 0.1, 0.4, 0.4]))  # fmt: skip
+    db.commit()
+    keys = [k for k, _, _ in prepare_masks(db, board, item, ["parts"])["parts"]]
+    assert "arm" not in keys and {"seat", "leg"} <= set(keys)
