@@ -7,6 +7,7 @@ import { applyEvent, boardActivity } from '../events'
 import { setBoard, track } from '../telemetry'
 import { makeRun, makeStep } from '../test/fixtures'
 import { AgentCard } from './AgentCard'
+import { closeSpotlight, spotlightStore } from './spotlight'
 
 beforeEach(() => {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{}', { status: 500 }))
@@ -16,16 +17,29 @@ afterEach(() => {
   cleanup()
   boardActivity.clear()
   selection.reset()
+  closeSpotlight()
   vi.restoreAllMocks()
 })
 
 function renderCard(
-  opts: { run?: AgentRun; steps?: AgentStep[]; locked?: boolean; onFocusItem?: (id: string) => void } = {},
+  opts: {
+    run?: AgentRun
+    steps?: AgentStep[]
+    /** newest first; each run's steps are in `stepsByRun` */
+    runs?: AgentRun[]
+    stepsByRun?: Record<string, AgentStep[]>
+    locked?: boolean
+    onFocusItem?: (id: string) => void
+  } = {},
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   qc.setQueryData(keys.demo, { demo_mode: opts.locked === true, unlocked: false })
-  qc.setQueryData(keys.agentRuns('b1'), opts.run ? [opts.run] : [])
-  if (opts.run) qc.setQueryData(keys.agentRun(opts.run.id), { ...opts.run, steps: opts.steps ?? [] })
+  const runs = opts.runs ?? (opts.run ? [opts.run] : [])
+  qc.setQueryData(keys.agentRuns('b1'), runs)
+  for (const r of runs) {
+    const steps = opts.stepsByRun?.[r.id] ?? (r === opts.run ? opts.steps : undefined) ?? []
+    qc.setQueryData(keys.agentRun(r.id), { ...r, steps })
+  }
   render(
     <QueryClientProvider client={qc}>
       <AgentCard boardId="b1" onFocusItem={opts.onFocusItem ?? (() => undefined)} />
@@ -257,5 +271,83 @@ describe('AgentCard, an agent run', () => {
   it('placeholder is unchanged once the run is done', () => {
     renderCard({ run: makeRun({ source: 'mcp', status: 'done' }), steps })
     expect((screen.getByLabelText('Message Muse') as HTMLInputElement).placeholder).toBe('Agent coming soon')
+  })
+})
+
+describe('AgentCard, replay', () => {
+  it('shows Show me how on a finished run with starred steps', () => {
+    renderCard({ run: makeRun({ status: 'done' }), steps: [makeStep({ highlight: true })] })
+    fireEvent.click(screen.getByRole('button', { name: 'Show me how' }))
+    expect(spotlightStore.get()?.runId).toBe('r1')
+  })
+
+  it('no button while the run is open or has nothing to play', () => {
+    renderCard({ run: makeRun({ status: 'running' }), steps: [makeStep({ highlight: true })] })
+    expect(screen.queryByRole('button', { name: 'Show me how' })).toBeNull()
+    cleanup()
+    renderCard({ run: makeRun({ status: 'done' }), steps: [makeStep({ highlight: true, ok: false })] })
+    expect(screen.queryByRole('button', { name: 'Show me how' })).toBeNull()
+  })
+
+  it('a locked visitor can still replay', () => {
+    renderCard({ locked: true, run: makeRun({ status: 'done' }), steps: [makeStep({ highlight: true })] })
+    expect(screen.getByRole('button', { name: 'Show me how' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Show activity' }))
+    expect(screen.queryByRole('button', { name: 'Highlight step' })).toBeNull()
+  })
+
+  const two = () => {
+    const r2 = makeRun({ id: 'r2', status: 'running', goal: 'Newer goal' })
+    const r1 = makeRun({ id: 'r1', status: 'done', goal: 'Older goal' })
+    return { runs: [r2, r1], stepsByRun: { r1: [makeStep({ id: 's1', run_id: 'r1', highlight: true })], r2: [] } }
+  }
+
+  it('lists past runs and replays the one picked', () => {
+    renderCard(two())
+    fireEvent.click(screen.getByRole('button', { name: 'Show activity' }))
+    const select = screen.getByLabelText('Run') as HTMLSelectElement
+    expect([...select.options].map((o) => [o.value, o.textContent])).toEqual([
+      ['r2', 'Claude Code · Newer goal'],
+      ['r1', 'Claude Code · Older goal'],
+    ])
+    expect(screen.getByText('Newer goal')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Show me how' })).toBeNull()
+    fireEvent.change(select, { target: { value: 'r1' } })
+    expect(screen.getByText('Older goal', { selector: 'p' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Show me how' }))
+    expect(spotlightStore.get()?.runId).toBe('r1')
+  })
+
+  it('no picker for a single run', () => {
+    renderCard({ run: makeRun() })
+    fireEvent.click(screen.getByRole('button', { name: 'Show activity' }))
+    expect(screen.queryByLabelText('Run')).toBeNull()
+  })
+
+  it('a newer run does not change the run the person picked', () => {
+    const { runs, stepsByRun } = two()
+    const qc = renderCard({ runs, stepsByRun })
+    fireEvent.click(screen.getByRole('button', { name: 'Show activity' }))
+    fireEvent.change(screen.getByLabelText('Run'), { target: { value: 'r1' } })
+    const r3 = makeRun({ id: 'r3', status: 'running', goal: 'Newest goal' })
+    act(() => {
+      qc.setQueryData(keys.agentRun('r3'), { ...r3, steps: [] })
+      qc.setQueryData(keys.agentRuns('b1'), [r3, ...runs])
+    })
+    expect((screen.getByLabelText('Run') as HTMLSelectElement).value).toBe('r1')
+    expect(screen.getByText('Older goal', { selector: 'p' })).toBeTruthy()
+    expect(screen.queryByText('Newest goal', { selector: 'p' })).toBeNull()
+  })
+
+  it('collapses while replaying and the button says so', () => {
+    renderCard({ run: makeRun({ status: 'done' }), steps: [makeStep({ highlight: true })] })
+    fireEvent.click(screen.getByRole('button', { name: 'Show activity' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show me how' }))
+    expect(screen.queryByRole('list', { name: 'Steps' })).toBeNull()
+    const btn = screen.getByRole('button', { name: 'Replaying…' }) as HTMLButtonElement
+    expect(btn.disabled).toBe(true)
+    expect(screen.queryByRole('button', { name: 'Show me how' })).toBeNull()
+    act(() => closeSpotlight())
+    expect(screen.getByRole('button', { name: 'Show me how' })).toBeTruthy()
   })
 })

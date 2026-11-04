@@ -13,15 +13,17 @@ import { useSelection } from '../canvas/selection'
 import { useDemo } from '../demo'
 import { applyEvent } from '../events'
 import { useActivity } from './activity'
+import { startSpotlight, replaySteps, useSpotlight } from './spotlight'
 import { agentName, deliverableStatus, mergeFetched, mergeSteps, STATUS_TEXT, toolCall } from './agentRun'
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
-/** The board's latest agent run and its steps (both kept live by the board's events). */
-function useLatestRun(boardId: string) {
+/** The board's agent runs (newest first), the shown one (the person's pick, else the latest) and its steps. */
+function useRun(boardId: string, chosenId: string | null) {
   const qc = useQueryClient()
   const runs = useQuery({ queryKey: keys.agentRuns(boardId), queryFn: () => getAgentRuns(boardId) })
-  const run = runs.data?.[0]
+  const all = runs.data ?? []
+  const run = all.find((r) => r.id === chosenId) ?? all[0]
   const detail = useQuery({
     queryKey: keys.agentRun(run?.id ?? ''),
     // steps that arrived as events during the fetch are kept, not overwritten by an older snapshot
@@ -31,7 +33,7 @@ function useLatestRun(boardId: string) {
     },
     enabled: run !== undefined,
   })
-  return { run, steps: detail.data?.steps ?? [] }
+  return { runs: all, run, steps: detail.data?.steps ?? [] }
 }
 
 /**
@@ -43,7 +45,9 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
   const entries = useActivity()
   const { drawer } = useSelection()
   const { locked } = useDemo()
-  const { run, steps } = useLatestRun(boardId)
+  const [pick, setPick] = useState<string | null>(null)
+  const { runs, run, steps } = useRun(boardId, pick)
+  const spotlight = useSpotlight()
   const qc = useQueryClient()
   const star = useMutation({
     mutationFn: (step: AgentStep) => patchAgentStep(step.id, { highlight: !step.highlight }),
@@ -57,12 +61,20 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
     mutationFn: (runId: string) => patchAgentRun(runId, { status: 'paused' }),
     onSuccess: (paused) => applyEvent(qc, boardId, 'agent.run', paused),
   })
-  const [expanded, setExpanded] = useState(false)
+  const [wantExpanded, setExpanded] = useState(false)
+  // a replay collapses the card: expanded it would cover the board
+  const expanded = wantExpanded && !spotlight
   if (drawer) return null
   const latest = entries.at(-1)
   const lastStep = steps.at(-1)
   const inputId = `agent-input-${boardId}`
   const open = run?.status === 'running' || run?.status === 'needs_input'
+  const canReplay = run?.status === 'done' && replaySteps(steps).length > 0
+  const showMeHow = run && canReplay && (
+    <button type="button" className="agent-replay" disabled={spotlight !== null} onClick={() => startSpotlight(run.id, steps)}>
+      {spotlight ? 'Replaying…' : 'Show me how'}
+    </button>
+  )
   const placeholder =run?.source === 'mcp' && run.status === 'running' ? 'Claude Code is working' : 'Agent coming soon'
   return (
     <aside className="agent-card" aria-label="Muse agent">
@@ -87,7 +99,7 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
           className="icon-btn"
           aria-label="Show activity"
           aria-expanded={expanded}
-          onClick={() => setExpanded((x) => !x)}
+          onClick={() => setExpanded(!expanded)}
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
             {expanded ? <path d="M3 5l4 4 4-4" /> : <path d="M8.5 2.5h3v3M5.5 11.5h-3v-3M11.5 2.5L8 6M2.5 11.5L6 8" />}
@@ -102,6 +114,15 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
       {run ? (
         expanded ? (
           <div className="agent-run">
+            {runs.length > 1 && (
+              <select aria-label="Run" className="agent-run-pick" value={run.id} onChange={(e) => setPick(e.target.value)}>
+                {runs.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {agentName(r)} · {r.goal.slice(0, 40)}
+                  </option>
+                ))}
+              </select>
+            )}
             <p className="agent-goal">{run.goal}</p>
             {run.deliverables.length > 0 && (
               <ul className="agent-deliverables" aria-label="Deliverables">
@@ -114,6 +135,7 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
                 ))}
               </ul>
             )}
+            {showMeHow}
             {steps.length > 0 && (
               <ol className="agent-log agent-steps" aria-label="Steps">
                 {[...steps].reverse().map((step) => {
@@ -159,9 +181,12 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
             )}
           </div>
         ) : (
-          <p className="agent-latest" aria-live="polite">
-            {lastStep ? (lastStep.say ?? lastStep.tool) : run.goal}
-          </p>
+          <>
+            <p className="agent-latest" aria-live="polite">
+              {lastStep ? (lastStep.say ?? lastStep.tool) : run.goal}
+            </p>
+            {showMeHow}
+          </>
         )
       ) : expanded ? (
         entries.length > 0 ? (

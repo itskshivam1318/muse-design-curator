@@ -577,6 +577,24 @@ button.agent-step:hover .agent-say {
 .agent-stop:hover {
   color: var(--ink-2);
 }
+.agent-replay {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.agent-replay:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.agent-run-pick {
+  max-width: 100%;
+  font-size: 12px;
+}
 .agent-stop-error {
   padding: 4px 14px 0;
 }
