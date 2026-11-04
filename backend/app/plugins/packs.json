@@ -5,6 +5,7 @@
     "about": "Objects you hold or wear: watches, lamps, furniture.",
     "plugin_ids": [
       "image",
+      "recolor",
       "mesh",
       "critique",
       "webfill",
@@ -18,6 +19,7 @@
     "about": "Garments and accessories.",
     "plugin_ids": [
       "image",
+      "recolor",
       "video",
       "palette",
       "texture",
@@ -31,6 +33,7 @@
     "about": "Rooms, light and materials.",
     "plugin_ids": [
       "image",
+      "recolor",
       "palette",
       "texture",
       "bom",
@@ -43,6 +46,7 @@
     "about": "Exterior and interior details.",
     "plugin_ids": [
       "image",
+      "recolor",
       "mesh",
       "video",
       "critique",
