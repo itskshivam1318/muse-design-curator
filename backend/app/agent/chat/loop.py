@@ -42,6 +42,10 @@ SKIPPED = {
     "message": "Not run: the turn waited for the person's answer. Call it again if still needed.",
 }
 STOPPED = {"error": "STOPPED", "message": "Not run: the person stopped the work."}
+SUPERSEDED = {
+    "error": "SUPERSEDED",
+    "message": "The person sent a message first; read it and ask again if needed.",
+}
 TURN_FAILED = {"error": "TOOL_FAILED", "message": "Not run: the turn failed."}
 _CALL_TYPES = ("function_call", "function_call_output")
 
@@ -56,19 +60,15 @@ def offered_tools() -> list[dict[str, Any]]:
 # --- database work (in the threadpool) -------------------------------------------------------
 
 
-def _load(
-    run_id: str,
-) -> tuple[str, list[dict[str, Any]], dict[str, Any] | None, list[dict[str, Any]]]:
-    """The run's status, history, open question and unconsumed person messages."""
+def _load(run_id: str) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
+    """The run's status, history and unconsumed person messages."""
     with new_session() as session:
         run = agent_repo.get_run(session, run_id)
         if run is None:
             raise ValueError(f"unknown agent run {run_id}")
-        question = agent_repo.open_question(session, run_id)
         return (
             run.status,
             list(run.history_json or []),
-            agent_repo.message_to_dict(question) if question is not None else None,
             [
                 agent_repo.message_to_dict(m)
                 for m in agent_repo.unconsumed_messages(session, run_id)
@@ -76,17 +76,14 @@ def _load(
         )
 
 
-def _settle(run_id: str, consumed: list[str], answered: str | None) -> str:
-    """Mark the messages taken into the history and the answered question; the run's status."""
+def _settle(run_id: str, consumed: list[str]) -> str:
+    """Mark the messages taken into the history; the run's status. (The route marks a question
+    answered when its answer arrives.)"""
     with new_session() as session:
         for message_id in consumed:
             m = session.get(AgentMessage, message_id)
             if m is not None:
                 agent_repo.mark_consumed(session, m)
-        if answered is not None:
-            q = session.get(AgentMessage, answered)
-            if q is not None:
-                q.answered = True
         session.commit()
         run = agent_repo.get_run(session, run_id)
         return run.status if run is not None else "done"
@@ -149,6 +146,21 @@ def _answer(message: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _answer_call(message: dict[str, Any]) -> str | None:
+    """The call a person message answers, if it is an answer."""
+    return ((message.get("data") or {}).get("answer") or {}).get("call_id")
+
+
+def _open_calls(history: list[dict[str, Any]]) -> set[str]:
+    """The calls in the history still without an output: a suspended turn's question."""
+    done = {it.get("call_id") for it in history if it.get("type") == "function_call_output"}
+    return {
+        str(it["call_id"])
+        for it in history
+        if it.get("type") == "function_call" and it.get("call_id") not in done
+    }
+
+
 def _insert_output(history: list[dict[str, Any]], item: dict[str, Any]) -> None:
     """Put a late call output among its turn's calls and outputs, ahead of anything after them
     (such as `look_at` pictures), so calls stay next to their outputs."""
@@ -197,7 +209,6 @@ class _Turn:
         self.names = {t["name"] for t in self.tools}
         self.history: list[dict[str, Any]] = []
         self.consumed: list[str] = []
-        self.answered: str | None = None
         self.stopped = False  # a stop came between two calls of one model turn
 
     def take_person(self, message: dict[str, Any]) -> None:
@@ -212,7 +223,7 @@ class _Turn:
 
     async def finish(self, status: str) -> str:
         """Save the history; the run goes to `status` unless it was ended meanwhile."""
-        now = await run_in_threadpool(_settle, self.run_id, self.consumed, self.answered)
+        now = await run_in_threadpool(_settle, self.run_id, self.consumed)
         if now not in agent_repo.OPEN:  # ended (New chat) while we worked: keep it ended
             await run_state.update(self.run_id, history_json=self.history)
             return now
@@ -226,9 +237,9 @@ class _Turn:
     async def run(self) -> str:
         """The turn; anything unexpected after the history is loaded ends it as `waiting` with a
         message, the history saved, rather than leaving the run `running`."""
-        status, self.history, question, pending = await run_in_threadpool(_load, self.run_id)
+        status, self.history, pending = await run_in_threadpool(_load, self.run_id)
         try:
-            return await self.work(status, question, pending)
+            return await self.work(status, pending)
         except Exception as e:
             log.exception("chat turn failed on run %s", self.run_id)
             _close_calls(self.history)
@@ -237,22 +248,30 @@ class _Turn:
             )
             return await self.finish("waiting")
 
-    async def work(
-        self, status: str, question: dict[str, Any] | None, pending: list[dict[str, Any]]
-    ) -> str:
+    def take_pending(self, pending: list[dict[str, Any]]) -> None:
+        """Take the person's messages in: an answer becomes the output of the call it names
+        (the one the turn suspended on); the rest are person messages. A suspended call left
+        unanswered is superseded: the person wrote on instead."""
+        open_calls = _open_calls(self.history)
+        for message in pending:
+            call_id = _answer_call(message)
+            if call_id is not None and call_id in open_calls:
+                _insert_output(self.history, _output(call_id, _answer(message)))
+                open_calls.discard(call_id)
+                self.consumed.append(message["id"])
+                self.trace.message("person", message["text"])
+            else:
+                self.take_person(message)
+        for call_id in sorted(open_calls):
+            _insert_output(self.history, _output(call_id, SUPERSEDED))
+
+    async def work(self, status: str, pending: list[dict[str, Any]]) -> str:
         sent = len(self.history)  # the trace's new items start here: older ones were traced before
         if status not in agent_repo.OPEN:
             return status
-        if question is not None:
-            if not pending:
-                return status
-            answer = pending.pop(0)
-            _insert_output(self.history, _output(question["data"]["call_id"], _answer(answer)))
-            self.consumed.append(answer["id"])
-            self.answered = question["id"]
-            self.trace.message("person", answer["text"])
-        for message in pending:
-            self.take_person(message)
+        if not pending and _open_calls(self.history):
+            return status  # still waiting for the answer
+        self.take_pending(pending)
         await run_state.update(self.run_id, status="running")
 
         for step in range(MAX_STEPS):
@@ -364,8 +383,8 @@ async def run_turn(
 ) -> str:
     """Run the chat until the agent replies, asks, is stopped, or hits MAX_STEPS.
 
-    Takes the run's unconsumed person messages (the first answering an open question) into its
-    history, then alternates model calls and tool calls. `should_stop` is checked before every
+    Takes the run's unconsumed person messages into its history (an answer as the output of the
+    call it names), then alternates model calls and tool calls. `should_stop` is checked before every
     model call and tool call; `next_message` is drained after each round of calls for messages
     the person sent meanwhile. Returns the run's status after the turn: `"waiting"` or
     `"needs_input"` (or the run's own status if it was not open, or was ended meanwhile).

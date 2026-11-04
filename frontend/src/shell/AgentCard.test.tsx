@@ -417,11 +417,13 @@ describe('AgentCard, questions', () => {
     vi.mocked(fetch).mockImplementation(async (url) =>
       String(url).endsWith('/boards/b1/agent/messages') ? json({ run: { ...run, status: 'running' }, message: reply }) : new Response('{}', { status: 500 }),
     )
-    // the question stays answered: false (the server sends no update for it)
-    renderCard({ chat: true, run, messagesByRun: { r1: [question] } })
+    const qc = renderCard({ chat: true, run, messagesByRun: { r1: [question] } })
     fireEvent.click(screen.getByRole('button', { name: 'Show activity' }))
     const yes = screen.getByRole('button', { name: 'Yes' })
     fireEvent.click(yes)
+    await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([u]) => String(u).endsWith('/boards/b1/agent/messages'))).toBe(true))
+    // the server closes the question and says so
+    act(() => applyEvent(qc, 'b1', 'agent.question', { ...question, answered: true }))
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Fix' })).toBeNull())
     expect(screen.queryByRole('textbox', { name: 'Answer' })).toBeNull()
     expect(partConfirmStore.get()).toBeNull()

@@ -194,8 +194,54 @@ async def test_ask_user_suspends_and_answer_resumes(
     assert outputs(second)["call_q"] == {"answer": "the first"}
     assert "the first" not in input_text(second)  # the answer is the call's output, not a message
     msgs = thread(run_id)
-    assert next(m for m in msgs if m["role"] == "question")["answered"] is True
     assert msgs[-1]["role"] == "agent" and run_row(run_id)[0] == "waiting"
+
+
+def answer_question(run_id: str) -> None:
+    """What the route does on an answer: the question is closed at once."""
+    with deps.new_session() as s:
+        q = agent_repo.open_question(s, run_id)
+        assert q is not None
+        q.answered = True
+        s.commit()
+
+
+async def test_answer_resumes_its_call_when_question_closed(
+    board: str, run_id: str, api: ApiClient
+) -> None:
+    say(board, run_id, "make it warmer")
+    model = FakeChatModel([call("ask_user", {"question": "Which?"}, "call_q"), reply("Ok.")])
+    assert await loop.run_turn(board, run_id, model, api) == "needs_input"
+    answer_question(run_id)
+    say(board, run_id, "red", {"answer": {"call_id": "call_q", "choice": "red"}})
+    say(board, run_id, "and brighter")
+    assert await loop.run_turn(board, run_id, model, api) == "waiting"
+    second = model.calls[1][1]
+    assert outputs(second)["call_q"] == {"choice": "red"}
+    assert "and brighter" in input_text(second) and "red" not in input_text(second)
+    with deps.new_session() as s:
+        assert agent_repo.unconsumed_messages(s, run_id) == []
+
+
+async def test_open_call_waits_without_answer(board: str, run_id: str, api: ApiClient) -> None:
+    say(board, run_id, "make it warmer")
+    model = FakeChatModel([call("ask_user", {"question": "Which?"}, "call_q")])
+    assert await loop.run_turn(board, run_id, model, api) == "needs_input"
+    assert await loop.run_turn(board, run_id, model, api) == "needs_input"
+    assert len(model.calls) == 1
+
+
+async def test_message_that_answers_no_call_supersedes_it(
+    board: str, run_id: str, api: ApiClient
+) -> None:
+    say(board, run_id, "make it warmer")
+    model = FakeChatModel([call("ask_user", {"question": "Which?"}, "call_q"), reply("Ok.")])
+    assert await loop.run_turn(board, run_id, model, api) == "needs_input"
+    say(board, run_id, "actually, cooler")  # not an answer (no call_id): the person moved on
+    assert await loop.run_turn(board, run_id, model, api) == "waiting"
+    second = model.calls[1][1]
+    assert outputs(second)["call_q"]["error"] == "SUPERSEDED"
+    assert "actually, cooler" in input_text(second)
 
 
 async def test_choice_answer_reaches_model(board: str, run_id: str, api: ApiClient) -> None:

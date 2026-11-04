@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from app import jobs
+from app import events, jobs
 from app.agent import run_state
 from app.agent.chat import runner
 from app.agent.chat.model import FakeChatModel, ModelTurn
@@ -218,6 +218,38 @@ def test_answer_resumes_question(
     assert outputs(model.calls[1][1])["call_q"] == {"choice": "red"}
     question = next(m for m in thread(client, run["id"]) if m["role"] == "question")
     assert question["answered"] is True
+
+
+def test_answer_closes_question_at_once(
+    client: TestClient, board: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The answer marks the question answered (and says so) before any turn runs; a repeat
+    answer to it is refused."""
+    script(monkeypatch, call("ask_user", {"question": "Which?"}, "call_q"))
+    run = send(client, board, "pick one").json()["run"]
+    kicked: list[str] = []
+
+    async def no_turn(_board_id: str, run_id: str) -> None:
+        kicked.append(run_id)
+
+    monkeypatch.setattr(runner, "kick_sync", no_turn)
+    with events.subscribe(board) as sub:
+        r = send(client, board, "red", answer={"call_id": "call_q", "choice": "red"})
+        seen = []
+        while (ev := sub.get(timeout=0.2)) is not None:
+            seen.append(ev)
+    assert r.status_code == 202 and kicked == [run["id"]]
+    question = next(m for m in thread(client, run["id"]) if m["role"] == "question")
+    assert question["answered"] is True  # no turn has run yet
+    updates = [e["data"] for e in seen if e["type"] == "agent.question"]
+    assert updates == [question]
+    again = send(client, board, "blue", answer={"call_id": "call_q", "choice": "blue"})
+    assert again.status_code == 409 and again.json()["error"]["code"] == "NO_OPEN_QUESTION"
+    box = send(client, board, "here", answer={"call_id": "call_q", "box": [0, 0, 1, 1]})
+    assert box.status_code == 409
+    assert [m["text"] for m in thread(client, run["id"]) if m["role"] == "person"] == [
+        "pick one", "red",
+    ]  # fmt: skip
 
 
 def test_stale_answer_rejected(

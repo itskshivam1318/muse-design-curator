@@ -101,8 +101,12 @@ def _check_board(board_id: str) -> None:
         require_board(session, board_id)
 
 
-def _add_person_message(board_id: str, run_id: str, body: ChatMessage) -> dict[str, Any] | None:
-    """Save the person's message on the run; None when its answer matches no open question."""
+def _add_person_message(
+    board_id: str, run_id: str, body: ChatMessage
+) -> tuple[dict[str, Any], dict[str, Any] | None] | None:
+    """Save the person's message on the run, and the question it answers (now answered, in the
+    same transaction: a second answer finds no open question); None when its answer matches no
+    open question."""
     with agent_repo.WRITE_LOCK, new_session() as session:
         question = agent_repo.open_question(session, run_id)
         call_id = (question.data_json or {}).get("call_id") if question is not None else None
@@ -116,9 +120,15 @@ def _add_person_message(board_id: str, run_id: str, body: ChatMessage) -> dict[s
             data["selection"] = body.selection
         if answer is not None:
             data["answer"] = answer
+        answered = question if answer is not None else None  # an answer has an open question
+        if answered is not None:
+            answered.answered = True
         m = agent_repo.add_message(session, run_id, board_id, "person", body.text, data or None)
         session.commit()
-        return agent_repo.message_to_dict(m)
+        return (
+            agent_repo.message_to_dict(m),
+            agent_repo.message_to_dict(answered) if answered is not None else None,
+        )
 
 
 def _run_dict(run_id: str) -> dict[str, Any]:
@@ -134,7 +144,8 @@ async def post_message(board_id: str, body: ChatMessage) -> dict[str, Any]:
     """Send the person's message to the board's chat. The first message opens a chat run (its
     goal is the message); later ones join it. The run then works in the background (inline under
     JOBS_SYNC). `answer` answers the open question; plain text sent while a question is open is
-    taken as its answer `{call_id: <the open question's>, text}`.
+    taken as its answer `{call_id: <the open question's>, text}`. An answer closes the question
+    at once (`agent.question` with `answered: true`).
 
     Refusals (409): CHAT_UNAVAILABLE (demo mode, or no chat model; the message says which),
     MCP_RUN_OPEN (Claude Code is working on the board), NO_OPEN_QUESTION (an `answer` whose
@@ -148,9 +159,12 @@ async def post_message(board_id: str, body: ChatMessage) -> dict[str, Any]:
     run, _created = await run_state.start(board_id, "muse", body.text[:1000], [])
     if "error" in run:
         raise AppError(409, run["error"], run["message"])
-    message = await run_in_threadpool(_add_person_message, board_id, run["id"], body)
-    if message is None:
+    saved = await run_in_threadpool(_add_person_message, board_id, run["id"], body)
+    if saved is None:
         raise AppError(409, "NO_OPEN_QUESTION", NO_OPEN_QUESTION)
+    message, answered = saved
+    if answered is not None:
+        events.publish(board_id, "agent.question", answered)
     events.publish(board_id, "agent.message", message)
     if get_settings().JOBS_SYNC:
         await runner.kick_sync(board_id, run["id"])
