@@ -1,27 +1,46 @@
 {
   "id": "mesh",
   "name": "Image → 3D",
-  "description": "Mesh and texture from one or more views.",
+  "description": "A 3D model from one picture, cut out clean first.",
   "mark": "3D",
   "tint": "#e0efe6",
   "ink": "#2c7a4b",
   "runner": "model",
-  "runs_on": "[3D model] · Modal",
+  "runs_on": "fal · Hunyuan3D",
   "inputs": {
     "kinds": [
       "image"
-    ]
+    ],
+    "min": 1,
+    "max": 1
   },
   "params": {
     "type": "object",
-    "properties": {}
+    "properties": {
+      "quality": {
+        "type": "string",
+        "enum": [
+          "fast",
+          "detailed"
+        ],
+        "default": "fast",
+        "x-widget": "segmented"
+      },
+      "texture": {
+        "type": "boolean",
+        "default": true
+      }
+    }
   },
   "outputs": [
-    "images"
+    "model3d"
   ],
   "requires": [
     "FAL_KEY"
   ],
   "model": "mesh.from_image",
-  "secondary": "Download"
+  "secondary": "Download",
+  "needs": [
+    "object_mask"
+  ]
 }

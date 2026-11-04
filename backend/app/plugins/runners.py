@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import io
 import json
 import os
 import re
@@ -21,10 +22,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+
 from app.config import Settings, get_settings
 from app.plugins.manifest import Manifest, ModelName
 from app.plugins.registry import Plugin, status
-from app.providers import get_image_provider, get_reasoning
+from app.providers import get_fal, get_image_provider, get_reasoning
 from app.providers.reasoning import MAX_STRUCTURED_IMAGES
 from app.providers.reliability import ModelError, user_message
 
@@ -220,6 +223,17 @@ def validate_output(manifest: Manifest, out: Any) -> dict[str, Any]:
                 a["confidence"] = max(0.0, min(1.0, float(x["confidence"])))
             attrs.append(a)
         clean["attributes"] = attrs
+    if out.get("model3d") is not None:
+        if manifest.runner != "model":
+            raise _bad_output("only the model runner may return a 3D model")
+        models = []
+        for x in _list_of_dicts(out, "model3d"):
+            glb, poster, caption = x.get("glb"), x.get("poster"), x.get("caption", "")
+            ok = isinstance(glb, bytes) and bool(glb) and isinstance(poster, bytes) and bool(poster)
+            if not ok or not isinstance(caption, str):
+                raise _bad_output("each 3D model needs glb and poster bytes and a text caption")
+            models.append({"glb": glb, "poster": poster, "caption": caption})
+        clean["model3d"] = models
     if out.get("text") is not None:
         if not isinstance(out["text"], str):
             raise _bad_output("text must be a string")
@@ -507,6 +521,80 @@ def _run_image(
                        for b in images]}  # fmt: skip
 
 
+MAX_GLB_BYTES = 50 * 1024 * 1024
+
+
+def _mesh_source(inputs: list[RunInput]) -> bytes:
+    """The cleaned cut-out as PNG: the picture cut along its object mask on transparent, or the
+    whole picture when no object was found. It is both the upload and the poster."""
+    from PIL import Image
+
+    from app.plugins.registry import load_builtin_module
+
+    src = inputs[0].image
+    if src is None:
+        raise _bad_input("connect a picture")
+    with Image.open(io.BytesIO(src)) as im:
+        rgb = im.convert("RGB")
+    mask = None
+    if inputs[0].object_mask:
+        with Image.open(io.BytesIO(inputs[0].object_mask)) as m:
+            mask = np.asarray(m.convert("L").resize(rgb.size, Image.Resampling.NEAREST)) > 127
+    try:
+        cut = load_builtin_module("cleanup", "cutout").cutout(rgb, mask, None, "transparent", 0.04)
+    except ValueError:
+        cut = rgb.convert("RGBA")  # nothing to cut out: send the whole picture
+    buf = io.BytesIO()
+    cut.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def _run_mesh(
+    p: Plugin, inputs: list[RunInput], params: dict[str, Any], board: BoardCtx,
+    settings: Settings, progress: Callable[[str], None], job: JobCtx | None,
+) -> Any:  # fmt: skip
+    from app.analysis import limits
+    from app.db.models import PluginRun
+    from app.plugins import longjob
+
+    if job is None:
+        raise PluginError("PLUGIN_NOT_CONNECTED", "the 3D model runs only as a queued job")
+    run = job.session.get(PluginRun, job.run_id)
+    if run is None:
+        raise PluginError("PLUGIN_CRASHED", "the run is gone")
+    detailed = params.get("quality", "fast") == "detailed"
+    endpoint = settings.FAL_MESH_DETAILED if detailed else settings.FAL_MESH_FAST
+    textured = bool(params.get("texture", True))
+    png = _mesh_source(inputs)
+
+    def payload(hb: Callable[[str], None]) -> dict[str, Any]:
+        url = get_fal(settings).upload(png, "image/png")
+        hb("Uploaded the picture")
+        return {"input_image_url": url, "textured_mesh": textured}
+
+    result = longjob.run_fal(job.session, run, endpoint, payload, "mesh", progress)
+    mesh = result.get("model_mesh")
+    url = mesh.get("url") if isinstance(mesh, dict) else None
+    if not isinstance(url, str) or not url:
+        limits.refund(run.board_id, "mesh")
+        raise _bad_output("the model returned no 3D file")
+    progress("Fetching the 3D file")
+    try:
+        glb = get_fal(settings).download(url, MAX_GLB_BYTES)
+    except ModelError as e:
+        limits.refund(run.board_id, "mesh")
+        if e.code == "PAYLOAD_TOO_LARGE":
+            raise _bad_output("the 3D file is larger than 50 MB") from None
+        raise PluginError(
+            "PLUGIN_MODEL_FAILED", f"the 3D file could not be fetched: {user_message(e)}"
+        ) from None
+    if not glb:
+        limits.refund(run.board_id, "mesh")
+        raise _bad_output("the 3D file is empty")
+    return {"model3d": [{"glb": glb, "poster": png,
+                         "caption": f"{inputs[0].label}, as a 3D model"}]}  # fmt: skip
+
+
 ModelHandler = Callable[
     [Plugin, list[RunInput], dict[str, Any], BoardCtx, Settings, Callable[[str], None],
      JobCtx | None],
@@ -516,6 +604,7 @@ ModelHandler = Callable[
 MODEL_HANDLERS: dict[ModelName, ModelHandler] = {
     "image.edit": _run_image,
     "image.generate": _run_image,
+    "mesh.from_image": _run_mesh,
 }
 
 

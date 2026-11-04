@@ -32,13 +32,13 @@ def _active_item(session: Session, item_id: str) -> BoardItem:
     return item
 
 
-def _serve(rel: str | None) -> FileResponse:
+def _serve(rel: str | None, media_type: str | None = None) -> FileResponse:
     if not rel:
         raise _not_found()
     path: Path = files.abs_path(rel)
     if not path.is_file():
         raise _not_found()
-    return FileResponse(path, headers=_CACHE)
+    return FileResponse(path, headers=_CACHE, media_type=media_type)
 
 
 def _chosen_frame_path(session: Session, item: BoardItem) -> str | None:
@@ -58,6 +58,8 @@ def item_image(
         return _serve(item.thumb_path)
     if item.kind == "video":  # the full view of a video is its chosen frame, not the video
         return _serve(_chosen_frame_path(session, item) or item.thumb_path)
+    if item.kind == "model":  # the 3D viewer loads the .glb itself
+        return _serve(item.storage_path, "model/gltf-binary")
     return _serve(item.storage_path)
 
 

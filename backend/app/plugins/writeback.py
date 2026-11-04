@@ -112,6 +112,37 @@ def _image_item(
     )  # fmt: skip
 
 
+def _model_item(
+    session: Session,
+    run: PluginRun,
+    node: PluginNode,
+    m: dict[str, Any],
+    x: float,
+    y: float,
+    model: str,
+    parent: str | None,
+) -> BoardItem:
+    """A 3D model item: the .glb is its original, the cleaned cut-out its poster thumbnail. The
+    storage name hashes the run id too, so identical models never collide on sha256."""
+    try:  # a small cut-out is fine as a poster, so not decode_image's minimum edge
+        poster = Image.open(io.BytesIO(m["poster"]))
+        poster.load()
+    except (OSError, ValueError):
+        raise PluginError("PLUGIN_BAD_OUTPUT", "the 3D model's poster could not be read") from None
+    sha = files.sha256_hex(m["glb"] + run.id.encode())
+    storage = files.save_original(m["glb"], sha, "glb")
+    thumb = files.save_thumb(poster, sha)
+    w, h = default_size(*poster.size)
+    meta = ItemMeta(origin="generated", filename=f"{run.plugin_id}.glb", x=x, y=y)
+    return create_item(
+        session, node.board_id, meta,
+        kind="model", sha256=sha, storage_path=storage, thumb_path=thumb,
+        mime="model/gltf-binary", width=poster.size[0], height=poster.size[1], w=w, h=h,
+        rights_status="generated", parent_item_id=parent,
+        generation_json={"plugin": run.plugin_id, "model": model, "run_id": run.id},
+    )  # fmt: skip
+
+
 def _kind(value: Any) -> str:
     if isinstance(value, bool):  # before int: a bool is an int
         return "boolean"
@@ -252,6 +283,12 @@ def apply_output(
         added = item_to_dict(item)
         after_commit(session, partial(events.publish, item.board_id, "item.added", added))
         after_commit(session, partial(jobs.enqueue, "analyse_item", item_id=item.id))
+    for m in out.get("model3d", []):
+        item = _model_item(session, run, node, m, x, y, model, parent)
+        created.append(item.id)
+        y += item.h + STACK_GAP
+        added = item_to_dict(item)
+        after_commit(session, partial(events.publish, item.board_id, "item.added", added))
     option_ids = list(created) if options else []
     for note in out.get("notes", []):
         item = create_note(session, node.board_id, note["text"], x, y)
