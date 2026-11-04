@@ -758,3 +758,19 @@ pre.node-text {
   flex: 1;
   min-width: 0;
 }
+
+.node-clear-options {
+  align-self: flex-start;
+  margin: 6px 0 0;
+  padding: 3px 9px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font: 500 12px var(--f-body);
+  cursor: pointer;
+}
+.node-clear-options:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--ink);
+}

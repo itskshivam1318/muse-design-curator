@@ -17,6 +17,7 @@ import {
   type PluginRun,
   runNode,
 } from '../api'
+import { clearNodeOptions } from '../canvas/options'
 import { toScreenBounds, type View } from '../canvas/geometry'
 import { LOCKED_TITLE } from '../demo'
 import { itemTitle } from '../format'
@@ -380,6 +381,17 @@ export function NodeCard({ boardId, node, plugin, run, items, view, readOnly = f
     }
   }
 
+  // options of the latest run still standing (kept ones are ordinary items)
+  const options = run ? [...items.values()].filter((i) => i.option_run_id === run.id).length : 0
+  const clearOptions_ = async () => {
+    setError(null)
+    try {
+      await clearNodeOptions(qc, boardId, node.id)
+    } catch {
+      setError('Could not clear the options')
+    }
+  }
+
   const openSettings = (field: string) => {
     focusField.current = field
     setSettingsOpen(true)
@@ -556,6 +568,12 @@ export function NodeCard({ boardId, node, plugin, run, items, view, readOnly = f
       <div className="node-output">
         <Output plugin={plugin} run={run} items={items} running={running} />
       </div>
+
+      {options > 0 && (
+        <button type="button" className="node-clear-options" disabled={readOnly} onClick={() => void clearOptions_()}>
+          Clear options ({options})
+        </button>
+      )}
 
       {error && (
         <p className="node-error" role="alert">

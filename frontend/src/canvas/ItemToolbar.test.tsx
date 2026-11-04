@@ -82,3 +82,22 @@ describe('ItemToolbar Re-analyse', () => {
     expect((await screen.findByRole('alert')).textContent).toBe(message)
   })
 })
+
+describe('ItemToolbar options and 3D', () => {
+  const props = { screen: screenBox, onInspect: noop, onCompare: noop, onNotThis: noop, onRemove: noop }
+  it('Keep appears only for an option and calls onKeep', () => {
+    const onKeep = vi.fn()
+    render(<ItemToolbar items={[makeItem({ id: 'o', option_run_id: 'r1' })]} {...props} onKeep={onKeep} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Keep' }))
+    expect(onKeep).toHaveBeenCalledWith('o')
+    cleanup()
+    render(<ItemToolbar items={[makeItem()]} {...props} onKeep={onKeep} />)
+    expect(screen.queryByRole('button', { name: 'Keep' })).toBeNull()
+  })
+  it('a model item has Open 3D', () => {
+    const onOpenModel = vi.fn()
+    render(<ItemToolbar items={[makeItem({ id: 'm', kind: 'model' })]} {...props} onOpenModel={onOpenModel} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open 3D' }))
+    expect(onOpenModel).toHaveBeenCalledWith('m')
+  })
+})

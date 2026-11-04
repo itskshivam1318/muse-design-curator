@@ -16,6 +16,10 @@ interface Props {
   /** Public demo, not unlocked: role changes and removal are disabled. */
   readOnly?: boolean
   /** Its size on screen as drawn, reported as it changes (null once gone): floating cards keep off it. */
+  /** Keep the selected plugin option as an ordinary item. */
+  onKeep?: (itemId: string) => void
+  /** Open the selected 3D item in the viewer. */
+  onOpenModel?: (itemId: string) => void
   onSize?: (size: { width: number; height: number } | null) => void
 }
 
@@ -37,6 +41,8 @@ export function ItemToolbar({
   onRemove,
   onReanalyse,
   readOnly = false,
+  onKeep,
+  onOpenModel,
   onSize,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null)
@@ -88,6 +94,16 @@ export function ItemToolbar({
       style={{ left: screen.x + screen.width / 2, top: Math.max(8, screen.y - TOOLBAR_GAP) }}
       onMouseDown={(e) => e.stopPropagation()}
     >
+      {single?.option_run_id && onKeep && (
+        <button type="button" className="is-primary" onClick={() => onKeep(single.id)} disabled={readOnly}>
+          Keep
+        </button>
+      )}
+      {single?.kind === 'model' && onOpenModel && (
+        <button type="button" onClick={() => onOpenModel(single.id)}>
+          Open 3D
+        </button>
+      )}
       {canPanel && hasDrawerPanel('inspect') && (
         <button type="button" onClick={onInspect} aria-keyshortcuts="I">
           Inspect

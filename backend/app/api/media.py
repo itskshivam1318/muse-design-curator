@@ -32,13 +32,13 @@ def _active_item(session: Session, item_id: str) -> BoardItem:
     return item
 
 
-def _serve(rel: str | None) -> FileResponse:
+def _serve(rel: str | None, media_type: str | None = None) -> FileResponse:
     if not rel:
         raise _not_found()
     path: Path = files.abs_path(rel)
     if not path.is_file():
         raise _not_found()
-    return FileResponse(path, headers=_CACHE)
+    return FileResponse(path, media_type=media_type, headers=_CACHE)
 
 
 def _chosen_frame_path(session: Session, item: BoardItem) -> str | None:
@@ -58,7 +58,17 @@ def item_image(
         return _serve(item.thumb_path)
     if item.kind == "video":  # the full view of a video is its chosen frame, not the video
         return _serve(_chosen_frame_path(session, item) or item.thumb_path)
+    # model (.glb) items rely on this serving storage_path: Task 10's viewer uses image?size=full
     return _serve(item.storage_path)
+
+
+@router.get("/items/{item_id}/video")
+def item_video(item_id: str, session: SessionDep) -> FileResponse:
+    """A video item's file, as stored (FileResponse answers Range requests for playback)."""
+    item = _active_item(session, item_id)
+    if item.kind != "video":
+        raise _not_found()
+    return _serve(item.storage_path, item.mime)
 
 
 @router.get("/items/{item_id}/frames")

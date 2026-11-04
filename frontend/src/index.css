@@ -1831,3 +1831,55 @@ button.onboarding-step:hover {
   margin: 4px 0 0;
   white-space: nowrap;
 }
+
+/* inline video and the 3D viewer over the canvas */
+.video-overlay {
+  position: absolute;
+  z-index: 5;
+  background: #000;
+  overflow: hidden;
+}
+.video-overlay video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  cursor: pointer;
+  display: block;
+}
+.model-overlay {
+  position: absolute;
+  inset: 8% 10%;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.model-overlay-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--rule);
+}
+.model-overlay-bar a,
+.model-overlay-bar button {
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: 500 13px var(--f-body);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.model-overlay-view {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+}
+.model-overlay-note {
+  margin: auto;
+  color: var(--muted);
+}
