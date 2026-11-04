@@ -16,7 +16,7 @@ Built on Meta's models: **Muse Spark** reads, **SAM 3.1** finds the parts, **Mus
 
 <img src="docs/media/board.gif" alt="A live Muse board: the coupe is selected and its parts light up with what Muse read" width="820">
 
-**[▶ Watch the 2:16 demo](#demo)** · [How it works](#how-it-works) · [Run it](#run-it-in-3-commands) · [Technical guide](docs/TECHNICAL.md)
+**[▶ Watch the 2:16 demo](https://youtu.be/eMNe0cv9KLM)** · [How it works](#how-it-works) · [Run it](#run-it-in-3-commands) · [Technical guide](docs/TECHNICAL.md)
 
 </div>
 
@@ -101,7 +101,7 @@ wheel.
 
 | | |
 |---|---|
-| 🎬 **Video (2:16)** | _add the YouTube / Devpost link here_ |
+| 🎬 **Video (2:16)** | [youtu.be/eMNe0cv9KLM](https://youtu.be/eMNe0cv9KLM) |
 | 🗂 **Real recorded boards** | Four boards (car, UI, interior, fashion) were driven end to end by the agent and recorded. Run logs and screenshots are in [`reports/demo/`](reports/demo/). |
 | 🔁 **Replay a run** | Open any board with `?replay=<run_id>` to watch the agent's steps play back on the canvas. |
 
