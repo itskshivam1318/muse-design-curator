@@ -21,6 +21,7 @@ def _mock_providers(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REASONING_PROVIDER", "mock")
     monkeypatch.setenv("SEGMENTATION_PROVIDER", "mock")
     monkeypatch.setenv("IMAGE_PROVIDER", "mock")
+    monkeypatch.setenv("FAL_PROVIDER", "mock")
     monkeypatch.setenv("EMBEDDER", "mock")
 
 

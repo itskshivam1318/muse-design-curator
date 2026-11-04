@@ -6,6 +6,7 @@ import threading
 
 from app.config import Settings
 from app.providers.embedding import Embedder, MockEmbedder, PECoreEmbedder, SigLIP2Embedder
+from app.providers.fal import FalClient, MockFal
 from app.providers.image_gen import ImageProvider, MockImageProvider, MuseImageProvider
 from app.providers.meta_client import check_model_id, get_client
 from app.providers.reasoning import (
@@ -21,6 +22,7 @@ __all__ = [
     "ModelError",
     "embedder_id",
     "get_embedder",
+    "get_fal",
     "get_image_provider",
     "get_reasoning",
     "get_segmentation",
@@ -67,6 +69,15 @@ def get_image_provider(settings: Settings) -> ImageProvider:
             max_retries=settings.MODEL_MAX_RETRIES, timeout=settings.MODEL_TIMEOUT_S,
         )  # fmt: skip
     raise ModelError("PROVIDER_MISCONFIGURED", message=f"unknown IMAGE_PROVIDER {name!r}")
+
+
+def get_fal(settings: Settings) -> FalClient | MockFal:
+    name = settings.FAL_PROVIDER.replace("_", "-")
+    if name == "mock":
+        return MockFal()
+    if name == "fal":
+        return FalClient(_need(settings.FAL_KEY, "FAL_KEY", "FAL_PROVIDER=fal"))
+    raise ModelError("PROVIDER_MISCONFIGURED", message=f"unknown FAL_PROVIDER {name!r}")
 
 
 def get_segmentation(settings: Settings) -> SegmentationProvider:

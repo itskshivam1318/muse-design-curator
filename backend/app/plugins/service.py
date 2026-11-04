@@ -3,7 +3,9 @@
 A node is an added plugin placed on the canvas with its input items and params. Run creates a
 `queued` run (its `claimed_at` is the claim), points the node at it and queues the `plugin_run`
 job; the job runs the plugin and writes the result back. No job survives a restart, so startup
-marks queued and running runs `PLUGIN_INTERRUPTED`.
+marks queued and running runs `PLUGIN_INTERRUPTED`, except a run waiting on a fal job it already
+submitted (`external_json.request_id`): that one is resumed by the `plugin_resume` job, which
+polls the stored request instead of submitting again (see `longjob`).
 """
 
 import logging
@@ -28,6 +30,7 @@ from app.plugins import writeback
 from app.plugins.registry import Plugin, get_registry, status
 from app.plugins.runners import (
     BoardCtx,
+    JobCtx,
     PluginError,
     RunInput,
     check_input_kinds,
@@ -38,6 +41,7 @@ from app.plugins.runners import (
 log = logging.getLogger(__name__)
 
 JOB = "plugin_run"
+RESUME_JOB = "plugin_resume"
 NODE_W = 300
 NODE_H = 360
 ACTIVE = ("queued", "running")
@@ -289,6 +293,24 @@ def execute_run(session: Session, run_id: str) -> None:
     if not claimed.rowcount:  # type: ignore[attr-defined]
         return  # superseded, or already taken
     session.commit()
+    _execute_claimed(session, run_id)
+
+
+def resume_run(session: Session, run_id: str) -> None:
+    """A running run whose fal job outlived the process: run it again on the same claim; its
+    model handler finds the stored request and only polls it."""
+    claimed = session.execute(
+        update(PluginRun)
+        .where(PluginRun.id == run_id, PluginRun.status == "running")
+        .values(claimed_at=_iso(datetime.now(UTC)))
+    )
+    if not claimed.rowcount:  # type: ignore[attr-defined]
+        return
+    session.commit()
+    _execute_claimed(session, run_id)
+
+
+def _execute_claimed(session: Session, run_id: str) -> None:
     run = session.get(PluginRun, run_id)
     assert run is not None
     board_id, node_id = run.board_id, run.node_id
@@ -298,7 +320,12 @@ def execute_run(session: Session, run_id: str) -> None:
         board = _board(session, board_id)
         params = dict(run.params_json or {})
         out = run_plugin(
-            p, inputs, params, board, partial(_progress, session, run_id, board_id, node_id)
+            p,
+            inputs,
+            params,
+            board,
+            partial(_progress, session, run_id, board_id, node_id),
+            job=JobCtx(session, run_id),
         )
         session.expire_all()
         run = session.get(PluginRun, run_id)
@@ -320,24 +347,38 @@ def execute_run(session: Session, run_id: str) -> None:
     session.commit()
 
 
-def plugin_run_job(run_id: str) -> None:
+def _job(fn: Any, run_id: str) -> None:
     from app.api import deps
 
     with deps._factory()() as session:
         try:
-            execute_run(session, run_id)
+            fn(session, run_id)
         except Exception:
             log.exception("plugin run %s failed", run_id)
             _finish_failed(session, run_id, "PLUGIN_CRASHED", "Something went wrong")
 
 
+def plugin_run_job(run_id: str) -> None:
+    _job(execute_run, run_id)
+
+
+def plugin_resume_job(run_id: str) -> None:
+    _job(resume_run, run_id)
+
+
 def recover_stuck_runs(session: Session) -> int:
-    """Startup: queued and running runs lost their job; mark them interrupted."""
+    """Startup: queued and running runs lost their job. One waiting on a submitted fal job is
+    resumed (after the commit); the rest are marked interrupted. Returns how many were found."""
     stuck = list(session.scalars(select(PluginRun).where(PluginRun.status.in_(ACTIVE))))
     for run in stuck:
-        _fail(run, "PLUGIN_INTERRUPTED", "The run stopped before it finished")
+        if run.status == "running" and (run.external_json or {}).get("request_id"):
+            run.claimed_at = _iso(datetime.now(UTC))
+            after_commit(session, partial(jobs.enqueue, RESUME_JOB, run_id=run.id))
+        else:
+            _fail(run, "PLUGIN_INTERRUPTED", "The run stopped before it finished")
     session.flush()
     return len(stuck)
 
 
 jobs.register(JOB, plugin_run_job)
+jobs.register(RESUME_JOB, plugin_resume_job)

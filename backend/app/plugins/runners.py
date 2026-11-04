@@ -19,14 +19,17 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.config import Settings, get_settings
-from app.plugins.manifest import Manifest
+from app.plugins.manifest import Manifest, ModelName
 from app.plugins.registry import Plugin, status
 from app.providers import get_image_provider, get_reasoning
 from app.providers.reasoning import MAX_STRUCTURED_IMAGES
 from app.providers.reliability import ModelError, user_message
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 SHIM = Path(__file__).parent / "shim.py"
 SHIM_BAD_RESULT_EXIT = 3  # shim.py: run() returned something json.dumps cannot encode
@@ -54,6 +57,15 @@ class BoardCtx:
     title: str
     context: str | None
     notes: list[str]
+
+
+@dataclass
+class JobCtx:
+    """The run a model handler is working for: a long (fal) handler persists its job's state on
+    it mid-run through this session (see `longjob.run_fal`)."""
+
+    session: Session
+    run_id: str
 
 
 class PluginError(Exception):
@@ -439,13 +451,11 @@ def _model_prompt(params: dict[str, Any], inputs: list[RunInput]) -> str:
     return whole
 
 
-def _run_model(
+def _run_image(
     p: Plugin, inputs: list[RunInput], params: dict[str, Any], board: BoardCtx,
-    settings: Settings, progress: Callable[[str], None],
+    settings: Settings, progress: Callable[[str], None], job: JobCtx | None,
 ) -> Any:  # fmt: skip
     m = p.manifest
-    if m.model not in ("image.edit", "image.generate"):
-        raise PluginError("PLUGIN_NOT_CONNECTED", f"the {m.name} model is not connected")
     prompt = _model_prompt(params, inputs)
     count = max(1, int(params.get("count") or 1))  # results per input image
     sources = [i.image for i in inputs if i.image is not None] if m.model == "image.edit" else []
@@ -472,6 +482,28 @@ def _run_model(
                        for b in images]}  # fmt: skip
 
 
+ModelHandler = Callable[
+    [Plugin, list[RunInput], dict[str, Any], BoardCtx, Settings, Callable[[str], None],
+     JobCtx | None],
+    Any,
+]  # fmt: skip
+# mesh.from_image and video.generate are added by their plugins' handlers
+MODEL_HANDLERS: dict[ModelName, ModelHandler] = {
+    "image.edit": _run_image,
+    "image.generate": _run_image,
+}
+
+
+def _run_model(
+    p: Plugin, inputs: list[RunInput], params: dict[str, Any], board: BoardCtx,
+    settings: Settings, progress: Callable[[str], None], job: JobCtx | None = None,
+) -> Any:  # fmt: skip
+    handler = MODEL_HANDLERS.get(p.manifest.model) if p.manifest.model else None
+    if handler is None:
+        raise PluginError("PLUGIN_NOT_CONNECTED", f"the {p.manifest.name} model is not connected")
+    return handler(p, inputs, params, board, settings, progress, job)
+
+
 # ---- entry point ---------------------------------------------------------------------------
 
 RUNNERS = {"python": _run_python, "llm": _run_llm, "model": _run_model}
@@ -483,15 +515,21 @@ def run_plugin(
     params: dict[str, Any],
     board: BoardCtx,
     progress: Callable[[str], None],
+    job: JobCtx | None = None,
 ) -> dict[str, Any]:
-    """Run one plugin to a validated result; raises PluginError."""
+    """Run one plugin to a validated result; raises PluginError. `job` reaches model handlers
+    only (a long fal job stores its request on the run through it)."""
     settings = get_settings()
     m = plugin.manifest
     if status(plugin, settings) == "not_connected":
         raise PluginError("PLUGIN_NOT_CONNECTED", f"{m.name} is not connected")
     check_inputs(m, inputs)
     params = check_params(m, params)
-    out = validate_output(m, RUNNERS[m.runner](plugin, inputs, params, board, settings, progress))
+    if m.runner == "model":
+        raw = _run_model(plugin, inputs, params, board, settings, progress, job)
+    else:
+        raw = RUNNERS[m.runner](plugin, inputs, params, board, settings, progress)
+    out = validate_output(m, raw)
     ids = {i.id for i in inputs}
     for a in out.get("attributes", []):
         if a["item_id"] not in ids:

@@ -23,13 +23,20 @@ class Settings(BaseSettings):
     MESH_PER_BOARD_PER_DAY: int = 10
     VIDEO_PER_BOARD_PER_DAY: int = 10
     # fal.ai (mesh and video plugins)
+    FAL_PROVIDER: str = "fal"  # "mock" in tests
     FAL_KEY: str | None = None
     FAL_TIMEOUT_S: int = 600
     FAL_POLL_S: float = 3.0
-    FAL_MESH_FAST: str = "fal-ai/hunyuan3d/v2/mini/turbo"  # verified in Task 7
-    FAL_MESH_DETAILED: str = "fal-ai/hunyuan3d/v2"  # verified in Task 7
-    FAL_VIDEO_STANDARD: str = "fal-ai/kling-video/v2.1/standard/image-to-video"  # verified in Task 7
-    FAL_VIDEO_PRO: str = "fal-ai/kling-video/v2.1/pro/image-to-video"  # verified in Task 7
+    # Endpoint ids checked 2026-11-04 against https://fal.ai/models/<id>/api .
+    # Hunyuan3D image-to-3D: input_image_url (+ textured_mesh, seed, ...) -> model_mesh.url (GLB)
+    FAL_MESH_FAST: str = "fal-ai/hunyuan3d/v2/mini/turbo"
+    FAL_MESH_DETAILED: str = "fal-ai/hunyuan3d/v2"
+    # Kling image-to-video with an end frame (the v2.1 ids are deprecated on fal, and no Kling
+    # "standard" tier takes an end frame). Field names differ between the two:
+    #   v2.5-turbo/pro: image_url, tail_image_url; v2.6/pro: start_image_url, end_image_url.
+    # Both: prompt, duration "5" | "10" -> video.url (mp4).
+    FAL_VIDEO_STANDARD: str = "fal-ai/kling-video/v2.5-turbo/pro/image-to-video"
+    FAL_VIDEO_PRO: str = "fal-ai/kling-video/v2.6/pro/image-to-video"
     PLUGINS_ENABLED: bool = True
     PLUGINS_DIR: str = "data/plugins"
     PLUGIN_TIMEOUT_S: int = 30
