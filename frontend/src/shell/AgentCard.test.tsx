@@ -382,7 +382,53 @@ describe('AgentCard, chat', () => {
   })
 })
 
+const toggle = () => screen.getByRole('button', { name: 'Show activity' })
+
 describe('AgentCard, questions', () => {
+  it('opens itself when the agent asks a question', async () => {
+    const run = makeRun({ source: 'muse', status: 'running', goal: 'Warmer' })
+    const qc = renderCard({ chat: true, run, messagesByRun: { r1: [] } })
+    expect(toggle().getAttribute('aria-expanded')).toBe('false')
+    const question = makeMessage({
+      id: 'q1',
+      role: 'question',
+      text: 'Which palette?',
+      data: { call_id: 'c1', tool: 'ask_user', args: { question: 'Which palette?', choices: ['Warm', 'Cool'] } },
+    })
+    act(() => applyEvent(qc, 'b1', 'agent.question', question))
+    await waitFor(() => expect(toggle().getAttribute('aria-expanded')).toBe('true'))
+    expect(screen.getByRole('button', { name: 'Warm' })).toBeTruthy()
+  })
+
+  it('stays closed once the person closes it, until the next question', async () => {
+    const run = makeRun({ source: 'muse', status: 'needs_input', goal: 'Warmer' })
+    const first = makeMessage({
+      id: 'q1',
+      role: 'question',
+      text: 'Which palette?',
+      data: { call_id: 'c1', tool: 'ask_user', args: { question: 'Which palette?', choices: ['Warm', 'Cool'] } },
+    })
+    const qc = renderCard({ chat: true, run, messagesByRun: { r1: [first] } })
+    await waitFor(() => expect(toggle().getAttribute('aria-expanded')).toBe('true'))
+    fireEvent.click(toggle())
+    expect(toggle().getAttribute('aria-expanded')).toBe('false')
+    // other lines arriving do not reopen it
+    act(() => applyEvent(qc, 'b1', 'agent.message', makeMessage({ id: 'm2', role: 'agent', text: 'Still here', created_at: '2026-11-04T10:00:03Z' })))
+    await screen.findByText('Still here')
+    expect(toggle().getAttribute('aria-expanded')).toBe('false')
+    // a new question does
+    act(() => applyEvent(qc, 'b1', 'agent.question', { ...first, answered: true }))
+    const second = makeMessage({
+      id: 'q2',
+      role: 'question',
+      text: 'And the trim?',
+      created_at: '2026-11-04T10:00:09Z',
+      data: { call_id: 'c2', tool: 'ask_user', args: { question: 'And the trim?', choices: ['Chrome', 'Black'] } },
+    })
+    act(() => applyEvent(qc, 'b1', 'agent.question', second))
+    await waitFor(() => expect(toggle().getAttribute('aria-expanded')).toBe('true'))
+  })
+
   it('a choice answers the question with a short line', async () => {
     const run = makeRun({ source: 'muse', status: 'needs_input', goal: 'Warmer' })
     const question = makeMessage({
@@ -397,7 +443,6 @@ describe('AgentCard, questions', () => {
       String(url).endsWith('/boards/b1/agent/messages') ? json({ run: { ...run, status: 'running' }, message: reply }) : new Response('{}', { status: 500 }),
     )
     renderCard({ chat: true, run, messagesByRun: { r1: [question] } })
-    fireEvent.click(screen.getByRole('button', { name: 'Show activity' }))
     fireEvent.click(screen.getByRole('button', { name: 'Warm' }))
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([u]) => String(u).endsWith('/boards/b1/agent/messages'))).toBe(true))
     const [, init] = vi.mocked(fetch).mock.calls.find(([u]) => String(u).endsWith('/boards/b1/agent/messages'))!
@@ -418,7 +463,6 @@ describe('AgentCard, questions', () => {
       String(url).endsWith('/boards/b1/agent/messages') ? json({ run: { ...run, status: 'running' }, message: reply }) : new Response('{}', { status: 500 }),
     )
     const qc = renderCard({ chat: true, run, messagesByRun: { r1: [question] } })
-    fireEvent.click(screen.getByRole('button', { name: 'Show activity' }))
     const yes = screen.getByRole('button', { name: 'Yes' })
     fireEvent.click(yes)
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([u]) => String(u).endsWith('/boards/b1/agent/messages'))).toBe(true))
@@ -441,7 +485,6 @@ describe('AgentCard, questions', () => {
       data: { call_id: 'c2', tool: 'confirm_part', args: { item_id: 'itm_7', part: 'shade', why: 'recolour' }, region: null },
     })
     renderCard({ chat: true, run, messagesByRun: { r1: [question] } })
-    fireEvent.click(screen.getByRole('button', { name: 'Show activity' }))
     fireEvent.click(screen.getByRole('button', { name: 'Yes' }))
     expect(await screen.findByText('Could not send your answer.')).toBeTruthy()
   })

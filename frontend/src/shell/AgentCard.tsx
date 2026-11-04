@@ -124,6 +124,17 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
     window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
   }, [loaded, run, steps, linked, boardId])
   const [wantExpanded, setExpanded] = useState(false)
+  // the agent asking opens the card, once per question: the question and its mark on the board live in
+  // the open card. Closing it again is the person's call until the next question
+  const openQuestion = chat
+    ? (messages.data ?? []).filter((m) => m.role === 'question' && !m.answered).at(-1)?.id
+    : undefined
+  const shownQuestion = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (openQuestion === undefined || openQuestion === shownQuestion.current) return
+    shownQuestion.current = openQuestion
+    setExpanded(true)
+  }, [openQuestion])
   // a replay collapses the card: expanded it would cover the board
   const expanded = wantExpanded && !spotlight
   if (drawer) return null
