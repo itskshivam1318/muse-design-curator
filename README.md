@@ -24,23 +24,33 @@ Built on Meta's models: **Muse Spark** reads, **SAM 3.1** finds the parts, **Mus
 
 ## The problem
 
-A car brand briefs an agency. Each of the three people in the room asks for something different:
+**1. "Like this one, but different in X."** Designers curate by saying *keep this, change only the
+colour* (or the material, or the silhouette, or something they can't name). Today's tools match
+overall similarity, so they can't hold "keep everything, vary only X". Designers re-query, edit by
+hand or start over from text, and as a board grows, "more like this" drifts toward too similar or
+too random.
+
+**2. Words that mean nothing.** "Premium", "clean" and "more modern" mean different things to
+different people, and mostly signal approval rather than anything visual. Human designers close the
+gap by building a project vocabulary from references and options side by side. AI tools don't, so
+users re-roll, blame their prompts, and can't explain or reproduce a look across sessions.
+
+**Muse's answer: the board is the shared language.** Each reference is an example of what you mean.
+Each item you keep or mark "not this" teaches the board what you want. Each dimension is a word you
+and Muse have agreed on.
+
+### An example brief
+
+A car brand briefs an agency, and each person in the room asks for something different:
 
 > **Brand director:** "We're a 70-year-old company. Heritage is the whole point."
 > **Marketing head:** "If it looks old, we're dead. It has to feel like it was made next year."
 > **CEO:** "And warm. Our competitors are cold."
 
-Each brought a reference. The three have nothing in common.
+Each brought a reference, and the three have nothing in common. Regenerating gives a pile of
+almost-right images, and every attempt changes everything at once.
 
 <img src="docs/media/problem.jpg" alt="Three references, heritage, made next year, warm: what do they have in common? Nothing." width="720">
-
-Today the designer types a prompt into an image model and hits **regenerate** over and over. Each
-result is close but not right, and every attempt changes everything at once. The output is a
-*supermarket of almost-right*, and agencies are drowning in generic AI slop.
-
-**The designer doesn't need more images.** They need to push the one thing the client trusts in a
-new direction without losing the other two. Boards can hold images and AI can make them, but
-until now nothing in between understood *what is in them*.
 
 ## What Muse does
 
