@@ -1,13 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
-import { itemThumbUrl, keys, listBoards } from '../api'
+import { keys, listBoards } from '../api'
 import { Link } from '../Link'
-import { SHOWCASE } from './showcase'
+import { presentShowcase, SHOWCASE } from './showcase'
+import { ShowcaseCards } from './ShowcaseCards'
 import './landing.css'
 
 export function LandingPage() {
   const boards = useQuery({ queryKey: keys.boards, queryFn: listBoards })
-  const here = new Set((boards.data ?? []).map((b) => b.id))
-  const cards = SHOWCASE.boards.filter((b) => here.has(b.boardId))
+  const cards = presentShowcase(boards.data)
 
   return (
     <main className="landing">
@@ -22,21 +22,7 @@ export function LandingPage() {
       {SHOWCASE.videoUrl && <video className="landing-video" controls src={SHOWCASE.videoUrl} />}
       {boards.isSuccess && cards.length === 0 && <p className="muted">The demo boards are not on this server yet.</p>}
       {boards.isError && <p className="muted">Could not load the demo boards.</p>}
-      <div className="landing-cards">
-        {cards.map((b) => (
-          <article key={b.boardId} className="landing-card">
-            <img src={itemThumbUrl(b.coverItemId)} alt="" loading="lazy" />
-            <h2>{b.title}</h2>
-            <p className="muted">{b.line}</p>
-            <div className="landing-actions">
-              <Link className="btn" href={`/boards/${b.boardId}?replay=${b.runId}`}>
-                Show me how
-              </Link>
-              <Link href={`/boards/${b.boardId}`}>Look around</Link>
-            </div>
-          </article>
-        ))}
-      </div>
+      <ShowcaseCards boards={boards.data} />
       <p>
         <Link href="/boards">All boards</Link>
       </p>

@@ -226,7 +226,7 @@ textarea {
 
 /* ---- boards list ---- */
 .boards-page {
-  max-width: 640px;
+  max-width: 880px;
   margin: 0 auto;
   padding: 56px 16px;
   display: grid;
@@ -245,6 +245,18 @@ textarea {
 }
 .new-board .btn {
   white-space: nowrap;
+}
+.showcase {
+  display: grid;
+  gap: 8px;
+}
+.showcase h2,
+.board-list-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+.showcase .landing-cards {
+  margin-top: 8px;
 }
 .board-list {
   list-style: none;

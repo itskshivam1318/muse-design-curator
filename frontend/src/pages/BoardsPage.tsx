@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useState } from 'react'
 import { createBoard, keys, listBoards } from '../api'
 import { useDemo } from '../demo'
+import { presentShowcase } from '../landing/showcase'
+import { ShowcaseCards } from '../landing/ShowcaseCards'
 import { Link } from '../Link'
 import { DemoBadge } from '../panels/DemoBadge'
 import { navigate } from '../router'
@@ -17,6 +19,9 @@ export function BoardsPage() {
   const [title, setTitle] = useState('')
   const id = useId()
   const { locked } = useDemo()
+  // the demo boards get cards above; the list holds the rest so none shows twice
+  const demoIds = new Set(presentShowcase(boards.data).map((b) => b.boardId))
+  const own = boards.data?.filter((b) => !demoIds.has(b.id))
   const create = useMutation({
     mutationFn: (t: string) => createBoard({ title: t }),
     onSuccess: (b) => {
@@ -55,16 +60,24 @@ export function BoardsPage() {
           </p>
         )}
       </form>
+      {demoIds.size > 0 && (
+        <section className="showcase" aria-labelledby={`${id}-demo`}>
+          <h2 id={`${id}-demo`}>Demo boards</h2>
+          <p className="muted">Recorded end to end by the agent. Watch it work, or open one and look around.</p>
+          <ShowcaseCards boards={boards.data} />
+        </section>
+      )}
       {boards.isLoading && <p className="muted">Loading boards…</p>}
       {boards.isError && (
         <p className="error" role="alert">
           Could not load boards: {boards.error.message}
         </p>
       )}
-      {boards.data && boards.data.length === 0 && <p className="muted">No boards yet. Name your first one above.</p>}
-      {boards.data && boards.data.length > 0 && (
+      {own && own.length === 0 && demoIds.size === 0 && <p className="muted">No boards yet. Name your first one above.</p>}
+      {own && own.length > 0 && demoIds.size > 0 && <h2 className="board-list-title">Your boards</h2>}
+      {own && own.length > 0 && (
         <ul className="board-list">
-          {boards.data.map((b) => (
+          {own.map((b) => (
             <li key={b.id}>
               <Link href={`/boards/${encodeURIComponent(b.id)}`}>
                 <b>{b.title}</b>

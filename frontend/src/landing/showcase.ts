@@ -1,3 +1,5 @@
+import type { BoardSummary } from '../api'
+
 /** The recorded demo boards the landing page offers. Ids survive a bundle import, so this is the same locally and deployed. */
 export interface ShowcaseBoard {
   boardId: string
@@ -39,4 +41,10 @@ export const SHOWCASE: { videoUrl: string | null; boards: ShowcaseBoard[] } = {
       line: 'Five looks that stay in one range, and a look reproduced in a second colour.',
     },
   ],
+}
+
+/** The recorded demo boards that exist on this server, in showcase order. */
+export function presentShowcase(boards: BoardSummary[] | undefined): ShowcaseBoard[] {
+  const here = new Set((boards ?? []).map((b) => b.id))
+  return SHOWCASE.boards.filter((b) => here.has(b.boardId))
 }
