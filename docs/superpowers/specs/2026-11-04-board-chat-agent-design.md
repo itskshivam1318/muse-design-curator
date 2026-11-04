@@ -79,9 +79,31 @@ kept the agent card readable.
   apply. Existing per-board render/analyse caps stay the cost guard.
 - `backend/app/` must not contain the words watch, fashion, interior, dial, sofa (a test enforces it).
 - Next migration is **0012**.
-- `DEMO_MODE` write-lock: chat is disabled (input shows why) when the board is read-only.
+- **Chat is off in `DEMO_MODE`** (person's decision), even for unlocked visitors: the input says so and
+  points to "Show me how" replays. No unlock plumbing into the loop, no public Muse Spark spend.
+- Chat needs `REASONING_PROVIDER=muse-spark` (Responses API + function tools). With `mock` or
+  `muse-spark-open` the input is disabled with the reason (my call). Frontend e2e tests mock the chat
+  routes; loop tests use the fake client (§10).
 
 ## 5. Backend
+
+### 5.0 Thread lifecycle (person's decision: a New chat button)
+
+- **One conversation per board** at a time. The first message opens a run with `source: "chat"`,
+  `goal` = the first message (trimmed to 1000 chars), and **no deliverables** (chat runs may have an
+  empty list; `deliverable_problems` treats an empty list as nothing to check).
+- Statuses: `running` (the loop is working), `needs_input` (a question is open), and a new open status
+  **`waiting`** (idle, waiting for the person; added to `run_state.OPEN`). The card shows working/Stop
+  only for `running`.
+- **Stop** halts the current work only: the loop stops at its next check and the run goes to
+  `waiting` with its history kept. The person can carry on in the same conversation.
+- **New chat** (a button on the card) ends the conversation: the run goes to `done` without finish
+  checks, so it appears in the run picker and "Show me how" replays it. The next message opens a new run.
+- `finish` is **not offered in chat**. `compose_output` is, so the agent can still lay out a sheet.
+- **MCP and chat on one board** (my call): `agent_repo.open_run` / `run_state.current` become
+  source-aware. While a chat run is open, MCP `set_goal` is refused with `CHAT_OPEN` unless
+  `replace: true`, which ends the chat run (`done`) first. While an MCP run is open, the chat input is
+  disabled ("Claude Code is working"), as today.
 
 ### 5.1 The loop — `app/agent/chat/loop.py`
 
@@ -109,15 +131,16 @@ run_turn(board_id, run_id, user_message):
 - `ask_user` / `confirm_part` **suspend** the loop: history is saved, the run goes to `needs_input`
   (existing status). The person's reply (a message, a choice, or a drawn box) resumes it with the
   answer as that call's `function_call_output`.
-- Stop: existing `PATCH /agent-runs/{id}` (status) — the loop checks it before every model call and
-  tool call.
+- Stop: existing `PATCH /agent-runs/{id}` — the loop checks a stop flag before every model call and
+  tool call; stopping sets the run to `waiting` (§5.0), not `paused`.
 - Model errors: retry once (existing `call_model` helper); then post an agent message with the error
   code and leave the run open.
 
 ### 5.2 Tools offered in chat
 
 The existing registry, minus `MCP_ONLY` and minus `create_board`, `list_boards`, `open_board`,
-`upload_reference`, `set_goal` (the board is the open one; the loop owns the run). New registry tools
+`upload_reference`, `set_goal`, `finish` (the board is the open one; the loop owns the run; New chat
+ends it). New registry tools
 (also useful over MCP):
 
 | Tool | Does | Wraps |
@@ -127,7 +150,7 @@ The existing registry, minus `MCP_ONLY` and minus `create_board`, `list_boards`,
 | `extract_part(item_id, part)` | Cuts a part out as its own picture (source for `put_into`). | `POST /items/{id}/parts/{key}/extract` |
 | `look_at(item_ids≤6)` | Gives the model the pictures (next input as images). | `GET /items/{id}/image` |
 | `wait_all(ids, kind)` | Waits for several queued renders; returns each as it finishes. | existing `wait` logic |
-| `update_goal(goal?, deliverables?)` | Changes the thread's run goal/deliverables. | run_state |
+| `update_goal(goal?, deliverables?)` | Changes the thread's run goal/deliverables (so a sheet can be checked). | run_state |
 
 Chat-only tools (handled by the loop, not the registry):
 
@@ -155,6 +178,7 @@ Routes (`app/api/agent.py`):
   → 202 `{run_id, message}`. Opens a run (`source: "chat"`) if the board has no open chat run; joins it
   otherwise. While the loop is working, the message is queued and picked up at the next step.
 - `GET /agent-runs/{run_id}/messages` → the thread.
+- `POST /agent-runs/{run_id}/new-chat` → ends the conversation (status `done`).
 - Events (existing `events.publish`): `agent.message` (new message), `agent.step` (unchanged),
   `agent.question` (question with choices / part highlight), `agent.status`.
 
@@ -182,14 +206,17 @@ open ("Claude Code is working"), as today.
 - Existing `agent_steps` keep tool name, args, `say`, result, item ids (unchanged).
 - New: `data/agent_traces/{run_id}.jsonl`, one line per model call (input delta, output items with
   encrypted reasoning shown as length only, usage, latency), per tool call, per person message — the
-  spike's format. Written always in dev; behind `AGENT_TRACES=1` elsewhere.
-- `GET /agent-runs/{run_id}/trace` (dev only) returns it; the card's ⋯ menu links "Download trace".
+  spike's format. Controlled by a new setting `AGENT_TRACES` (default `True`; set `False` on Fly).
+- `GET /agent-runs/{run_id}/trace` returns it when `AGENT_TRACES` is on (404 otherwise); the card's ⋯
+  menu links "Download trace".
 
 ### 5.7 Put / view result checks (P4)
 
-After a put-into or render-view job lands, run the same target check visualised options get (target =
-the words / the source's subject at the spot) and store it on the item, so `wait`/`put_into` return a
-non-null `check`.
+After a put-into or render-view job lands, run the same target check visualised options get and store
+it on the item, so `wait`/`put_into`/`render_view` return a non-null `check`. Targets (my call):
+put-into = the words if given, else "the source picture's subject placed at the spot"; render-view =
+"the same design seen from <view>". A failed check **blocks `finish`** like any other failed check, for
+MCP runs too (accepted: it is the point of the check); `unclear` does not block.
 
 ## 6. Frontend
 
@@ -225,6 +252,8 @@ point when it would overlap.
 
 ## 7. Decided by the person
 
+- Conversation ends with a **New chat** button; Stop only halts the current work (§5.0).
+- Chat is **off in DEMO_MODE** (§4).
 - Muse Spark drives the loop; all Meta (no Claude in-app).
 - The agent goes ahead on its own; asks only when unsure.
 - Part detection: the agent marks its guess, the person confirms or fixes.
@@ -232,7 +261,11 @@ point when it would overlap.
 
 ## 8. Calls made in this design (check these)
 
-- One run per chat thread; `set_goal` hidden in chat (P7).
+- One run per chat thread; `set_goal` and `finish` hidden in chat; chat runs have no deliverables
+  unless `update_goal` adds them; new open status `waiting` (P7, §5.0).
+- MCP `set_goal` refused while a chat run is open unless `replace` (§5.0).
+- Failed put-into/view checks block `finish` for all runs; check targets as in §5.7.
+- Chat disabled unless `REASONING_PROVIDER=muse-spark`; new `AGENT_TRACES` setting.
 - Selection sent with every message resolves "this car" (P3).
 - Fix-a-part = drag a box, using the existing SAM box hint (P2).
 - Chat input disabled during an MCP run rather than merging the two.
@@ -252,6 +285,8 @@ point when it would overlap.
 - Loop unit tests with a fake Muse Spark client that replays scripted Responses outputs (the spike's
   three runs become fixtures: wrong-car ambiguity, part correction by box, put-into check).
 - Tool tests for `add_part` (empty region removes the part), `extract_part`, `wait_all`.
-- Route tests: message opens/joins a run; answer resumes a `needs_input` run; stop halts the loop.
+- Route tests: message opens/joins a run; answer resumes a `needs_input` run; Stop → `waiting` with
+  history kept; New chat → `done` and the next message opens a new run; MCP `set_goal` refused while a
+  chat run is open; chat refused in DEMO_MODE and without muse-spark.
 - Frontend: thread rendering, question buttons, confirm-part Fix flow, input disabled states.
 - One manual end-to-end with the real model on a car board, trace reviewed.
