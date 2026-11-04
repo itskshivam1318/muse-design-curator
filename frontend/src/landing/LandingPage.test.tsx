@@ -8,10 +8,12 @@ import { SHOWCASE } from './showcase'
 const CAR = SHOWCASE.boards[0]
 const UI = SHOWCASE.boards[1]
 
+const VIDEO = SHOWCASE.videoUrl
+
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
-  SHOWCASE.videoUrl = null
+  SHOWCASE.videoUrl = VIDEO
   window.history.pushState(null, '', '/')
 })
 
@@ -77,8 +79,17 @@ describe('LandingPage', () => {
     expect(screen.getByRole('link', { name: 'All boards' })).toBeTruthy()
   })
 
+  it('embeds a YouTube link as a player', async () => {
+    serve([CAR.boardId])
+    SHOWCASE.videoUrl = 'https://youtu.be/Q1jFivSlVcI'
+    const { container } = renderWith(<LandingPage />)
+    await screen.findByText('Show me how')
+    expect(container.querySelector('iframe')?.getAttribute('src')).toBe('https://www.youtube-nocookie.com/embed/Q1jFivSlVcI')
+  })
+
   it('embeds the video only when there is one', async () => {
     serve([CAR.boardId])
+    SHOWCASE.videoUrl = null
     const { container, unmount } = renderWith(<LandingPage />)
     await screen.findByText('Show me how')
     expect(container.querySelector('video')).toBeNull()

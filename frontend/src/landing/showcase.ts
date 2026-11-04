@@ -10,7 +10,7 @@ export interface ShowcaseBoard {
 }
 
 export const SHOWCASE: { videoUrl: string | null; boards: ShowcaseBoard[] } = {
-  videoUrl: null,
+  videoUrl: 'https://youtu.be/Q1jFivSlVcI',
   boards: [
     {
       boardId: 'brd_01m6h989kz0tz8xjvjbp6zbz9x',
@@ -47,4 +47,10 @@ export const SHOWCASE: { videoUrl: string | null; boards: ShowcaseBoard[] } = {
 export function presentShowcase(boards: BoardSummary[] | undefined): ShowcaseBoard[] {
   const here = new Set((boards ?? []).map((b) => b.id))
   return SHOWCASE.boards.filter((b) => here.has(b.boardId))
+}
+
+/** A YouTube watch or short link as its embed URL; null for anything else (played as a file). */
+export function youtubeEmbed(url: string): string | null {
+  const m = url.match(/^https:\/\/(?:youtu\.be\/|(?:www\.)?youtube\.com\/watch\?v=)([\w-]{11})/)
+  return m ? `https://www.youtube-nocookie.com/embed/${m[1]}` : null
 }

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { keys, listBoards } from '../api'
 import { Link } from '../Link'
-import { presentShowcase, SHOWCASE } from './showcase'
+import { presentShowcase, SHOWCASE, youtubeEmbed } from './showcase'
 import { ShowcaseCards } from './ShowcaseCards'
 import './landing.css'
 
@@ -19,7 +19,18 @@ export function LandingPage() {
         </p>
         <p>Words like "premium" or "clean" mean different things to different people. Muse pins them to what your own pictures share.</p>
       </header>
-      {SHOWCASE.videoUrl && <video className="landing-video" controls src={SHOWCASE.videoUrl} />}
+      {SHOWCASE.videoUrl &&
+        (youtubeEmbed(SHOWCASE.videoUrl) ? (
+          <iframe
+            className="landing-video"
+            src={youtubeEmbed(SHOWCASE.videoUrl) ?? undefined}
+            title="Muse demo video"
+            allow="encrypted-media; picture-in-picture; fullscreen"
+            allowFullScreen
+          />
+        ) : (
+          <video className="landing-video" controls src={SHOWCASE.videoUrl} />
+        ))}
       {boards.isSuccess && cards.length === 0 && <p className="muted">The demo boards are not on this server yet.</p>}
       {boards.isError && <p className="muted">Could not load the demo boards.</p>}
       <ShowcaseCards boards={boards.data} />
