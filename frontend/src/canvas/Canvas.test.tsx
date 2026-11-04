@@ -570,7 +570,7 @@ describe('Canvas spotlight replay', () => {
     ]
     renderBoard(client([], far))
     const stage = Konva.stages.at(-1)!
-    expect(stage.x()).toBe(80) // not fitted yet: b and c are off screen
+    expect(far[1].x * stage.scaleX() + stage.x()).toBeGreaterThan(1600) // b starts off screen
     act(() => startSpotlight('r1', [step(['a', 'b', 'c'])]))
     const s = stage.scaleX()
     expect(s).toBeLessThan(1)
@@ -585,6 +585,38 @@ describe('Canvas spotlight replay', () => {
     // a hole is cut for each lit item
     const d = document.querySelector('.spotlight-dim')!.getAttribute('d')!
     expect(d.match(/M/g)).toHaveLength(4)
+  })
+
+  it("the board's first fit does not undo a step's framing", async () => {
+    sized()
+    const all = [
+      makeItem({ id: 'a', board_id: 'b1', x: 0, y: 0 }),
+      makeItem({ id: 'b', board_id: 'b1', x: 3000, y: 0 }),
+      makeItem({ id: 'unlit', board_id: 'b1', x: 12000, y: 9000 }),
+    ]
+    renderBoard(client([], all))
+    const stage = Konva.stages.at(-1)!
+    act(() => startSpotlight('r1', [step(['a', 'b'])])) // opened before the first fit (300 ms after load)
+    const framed = { x: stage.x(), y: stage.y(), scale: stage.scaleX() }
+    await act(() => new Promise((r) => setTimeout(r, 400)))
+    expect({ x: stage.x(), y: stage.y(), scale: stage.scaleX() }).toEqual(framed)
+  })
+
+  it('frames the step once its pictures arrive', async () => {
+    sized()
+    const qc = client([], [])
+    renderBoard(qc)
+    const stage = Konva.stages.at(-1)!
+    act(() => startSpotlight('r1', [step(['a', 'b'])])) // the steps load before the board's items
+    const ab = [makeItem({ id: 'a', board_id: 'b1', x: 0, y: 0 }), makeItem({ id: 'b', board_id: 'b1', x: 3000, y: 0 })]
+    act(() => qc.setQueryData(keys.items('b1'), ab))
+    // framed by the replay (the board's first fit stands aside while one is on)
+    await waitFor(() => expect(stage.scaleX()).toBeLessThan(1))
+    const s = stage.scaleX()
+    for (const i of ab) {
+      expect(i.x * s + stage.x()).toBeGreaterThanOrEqual(0)
+      expect((i.x + i.w) * s + stage.x()).toBeLessThanOrEqual(1600)
+    }
   })
 
   it('draws no item toolbar during a replay', () => {

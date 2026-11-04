@@ -38,7 +38,7 @@ import { ConnectLayer } from '../put/ConnectLayer'
 import { useGhosts } from '../put/ghosts'
 import { useConnect } from '../put/useConnect'
 import { useAnalysis, useBoardLens, useExplorations, useRegion, visibleItems } from '../queries'
-import { currentStep, useSpotlight } from '../shell/spotlight'
+import { currentStep, spotlightStore, useSpotlight } from '../shell/spotlight'
 import { setTool, useTool } from '../shell/tools'
 import type { ItemActions } from './actions'
 import { handleDrop } from './drop'
@@ -236,7 +236,8 @@ export function Canvas({
     if (fitted.current) return
     const t = setTimeout(() => {
       fitted.current = true
-      fit()
+      // a replay already frames its step; fitting the whole board would undo that
+      if (!spotlightStore.get()) fit()
     }, 300) // let a batch of item.added events settle first
     return () => clearTimeout(t)
   }, [items.length, size.width, fit])
@@ -248,10 +249,11 @@ export function Canvas({
   const spotKey = spotlight ? `${spotlight.runId}:${spotlight.index}` : null
   // adjusted while rendering (not in an effect), so the step's first paint is already framed
   const [framedSpot, setFramedSpot] = useState<string | null>(null)
-  if (spotKey !== framedSpot && (spotKey === null || size.width > 0)) {
+  // a step is framed once there is something to frame: its pictures may arrive after its steps
+  if (spotKey !== framedSpot && (spotKey === null || (size.width > 0 && lit.length > 0))) {
     setFramedSpot(spotKey)
     // room under the lit pictures for the caption card
-    if (spotKey !== null && lit.length > 0) setView(fitView(lit.map(itemBounds), size, { ...fitInsets(size.width), bottom: 240 }))
+    if (spotKey !== null) setView(fitView(lit.map(itemBounds), size, { ...fitInsets(size.width), bottom: 240 }))
   }
 
   useImperativeHandle(
