@@ -1,6 +1,6 @@
 import Konva from 'konva'
 import { useEffect, useRef, useState } from 'react'
-import { Circle, Group, Image as KImage, Label, Line, Rect, Tag, Text } from 'react-konva'
+import { Circle, Group, Image as KImage, Label, Line, Path, Rect, Tag, Text } from 'react-konva'
 import { type Item, itemImageUrl } from '../api'
 import { useNoteVisualizing } from '../events'
 import type { VerdictTone } from '../explore/verdict'
@@ -24,7 +24,9 @@ import type { CanvasPalette } from './palette'
 import { useImage } from './useImage'
 
 const KEPT_W = 38 // screen px
-const GENERATED_W = 66 // screen px
+const GENERATED_ICON = 20 // screen px across
+/** A four-point sparkle in a 20 px box: the mark of a made picture. */
+const SPARKLE = 'M10 4.5 L11.4 8.6 L15.5 10 L11.4 11.4 L10 15.5 L8.6 11.4 L4.5 10 L8.6 8.6 Z'
 
 const toneColor = (tone: VerdictTone | undefined, p: CanvasPalette) =>
   tone === 'ok' ? p.ok : tone === 'warn' ? p.warn : tone === 'error' ? p.bad : p.muted
@@ -257,7 +259,7 @@ interface DecorProps {
   selected: boolean
   reduced: boolean
   palette: CanvasPalette
-  /** A generated item's check so far: tints its "generated" badge. */
+  /** A generated item's check so far: tints its sparkle icon. */
   verdictTone?: VerdictTone
 }
 
@@ -293,10 +295,17 @@ export function ItemDecorations({ item, bounds, scale, hovered, selected, reduce
         </Label>
       )}
       {item.origin === 'generated' && (
-        <Label name="generated-badge" x={bounds.x + bounds.width - inset - GENERATED_W / scale} y={bounds.y + inset} listening={false}>
-          <Tag fill={toneColor(verdictTone, palette)} cornerRadius={8 / scale} />
-          <Text text="generated" width={GENERATED_W / scale} align="center" fontSize={badgeFont} padding={badgePad} fill="#ffffff" />
-        </Label>
+        <Group
+          name="generated-badge"
+          x={bounds.x + bounds.width - inset - GENERATED_ICON / scale}
+          y={bounds.y + inset}
+          scaleX={1 / scale}
+          scaleY={1 / scale}
+          listening={false}
+        >
+          <Circle x={GENERATED_ICON / 2} y={GENERATED_ICON / 2} radius={GENERATED_ICON / 2} fill={toneColor(verdictTone, palette)} />
+          <Path data={SPARKLE} fill="#ffffff" />
+        </Group>
       )}
       {item.origin === 'candidate' && (
         <Label x={bounds.x + bounds.width - inset - KEPT_W / scale} y={bounds.y + inset} listening={false}>

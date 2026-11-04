@@ -72,15 +72,21 @@ describe('generated badge', () => {
         </Layer>
       </Stage>,
     )
-    const label = stage.current!.findOne<Konva.Label>('.generated-badge')
-    const out = label && { text: label.getText().text(), fill: label.getTag().fill() }
+    const icon = stage.current!.findOne<Konva.Group>('.generated-badge')
+    const disc = icon?.findOne<Konva.Circle>('Circle')
+    const out = icon && {
+      fill: disc?.fill(),
+      words: icon.find('Text').length,
+      // drawn at a fixed screen size: 20 px across at any zoom
+      size: (disc?.radius() ?? 0) * 2 * icon.scaleX(),
+    }
     cleanup()
     return out
   }
 
-  it('is always on a generated item, tinted by its check', () => {
-    expect(badge()).toEqual({ text: 'generated', fill: palette.muted })
-    expect(badge(undefined, 'pending')).toEqual({ text: 'generated', fill: palette.muted })
+  it('is a small icon on a generated item, no word, tinted by its check', () => {
+    expect(badge()).toEqual({ fill: palette.muted, words: 0, size: 20 })
+    expect(badge(undefined, 'pending')?.fill).toBe(palette.muted)
     expect(badge(undefined, 'ok')?.fill).toBe(palette.ok)
     expect(badge(undefined, 'warn')?.fill).toBe(palette.warn)
     expect(badge(undefined, 'error')?.fill).toBe(palette.bad)
