@@ -9,7 +9,7 @@ import { stubCanvasContext } from '../test/canvasStub'
 import { makeItem } from '../test/fixtures'
 import { KEPT_EXTRA, petalRadius } from '../living/ring'
 import { selection } from './selection'
-import { closeSpotlight, startSpotlight } from '../shell/spotlight'
+import { closeSpotlight, spotlightStore, startSpotlight } from '../shell/spotlight'
 import type { AgentStep } from '../api'
 
 // remember each world the canvas makes, so a test can watch it
@@ -571,7 +571,7 @@ describe('Canvas spotlight replay', () => {
     renderBoard(client([], far))
     const stage = Konva.stages.at(-1)!
     expect(far[1].x * stage.scaleX() + stage.x()).toBeGreaterThan(1600) // b starts off screen
-    act(() => startSpotlight('r1', [step(['a', 'b', 'c'])]))
+    act(() => startSpotlight('b1', 'r1', [step(['a', 'b', 'c'])]))
     const s = stage.scaleX()
     expect(s).toBeLessThan(1)
     for (const i of far) {
@@ -596,10 +596,50 @@ describe('Canvas spotlight replay', () => {
     ]
     renderBoard(client([], all))
     const stage = Konva.stages.at(-1)!
-    act(() => startSpotlight('r1', [step(['a', 'b'])])) // opened before the first fit (300 ms after load)
+    act(() => startSpotlight('b1', 'r1', [step(['a', 'b'])])) // opened before the first fit (300 ms after load)
     const framed = { x: stage.x(), y: stage.y(), scale: stage.scaleX() }
     await act(() => new Promise((r) => setTimeout(r, 400)))
     expect({ x: stage.x(), y: stage.y(), scale: stage.scaleX() }).toEqual(framed)
+  })
+
+  it('a replay opened on a step with no pictures leaves the first fit to frame the board', async () => {
+    sized()
+    const qc = client([], [])
+    renderBoard(qc)
+    const stage = Konva.stages.at(-1)!
+    act(() => startSpotlight('b1', 'r1', [step([])])) // a link opens it on set_goal, before the items load
+    const all = [makeItem({ id: 'a', board_id: 'b1', x: 0, y: 0 }), makeItem({ id: 'b', board_id: 'b1', x: 3000, y: 2500 })]
+    act(() => qc.setQueryData(keys.items('b1'), all))
+    expect(stage.scaleX()).toBe(1) // nothing framed yet
+    await act(() => new Promise((r) => setTimeout(r, 400)))
+    const s = stage.scaleX()
+    expect(s).toBeLessThan(1)
+    for (const i of all) {
+      expect(i.x * s + stage.x()).toBeGreaterThanOrEqual(0)
+      expect((i.x + i.w) * s + stage.x()).toBeLessThanOrEqual(1600)
+      expect(i.y * s + stage.y()).toBeGreaterThanOrEqual(0)
+      expect((i.y + i.h) * s + stage.y()).toBeLessThanOrEqual(1200)
+    }
+  })
+
+  it("shows nothing of another board's replay", () => {
+    sized()
+    renderBoard(client([], [makeItem({ id: 'a', board_id: 'b1', x: 0, y: 0 })]))
+    const stage = Konva.stages.at(-1)!
+    const before = { x: stage.x(), y: stage.y(), scale: stage.scaleX() }
+    act(() => startSpotlight('b2', 'r9', [step(['a'])]))
+    expect(screen.queryByRole('dialog', { name: 'Replay' })).toBeNull()
+    expect(document.querySelector('.spotlight-dim')).toBeNull()
+    expect({ x: stage.x(), y: stage.y(), scale: stage.scaleX() }).toEqual(before)
+  })
+
+  it('leaving the board ends its replay', () => {
+    sized()
+    const { unmount } = renderBoard(client([], [makeItem({ id: 'a', board_id: 'b1', x: 0, y: 0 })]))
+    act(() => startSpotlight('b1', 'r1', [step(['a'])]))
+    expect(screen.getByRole('dialog', { name: 'Replay' })).toBeTruthy()
+    unmount()
+    expect(spotlightStore.get()).toBeNull()
   })
 
   it('frames the step once its pictures arrive', async () => {
@@ -607,7 +647,7 @@ describe('Canvas spotlight replay', () => {
     const qc = client([], [])
     renderBoard(qc)
     const stage = Konva.stages.at(-1)!
-    act(() => startSpotlight('r1', [step(['a', 'b'])])) // the steps load before the board's items
+    act(() => startSpotlight('b1', 'r1', [step(['a', 'b'])])) // the steps load before the board's items
     const ab = [makeItem({ id: 'a', board_id: 'b1', x: 0, y: 0 }), makeItem({ id: 'b', board_id: 'b1', x: 3000, y: 0 })]
     act(() => qc.setQueryData(keys.items('b1'), ab))
     // framed by the replay (the board's first fit stands aside while one is on)
@@ -624,7 +664,7 @@ describe('Canvas spotlight replay', () => {
     renderBoard(client([], [makeItem({ id: 'a', board_id: 'b1', x: 0, y: 0 })]))
     act(() => selection.select(['a']))
     expect(screen.getByRole('toolbar', { name: 'Item actions' })).toBeTruthy()
-    act(() => startSpotlight('r1', [step(['a'])]))
+    act(() => startSpotlight('b1', 'r1', [step(['a'])]))
     expect(screen.queryByRole('toolbar', { name: 'Item actions' })).toBeNull()
     expect(screen.getByRole('dialog', { name: 'Replay' })).toBeTruthy()
     act(() => closeSpotlight())

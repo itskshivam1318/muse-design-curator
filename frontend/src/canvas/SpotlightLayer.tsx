@@ -51,8 +51,13 @@ export function SpotlightLayer({
   const nextRef = useRef<HTMLButtonElement>(null)
   const step = currentStep(spotlight)
 
+  // focus moves to Next, and goes back where it was when the replay closes
   useEffect(() => {
+    const before = document.activeElement
     nextRef.current?.focus()
+    return () => {
+      if (before instanceof HTMLElement && before.isConnected) before.focus()
+    }
   }, [])
 
   useEffect(() => {
@@ -87,7 +92,7 @@ export function SpotlightLayer({
           </button>
         </div>
         <p className="spotlight-say">{step.say || step.tool}</p>
-        {lit.length === 0 && <p className="spotlight-gone">This step's pictures are no longer on the board.</p>}
+        {step.item_ids.length > 0 && lit.length === 0 && <p className="spotlight-gone">This step's pictures aren't on the board now.</p>}
         <div className="spotlight-foot">
           <span className="spotlight-count">
             {spotlight.index + 1} of {count}

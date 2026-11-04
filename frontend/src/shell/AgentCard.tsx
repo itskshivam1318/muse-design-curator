@@ -67,11 +67,11 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
   useEffect(() => {
     if (linkHandled.current || !loaded) return
     linkHandled.current = true
-    if (run?.id === linked && run.status === 'done' && replaySteps(steps).length > 0) startSpotlight(run.id, steps)
+    if (run?.id === linked && run.status === 'done' && replaySteps(steps).length > 0) startSpotlight(boardId, run.id, steps)
     const url = new URL(window.location.href)
     url.searchParams.delete('replay')
     window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
-  }, [loaded, run, steps, linked])
+  }, [loaded, run, steps, linked, boardId])
   const [wantExpanded, setExpanded] = useState(false)
   // a replay collapses the card: expanded it would cover the board
   const expanded = wantExpanded && !spotlight
@@ -82,7 +82,7 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
   const open = run?.status === 'running' || run?.status === 'needs_input'
   const canReplay = run?.status === 'done' && replaySteps(steps).length > 0
   const showMeHow = run && canReplay && (
-    <button type="button" className="agent-replay" disabled={spotlight !== null} onClick={() => startSpotlight(run.id, steps)}>
+    <button type="button" className="agent-replay" disabled={spotlight !== null} onClick={() => startSpotlight(boardId, run.id, steps)}>
       {spotlight ? 'Replaying…' : 'Show me how'}
     </button>
   )
@@ -129,7 +129,7 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
               <select aria-label="Run" className="agent-run-pick" value={run.id} onChange={(e) => setPick(e.target.value)}>
                 {runs.map((r) => (
                   <option key={r.id} value={r.id}>
-                    {agentName(r)} · {r.goal.slice(0, 40)}
+                    {agentName(r)} · {clock(r.created_at)} · {r.goal.slice(0, 40)}
                   </option>
                 ))}
               </select>

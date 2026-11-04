@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { AgentStep } from '../api'
 import { closeSpotlight, spotlightStore, startSpotlight, useSpotlight } from '../shell/spotlight'
 import type { Bounds } from './geometry'
@@ -27,7 +27,7 @@ function Wrapper({ lit = [b(10, 10)] }: { lit?: Bounds[] }) {
 }
 
 beforeEach(() => {
-  startSpotlight('r1', [step(12, 'Rendering the anchor room.'), step(15, 'Placing the lamp.')])
+  startSpotlight('b1', 'r1', [step(12, 'Rendering the anchor room.'), step(15, 'Placing the lamp.')])
 })
 afterEach(() => {
   cleanup()
@@ -43,8 +43,20 @@ describe('SpotlightLayer', () => {
   })
 
   it("shows the card centred when the step's items are gone", () => {
+    closeSpotlight()
+    startSpotlight('b1', 'r1', [{ ...step(12, 'Rendering the anchor room.'), item_ids: ['gone'] }])
     render(<Wrapper lit={[]} />)
-    expect(screen.getByText("This step's pictures are no longer on the board.")).toBeTruthy()
+    expect(screen.getByText("This step's pictures aren't on the board now.")).toBeTruthy()
+    expect(screen.getByRole('dialog', { name: 'Replay' }).style.left).toBe(`${(size.width - 320) / 2}px`)
+  })
+
+  it('a step that touched no pictures shows the card centred, with no word about pictures', () => {
+    render(<Wrapper lit={[]} />) // the default steps have item_ids: []
+    expect(screen.getByText('Rendering the anchor room.')).toBeTruthy()
+    expect(document.querySelector('.spotlight-gone')).toBeNull()
+    const card = screen.getByRole('dialog', { name: 'Replay' })
+    expect(card.style.left).toBe(`${(size.width - 320) / 2}px`)
+    expect(card.style.top).toBe(`${(size.height - 150) / 2}px`)
   })
 
   it('shows the say, the step number and the count; Back is off on the first', () => {
@@ -58,7 +70,7 @@ describe('SpotlightLayer', () => {
 
   it('falls back to the tool name when there is no say', () => {
     closeSpotlight()
-    startSpotlight('r1', [step(3, null)])
+    startSpotlight('b1', 'r1', [step(3, null)])
     render(<Wrapper />)
     expect(screen.getByText('render_image')).toBeTruthy()
   })
@@ -66,6 +78,19 @@ describe('SpotlightLayer', () => {
   it('moves focus to Next on mount', () => {
     render(<Wrapper />)
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Next' }))
+  })
+
+  it('gives focus back to what had it when the replay closes', () => {
+    closeSpotlight()
+    const opener = document.createElement('button')
+    document.body.appendChild(opener)
+    opener.focus()
+    render(<Wrapper />)
+    act(() => startSpotlight('b1', 'r1', [step(12, 'Rendering the anchor room.'), step(15, 'Placing the lamp.')]))
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Next' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close replay' }))
+    expect(document.activeElement).toBe(opener)
+    opener.remove()
   })
 
   it('Escape closes only the replay', () => {

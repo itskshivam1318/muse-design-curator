@@ -280,6 +280,7 @@ describe('AgentCard, replay', () => {
     renderCard({ run: makeRun({ status: 'done' }), steps: [makeStep({ highlight: true })] })
     fireEvent.click(screen.getByRole('button', { name: 'Show me how' }))
     expect(spotlightStore.get()?.runId).toBe('r1')
+    expect(spotlightStore.get()?.boardId).toBe('b1')
   })
 
   it('no button while the run is open or has nothing to play', () => {
@@ -298,8 +299,8 @@ describe('AgentCard, replay', () => {
   })
 
   const two = () => {
-    const r2 = makeRun({ id: 'r2', status: 'running', goal: 'Newer goal' })
-    const r1 = makeRun({ id: 'r1', status: 'done', goal: 'Older goal' })
+    const r2 = makeRun({ id: 'r2', status: 'running', goal: 'Newer goal', created_at: '2026-11-03T15:40:00Z' })
+    const r1 = makeRun({ id: 'r1', status: 'done', goal: 'Older goal', created_at: '2026-11-03T09:05:00Z' })
     return { runs: [r2, r1], stepsByRun: { r1: [makeStep({ id: 's1', run_id: 'r1', highlight: true })], r2: [] } }
   }
 
@@ -307,9 +308,11 @@ describe('AgentCard, replay', () => {
     renderCard(two())
     fireEvent.click(screen.getByRole('button', { name: 'Show activity' }))
     const select = screen.getByLabelText('Run') as HTMLSelectElement
+    // the run's time tells two runs with the same goal apart
+    const at = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     expect([...select.options].map((o) => [o.value, o.textContent])).toEqual([
-      ['r2', 'Claude Code · Newer goal'],
-      ['r1', 'Claude Code · Older goal'],
+      ['r2', `Claude Code · ${at('2026-11-03T15:40:00Z')} · Newer goal`],
+      ['r1', `Claude Code · ${at('2026-11-03T09:05:00Z')} · Older goal`],
     ])
     expect(screen.getByText('Newer goal')).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Show me how' })).toBeNull()
@@ -356,6 +359,7 @@ describe('AgentCard, replay', () => {
     window.history.replaceState(null, '', '/boards/b1?replay=r1')
     renderCard({ run: makeRun({ status: 'done' }), steps: [makeStep({ highlight: true })] })
     expect(spotlightStore.get()?.runId).toBe('r1')
+    expect(spotlightStore.get()?.boardId).toBe('b1')
     expect(window.location.search).toBe('')
     expect(window.location.pathname).toBe('/boards/b1')
   })

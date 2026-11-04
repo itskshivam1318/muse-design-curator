@@ -38,7 +38,7 @@ import { ConnectLayer } from '../put/ConnectLayer'
 import { useGhosts } from '../put/ghosts'
 import { useConnect } from '../put/useConnect'
 import { useAnalysis, useBoardLens, useExplorations, useRegion, visibleItems } from '../queries'
-import { currentStep, spotlightStore, useSpotlight } from '../shell/spotlight'
+import { closeSpotlight, currentStep, spotlightStore, useSpotlight } from '../shell/spotlight'
 import { setTool, useTool } from '../shell/tools'
 import type { ItemActions } from './actions'
 import { handleDrop } from './drop'
@@ -185,6 +185,8 @@ export function Canvas({
   const palette = useCanvasPalette()
   const reduced = usePrefersReducedMotion()
   const fitted = useRef(false)
+  // the replay step last framed (mirrors framedSpot below): the first fit stands aside only once one is
+  const framedRef = useRef<string | null>(null)
   const viewport = useMemo(
     () => ({ x: -view.x / view.scale, y: -view.y / view.scale, width: size.width / view.scale, height: size.height / view.scale }),
     [view, size],
@@ -236,19 +238,31 @@ export function Canvas({
     if (fitted.current) return
     const t = setTimeout(() => {
       fitted.current = true
-      // a replay already frames its step; fitting the whole board would undo that
-      if (!spotlightStore.get()) fit()
+      // a replay that has framed a step keeps it; fitting the whole board would undo that
+      if (!(spotlightStore.get() && framedRef.current)) fit()
     }, 300) // let a batch of item.added events settle first
     return () => clearTimeout(t)
   }, [items.length, size.width, fit])
 
   // ---- spotlight replay: the step's pictures still on the board, framed once per step ----
-  const spotlight = useSpotlight()
+  // the replay is one board's: another board's canvas shows nothing of it
+  const stored = useSpotlight()
+  const spotlight = stored?.boardId === boardId ? stored : null
+  // leaving the board ends its replay
+  useEffect(
+    () => () => {
+      if (spotlightStore.get()?.boardId === boardId) closeSpotlight()
+    },
+    [boardId],
+  )
   const step = currentStep(spotlight)
   const lit = useMemo(() => (step ? items.filter((i) => step.item_ids.includes(i.id)) : []), [items, step])
   const spotKey = spotlight ? `${spotlight.runId}:${spotlight.index}` : null
   // adjusted while rendering (not in an effect), so the step's first paint is already framed
   const [framedSpot, setFramedSpot] = useState<string | null>(null)
+  useEffect(() => {
+    framedRef.current = framedSpot
+  }, [framedSpot])
   // a step is framed once there is something to frame: its pictures may arrive after its steps
   if (spotKey !== framedSpot && (spotKey === null || (size.width > 0 && lit.length > 0))) {
     setFramedSpot(spotKey)

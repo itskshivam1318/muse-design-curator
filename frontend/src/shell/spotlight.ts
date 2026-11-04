@@ -3,6 +3,8 @@ import { useSyncExternalStore } from 'react'
 import type { AgentStep } from '../api'
 
 export interface Spotlight {
+  /** The board the run belongs to: only that board's canvas shows the replay. */
+  boardId: string
   runId: string
   steps: AgentStep[]
   index: number
@@ -39,10 +41,10 @@ export const spotlightStore = createStore<Spotlight | null>(null)
 export const useSpotlight = (): Spotlight | null =>
   useSyncExternalStore(spotlightStore.subscribe, spotlightStore.get)
 
-export function startSpotlight(runId: string, steps: AgentStep[]): void {
+export function startSpotlight(boardId: string, runId: string, steps: AgentStep[]): void {
   const playable = replaySteps(steps)
   if (playable.length === 0) return
-  spotlightStore.set({ runId, steps: playable, index: 0 })
+  spotlightStore.set({ boardId, runId, steps: playable, index: 0 })
 }
 
 /** Advances one step; past the last step the replay closes. */

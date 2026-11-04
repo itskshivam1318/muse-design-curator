@@ -24,7 +24,7 @@ describe('spotlight replay', () => {
   })
 
   it('steps forward and back, and closes past the last step', () => {
-    startSpotlight('r1', [
+    startSpotlight('b1', 'r1', [
       makeStep({ id: 'a', turn: 1, highlight: true }),
       makeStep({ id: 'b', turn: 2, highlight: true }),
     ])
@@ -38,7 +38,7 @@ describe('spotlight replay', () => {
   })
 
   it('does not start with nothing to play', () => {
-    startSpotlight('r1', [makeStep({ highlight: false })])
+    startSpotlight('b1', 'r1', [makeStep({ highlight: false })])
     expect(spotlightStore.get()).toBeNull()
   })
 })
