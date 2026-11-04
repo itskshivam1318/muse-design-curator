@@ -21,6 +21,7 @@ export function LandingPage() {
       </header>
       {SHOWCASE.videoUrl && <video className="landing-video" controls src={SHOWCASE.videoUrl} />}
       {boards.isSuccess && cards.length === 0 && <p className="muted">The demo boards are not on this server yet.</p>}
+      {boards.isError && <p className="muted">Could not load the demo boards.</p>}
       <div className="landing-cards">
         {cards.map((b) => (
           <article key={b.boardId} className="landing-card">

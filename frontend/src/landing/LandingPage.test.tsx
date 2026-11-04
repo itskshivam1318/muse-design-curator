@@ -53,6 +53,13 @@ describe('LandingPage', () => {
     expect(screen.queryAllByRole('link', { name: 'Show me how' })).toHaveLength(0)
   })
 
+  it('says so when the boards cannot be loaded, and keeps the All boards link', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 500 }))
+    renderWith(<LandingPage />)
+    expect(await screen.findByText('Could not load the demo boards.')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'All boards' })).toBeTruthy()
+  })
+
   it('embeds the video only when there is one', async () => {
     serve([CAR.boardId])
     const { container, unmount } = renderWith(<LandingPage />)
@@ -71,6 +78,23 @@ describe('App at /', () => {
     serve([CAR.boardId])
     renderWith(<App />)
     expect(await screen.findByRole('heading', { name: 'Muse' })).toBeTruthy()
+  })
+
+  it('renders neither page while the demo status is pending', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise<Response>(() => {}))
+    const { container } = renderWith(<App />)
+    await new Promise((r) => setTimeout(r, 20))
+    expect(screen.queryByRole('heading', { name: 'Boards' })).toBeNull()
+    expect(screen.queryByText('New board')).toBeNull()
+    expect(container.querySelector('.landing')).toBeNull()
+  })
+
+  it('falls back to the board list when the demo status fails', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) =>
+      String(input).includes('/demo') ? new Response('{}', { status: 500 }) : json({ boards: [] }),
+    )
+    renderWith(<App />)
+    expect(await screen.findByRole('heading', { name: 'Boards' })).toBeTruthy()
   })
 
   it('shows the board list outside demo mode', async () => {
