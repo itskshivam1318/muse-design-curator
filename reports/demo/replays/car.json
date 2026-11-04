@@ -1,0 +1,72 @@
+[
+ {
+  "card": 1,
+  "of": 10,
+  "step": 1,
+  "say": "Goal first: one new electric coupe in the classic GT language, outside and inside, plus three colourways.",
+  "t": 1.497
+ },
+ {
+  "card": 2,
+  "of": 10,
+  "step": 2,
+  "say": "The E-Type fixed-head: the long bonnet and fastback this coupe should keep.",
+  "t": 6.257
+ },
+ {
+  "card": 3,
+  "of": 10,
+  "step": 12,
+  "say": "There is no car lens, so I ask Muse to propose one from these references.",
+  "t": 11.006
+ },
+ {
+  "card": 4,
+  "of": 10,
+  "step": 14,
+  "say": "I write the new car in the board's own words: long bonnet, fastback, round glass-covered lamps, a blanked EV face, restrained chrome.",
+  "t": 15.751
+ },
+ {
+  "card": 5,
+  "of": 10,
+  "step": 19,
+  "say": "Same car, side profile: this is where the long bonnet and fastback must read.",
+  "t": 20.504
+ },
+ {
+  "card": 6,
+  "of": 10,
+  "step": 20,
+  "say": "Inside, the same language: wood rim and veneer from the E-Type cockpit, a slim screen from the Taycan.",
+  "t": 25.239
+ },
+ {
+  "card": 7,
+  "of": 10,
+  "step": 29,
+  "say": "The views disagree on one thing: the seats view has a black leather wheel, the dashboard view a wood rim. I change only that.",
+  "t": 29.972
+ },
+ {
+  "card": 8,
+  "of": 10,
+  "step": 35,
+  "say": "Colourways come from exploring the paint dimension, so each one changes the colour and nothing else.",
+  "t": 34.699
+ },
+ {
+  "card": 9,
+  "of": 10,
+  "step": 46,
+  "say": "Laying out the sheet: one row per deliverable, each picture captioned with why it is there.",
+  "t": 39.455
+ },
+ {
+  "card": 10,
+  "of": 10,
+  "step": 49,
+  "say": "Asking Muse to check the sheet again: every deliverable present, every render passed, and all of it one car.",
+  "t": 44.188
+ }
+]

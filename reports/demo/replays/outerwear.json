@@ -1,0 +1,44 @@
+[
+ {
+  "card": 1,
+  "of": 6,
+  "step": 1,
+  "say": "Goal first. A capsule is a range: name it - colour, cloth, silhouette - then make three looks that stay inside it.",
+  "t": 1.125
+ },
+ {
+  "card": 2,
+  "of": 6,
+  "step": 16,
+  "say": "Naming the range from the references: four colours and one accent, three cloths, one silhouette family - and what falls outside, like the red anorak.",
+  "t": 5.865
+ },
+ {
+  "card": 3,
+  "of": 6,
+  "step": 18,
+  "say": "Rendering look 1. Looks 2 and 3 will be explored from this one picture, so the styling, backdrop and range carry over.",
+  "t": 10.595
+ },
+ {
+  "card": 4,
+  "of": 6,
+  "step": 20,
+  "say": "Rendering look 1. Looks 2 and 3 will be explored from this one picture, so the styling, backdrop and range carry over.",
+  "t": 15.324
+ },
+ {
+  "card": 5,
+  "of": 6,
+  "step": 26,
+  "say": "Exploring one dimension of look 1 - the outer garment and its silhouette - with the range as the steer. Same backdrop, same styling.",
+  "t": 20.064
+ },
+ {
+  "card": 6,
+  "of": 6,
+  "step": 36,
+  "say": "Why the takes failed: the board learned \"same twill in every look\", narrower than the range. I write looks 2 and 3 from the range instead.",
+  "t": 24.801
+ }
+]
