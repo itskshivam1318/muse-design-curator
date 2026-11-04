@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import time
 from dataclasses import dataclass, field
@@ -100,7 +101,8 @@ class FakeChatModel:
     def respond(
         self, instructions: str, input: list[dict[str, Any]], tools: list[dict[str, Any]]
     ) -> ModelTurn:
-        self.calls.append((instructions, input, tools))
+        # copies: the caller keeps extending the same history list after each call
+        self.calls.append((instructions, copy.deepcopy(input), copy.deepcopy(tools)))
         if len(self.calls) > len(self.script):
             raise AssertionError(
                 f"FakeChatModel script exhausted: {len(self.script)} turn(s) scripted, "

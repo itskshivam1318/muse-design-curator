@@ -90,3 +90,12 @@ def test_fake_chat_model_records_and_runs_out() -> None:
     assert fake.calls == [("i", [], [])]
     with pytest.raises(AssertionError, match="script"):
         fake.respond("i", [], [])
+
+
+def test_fake_chat_model_records_a_copy_of_each_input() -> None:
+    fake = FakeChatModel([ModelTurn([], "x", [], {}, 0.0)] * 2)
+    history: list[dict[str, Any]] = [{"role": "user", "content": "a"}]
+    fake.respond("i", history, [])
+    history.append({"role": "user", "content": "b"})
+    fake.respond("i", history, [])
+    assert [len(c[1]) for c in fake.calls] == [1, 2]

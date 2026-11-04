@@ -45,3 +45,14 @@ def test_open_run_filters_by_source(session: Session) -> None:
     assert agent_repo.open_run(session, board_id, "mcp") is None
     found = agent_repo.open_run(session, board_id, "muse")
     assert found is not None and found.id == run_id
+
+
+def test_unconsumed_messages_until_marked(session: Session) -> None:
+    board_id, run_id = _run(session)
+    first = agent_repo.add_message(session, run_id, board_id, "person", "one", {"selection": []})
+    agent_repo.add_message(session, run_id, board_id, "agent", "reply")
+    second = agent_repo.add_message(session, run_id, board_id, "person", "two")
+    assert agent_repo.unconsumed_messages(session, run_id) == [first, second]
+    agent_repo.mark_consumed(session, first)
+    assert first.data_json == {"selection": [], "consumed": True}
+    assert agent_repo.unconsumed_messages(session, run_id) == [second]

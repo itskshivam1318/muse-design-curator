@@ -121,6 +121,21 @@ def open_question(session: Session, run_id: str) -> AgentMessage | None:
     )
 
 
+def unconsumed_messages(session: Session, run_id: str) -> list[AgentMessage]:
+    """The run's person messages not yet taken into its history (oldest first). A message is
+    consumed once the chat loop has put it into the history: `data["consumed"]` is then True."""
+    return [
+        m
+        for m in messages(session, run_id)
+        if m.role == "person" and not (m.data_json or {}).get("consumed")
+    ]
+
+
+def mark_consumed(session: Session, message: AgentMessage) -> None:
+    message.data_json = {**(message.data_json or {}), "consumed": True}  # a new dict: tracked
+    session.flush()
+
+
 def message_to_dict(m: AgentMessage) -> dict[str, Any]:
     return {
         "id": m.id, "run_id": m.run_id, "role": m.role, "text": m.text, "data": m.data_json,
