@@ -128,3 +128,16 @@ def test_consistency_problems_without_valid_outliers(monkeypatch: pytest.MonkeyP
     assert checks.consistency_problems([b"a", b"b"], "g", ["itm_a", "itm_b"]) == [
         "the output does not show one design: mixed"
     ]
+
+
+def test_consistency_prompt_allows_a_range_when_the_goal_asks_for_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # a capsule, a set of screens or a family of products is several designs in one language:
+    # the check judges against the goal, not always "the same object in different views"
+    fake = _Reasoning({"one_design": True, "outliers": [], "reason": ""})
+    _provide(monkeypatch, fake)
+    checks.consistency_problems([b"a", b"b"], "a capsule of five looks", ["itm_a", "itm_b"])
+    prompt = fake.calls[0][2]
+    assert "same object or space" in prompt  # one design is still the default reading
+    assert "several distinct pieces" in prompt and "one range" in prompt

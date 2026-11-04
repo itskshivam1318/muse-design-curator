@@ -91,9 +91,11 @@ def _prompt(count: int, goal: str) -> str:
     return (
         f"These {count} images are the output of one piece of design work. The goal: {goal}\n"
         "Do they all show one design: the same object or space, seen in different views, "
-        "details or states? Set one_design to true if they do. If not, list in outliers the "
-        "0-based indexes of the images that show a different design from the rest, and say "
-        "briefly in reason what differs."
+        "details or states? If the goal asks for several distinct pieces (a range, a set, a "
+        "family), they show one design when they read as one range: the same language of "
+        "colour, material, form and styling. Set one_design to true if they do. If not, list in "
+        "outliers the 0-based indexes of the images that show a different design from the rest, "
+        "and say briefly in reason what differs."
     )
 
 
