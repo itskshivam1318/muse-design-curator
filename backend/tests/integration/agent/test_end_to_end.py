@@ -41,7 +41,9 @@ def test_goal_to_done_over_mcp(client: TestClient, monkeypatch: pytest.MonkeyPat
 
     board_id = tool("create_board", {"title": "End to end"})["board_id"]
     with events.subscribe(board_id) as sub:
-        run_id = tool("set_goal", {"goal": "A test chair", "deliverables": DELIVERABLES})["run_id"]
+        run_id = tool("set_goal", {"goal": "A test chair", "deliverables": DELIVERABLES})[
+            "run_id"
+        ]
         notes = [
             tool("add_note", {"text": "a low oak chair, front view", "x": 0, "y": 0}),
             tool("add_note", {"text": "the same chair in deep green", "x": 600, "y": 0}),

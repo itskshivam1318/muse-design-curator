@@ -307,9 +307,7 @@ def test_live_stage_is_bounded_end_to_end(world, live, monkeypatch) -> None:  # 
     info = run.progress_json["live"]
     assert info["found"] == 8 and info["dropped"] == 2 and info["downloaded"] <= 6
     counts = [
-        d["live"]["downloaded"]
-        for d in got
-        if d["stage"] == "searching" and "downloaded" in d["live"]
+        d["live"]["downloaded"] for d in got if d["stage"] == "searching" and "downloaded" in d["live"]
     ]
     assert counts == sorted(counts) and counts[-1] >= 1
 

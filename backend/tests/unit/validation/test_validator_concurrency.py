@@ -174,6 +174,7 @@ def test_progress_is_reported_as_verify_batches_finish(data_dir) -> None:  # typ
     assert len(seen) == 3
 
 
+
 class FlakyReasoning(FakeReasoning):
     """The first verify batch crashes with a non-model error; the others answer."""
 

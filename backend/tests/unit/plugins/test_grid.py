@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import jobs
+from app import events, jobs
 from app.db.models import BoardItem, PluginNode, PluginRun
 from app.plugins.runners import PluginError
 from app.plugins.writeback import apply_output, grid_cells
@@ -138,3 +138,34 @@ def test_python_25_images_rejected(tmp_path: Path) -> None:
     assert e.value.code == "PLUGIN_BAD_OUTPUT"
     ok = py_plugin(tmp_path / "ok", body.replace("* 25", "* 24"), outputs=["images"])
     assert len(run(ok, [img()])["images"]) == 24
+
+
+def test_clear_publishes_removed_and_restore_brings_option_back(
+    client: TestClient, board: str, db: Session, no_jobs: None
+) -> None:
+    _, r, node = setup(client, board, db, "palette")
+    ids = six_options(client, board, db, node.id, r.id)
+    with events.subscribe(board) as sub:
+        res = client.post(f"/api/nodes/{node.id}/clear-options")
+        seen = []
+        while len(seen) < 6 and (ev := sub.get(timeout=1)) is not None:
+            if ev["type"] == "item.removed":
+                seen.append(ev["data"]["id"])
+    assert sorted(res.json()["removed_item_ids"]) == sorted(ids)
+    assert sorted(seen) == sorted(ids)
+    listed = client.get(f"/api/boards/{board}/items").json()
+    assert not {i["id"] for i in listed["items"]} & set(ids)
+    back = client.post(f"/api/items/{ids[0]}/restore")
+    assert back.status_code == 200 and back.json()["option_run_id"] == r.id
+    listed = client.get(f"/api/boards/{board}/items").json()
+    assert ids[0] in {i["id"] for i in listed["items"]}
+
+
+def test_restore_live_item_404(client: TestClient, board: str) -> None:
+    item = upload_image(client, board)
+    assert client.post(f"/api/items/{item}/restore").status_code == 404
+    assert client.post("/api/items/nope/restore").status_code == 404
+
+
+def test_clear_options_unknown_node_404(client: TestClient) -> None:
+    assert client.post("/api/nodes/nope/clear-options").status_code == 404

@@ -147,11 +147,8 @@ def auto_attach_domain(session: Session, board_id: str) -> str | None:
     board = _require_board(session, board_id)
     if board.domain:
         return None
-    embedded = [
-        i
-        for i in items_repo.list_active(session, board.id, include_staged=False)
-        if i.embedding_json
-    ]
+    embedded = [i for i in items_repo.list_active(session, board.id, include_staged=False)
+        if i.embedding_json]
     if len(embedded) < AUTO_MIN_EMBEDDED:
         return None
     votes = domain_votes(session, embedded)

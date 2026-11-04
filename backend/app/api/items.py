@@ -220,6 +220,20 @@ def soft_remove(session: Session, item: BoardItem) -> None:
     after_commit(session, lambda: profile_hook.request_recompute(board_id))
 
 
+@router.post("/items/{item_id}/restore")
+def restore_item(item_id: str, session: SessionDep) -> dict[str, Any]:
+    """Bring a soft-removed item back (undo of a delete or of Clear); other fields stay as is."""
+    item = items_repo.get(session, item_id)
+    if item is None or item.removed_at is None:
+        raise AppError(404, "ITEM_NOT_FOUND", "Item not found")
+    items_repo.update(session, item_id, removed_at=None)
+    data = item_to_dict(item)
+    board_id = item.board_id
+    after_commit(session, lambda: events.publish(board_id, "item.added", data))
+    after_commit(session, lambda: profile_hook.request_recompute(board_id))
+    return data
+
+
 @router.post("/items/{item_id}/keep-option")
 def keep_option(item_id: str, session: SessionDep) -> dict[str, Any]:
     """Promote a plugin option to an ordinary item."""

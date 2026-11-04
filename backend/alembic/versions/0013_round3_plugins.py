@@ -29,9 +29,7 @@ def downgrade() -> None:
     for table in ("item_frames", "item_attributes", "attribute_events"):
         op.execute(f"DELETE FROM {table} WHERE item_id IN ({models})")
     op.execute(f"UPDATE board_items SET parent_item_id = NULL WHERE parent_item_id IN ({models})")
-    op.execute(
-        f"UPDATE board_items SET put_source_item_id = NULL WHERE put_source_item_id IN ({models})"
-    )
+    op.execute(f"UPDATE board_items SET put_source_item_id = NULL WHERE put_source_item_id IN ({models})")
     op.execute("DELETE FROM board_items WHERE kind = 'model'")
     with op.batch_alter_table("board_items", recreate="always") as b:
         b.drop_index("ix_board_items_option_run_id")

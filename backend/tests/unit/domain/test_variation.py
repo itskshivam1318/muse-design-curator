@@ -215,9 +215,7 @@ def test_propose_protected_matches_shared_fixture(case: dict[str, Any]) -> None:
                consistency=s["consistency"], n_known=s["n_known"])
         for s in case["signals"]
     ]  # fmt: skip
-    out = propose_protected(
-        records, case["target"], BoardProfile(signals=signals) if signals else None
-    )
+    out = propose_protected(records, case["target"], BoardProfile(signals=signals) if signals else None)
     assert [
         {k: r[k] for k in ("key", "is_board_signal", "preselected", "reason")} for r in out
     ] == case["expected"]
