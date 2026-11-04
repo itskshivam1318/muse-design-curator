@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     MODEL_MAX_RETRIES: int = 2
     DATABASE_URL: str = "sqlite:///./data/dle.sqlite"
     DATA_DIR: str = "./data"
+    AGENT_TRACES: bool = True
     MAX_UPLOAD_BYTES: int = 10485760
     MAX_VIDEO_BYTES: int = 104857600
     MAX_VIDEO_SECONDS: int = 90
