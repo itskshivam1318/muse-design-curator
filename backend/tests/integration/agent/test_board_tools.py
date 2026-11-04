@@ -139,11 +139,62 @@ async def test_read_board_shape(ctx: ToolContext) -> None:
         await tools.run_tool(ctx, "add_note", {"text": f"note {i}"})
     result = await tools.run_tool(ctx, "read_board", {})
     assert result["board"]["title"] == "Agent"
-    assert set(result) == {"board", "items", "profile", "context"}
+    assert set(result) == {"board", "items", "item_counts", "profile", "context"}
     assert len(result["items"]) == 3
     first = result["items"][0]
-    assert {"id", "kind", "role", "x", "y", "w", "h", "parse_status", "note_text"} <= set(first)
+    assert {"id", "kind", "origin", "role", "x", "y", "w", "h", "parse_status", "note_text"} <= set(
+        first
+    )
     assert first["note_text"] == "note 2"  # newest first
+    assert result["item_counts"] == {"total": 3, "shown": 3, "by_origin": {"note": 3}}
+
+
+async def test_read_board_tells_originals_from_generated(ctx: ToolContext, board: str) -> None:
+    from app.api import deps
+    from app.db.repos import items as items_repo
+
+    with deps.new_session() as s:
+        original = items_repo.create(
+            s, board_id=board, kind="image", origin="upload", sha256="a" * 64,
+            original_filename="lancia.jpg", parse_status="completed", x=0, y=0, w=320, h=240,
+        )  # fmt: skip
+        made = items_repo.create(
+            s, board_id=board, kind="image", origin="generated", sha256="b" * 64,
+            original_filename="lancia, from the side.png", parse_status="completed",
+            parent_item_id=original.id, x=400, y=0, w=320, h=240,
+        )  # fmt: skip
+        put = items_repo.create(
+            s, board_id=board, kind="image", origin="generated", sha256="c" * 64,
+            page_title="A wheel " + "very long " * 30, parse_status="completed",
+            parent_item_id=original.id, put_source_item_id=made.id, x=800, y=0, w=320, h=240,
+        )  # fmt: skip
+        s.commit()
+        ids = original.id, made.id, put.id
+    result = await tools.run_tool(ctx, "read_board", {})
+    by_id = {i["id"]: i for i in result["items"]}
+    assert by_id[ids[0]]["origin"] == "upload" and by_id[ids[0]]["title"] == "lancia.jpg"
+    assert "parent_item_id" not in by_id[ids[0]]  # only links that are set
+    assert by_id[ids[1]]["origin"] == "generated" and by_id[ids[1]]["parent_item_id"] == ids[0]
+    assert by_id[ids[2]]["put_source_item_id"] == ids[1]
+    assert by_id[ids[2]]["title"].startswith("A wheel") and len(by_id[ids[2]]["title"]) <= 80
+    assert result["item_counts"]["by_origin"] == {"upload": 1, "generated": 2}
+
+
+async def test_read_board_caps_items(ctx: ToolContext, board: str) -> None:
+    from app.agent.tools import read_board
+    from app.api import deps
+    from app.db.repos import items as items_repo
+
+    with deps.new_session() as s:
+        for i in range(read_board.ITEM_CAP + 5):
+            items_repo.create(
+                s, board_id=board, kind="note", origin="note", note_text=f"n{i}",
+                x=i * 10, y=0, w=100, h=80,
+            )  # fmt: skip
+        s.commit()
+    result = await tools.run_tool(ctx, "read_board", {})
+    assert read_board.ITEM_CAP == 60 and len(result["items"]) == 60
+    assert result["item_counts"] == {"total": 65, "shown": 60, "by_origin": {"note": 65}}
 
 
 async def test_lens_tools_pass_refusals_on(ctx: ToolContext) -> None:

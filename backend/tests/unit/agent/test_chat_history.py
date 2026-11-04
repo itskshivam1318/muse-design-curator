@@ -59,7 +59,59 @@ def test_kept_turns_untouched() -> None:
 def test_long_tool_output_capped() -> None:
     out = compact(history())
     last = out[-1]
-    assert last["type"] == "function_call_output" and len(last["output"]) == 6000
+    assert last["type"] == "function_call_output" and len(last["output"]) <= 6000
+    got = json.loads(last["output"])  # cut inside the JSON, never mid-text
+    assert got["v"].startswith("xxx") and got["truncated"]
+
+
+def board_output(n: int) -> str:
+    items = [{"id": f"itm_{i:03}", "origin": "upload", "title": "t" * 120} for i in range(n)]
+    return json.dumps(
+        {
+            "board": {"id": "brd_1"},
+            "items": items,
+            "profile": {"summary": "warm"},
+            "context": "cars",
+        }
+    )
+
+
+def test_big_json_output_stays_valid_json() -> None:
+    h = [
+        person("one"),
+        {"type": "function_call", "name": "get_items", "arguments": "{}", "call_id": "a"},
+        {"type": "function_call_output", "call_id": "a", "output": board_output(200)},
+    ]
+    [_, _, kept] = compact(h)
+    assert len(kept["output"]) <= 6000
+    got = json.loads(kept["output"])
+    assert got["truncated"] and 0 < len(got["items"]) < 200
+    assert got["items"][0]["id"] == "itm_000"  # lists keep their head
+    assert got["profile"] == {"summary": "warm"} and got["context"] == "cars"  # the tail survives
+
+
+def test_text_output_falls_back_to_valid_json() -> None:
+    h = [
+        person("one"),
+        {"type": "function_call", "name": "t", "arguments": "{}", "call_id": "a"},
+        {"type": "function_call_output", "call_id": "a", "output": 'say "hi" ' * 2000},
+    ]
+    kept = compact(h)[-1]
+    assert len(kept["output"]) <= 6000
+    assert json.loads(kept["output"])["summary"].startswith('say "hi"')
+
+
+def test_read_board_whole_in_the_current_turn() -> None:
+    def read(cid: str) -> list[dict[str, Any]]:
+        return [
+            {"type": "function_call", "name": "read_board", "arguments": "{}", "call_id": cid},
+            {"type": "function_call_output", "call_id": cid, "output": board_output(60)},
+        ]
+
+    out = compact([person("one"), *read("a"), person("two"), *read("b")])
+    earlier, now = out[2], out[-1]
+    assert now["output"] == board_output(60)  # this turn's board read is whole
+    assert len(earlier["output"]) <= 6000 and json.loads(earlier["output"])["truncated"]
 
 
 def test_call_output_pairs_preserved() -> None:

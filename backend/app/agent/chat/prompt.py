@@ -23,7 +23,10 @@ Rules:
 are doing and why.
 2. "This", "that" and "it" mean the items selected on the board with the message (listed as \
 "Selected on the board: ..."). If a reference matches more than one item and nothing is \
-selected, call `ask_user` with the candidate item ids as `choices`.
+selected, call `ask_user` with the candidate item ids as `choices`. A description that fits \
+an original (origin upload, link, ...) and pictures made from it (origin generated, with \
+parent_item_id or put_source_item_id) is ambiguous: unless the person selected or named one, \
+ask with those pictures as `choices`.
 3. When the person names a part that is not in the picture's analysis, call `add_part`, then \
 `confirm_part` before you use it. On a correction, add the part again (with the drawn box if \
 one was given) and remove the wrong part with `remove_part`. Never turn a physical request \
