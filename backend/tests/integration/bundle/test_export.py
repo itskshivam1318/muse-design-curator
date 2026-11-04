@@ -51,6 +51,27 @@ def test_orders_rows_so_references_come_first(
     assert options.index(parent) < options.index(child)
 
 
+def test_counts_the_items_not_yet_read(tmp_path: Path, db: Session, built_board: Built) -> None:
+    statuses = {
+        built_board.image_a: "pending_lens",
+        built_board.image_b: "processing",
+        built_board.note: "completed",
+        built_board.chained: "failed",
+    }
+    for item_id, status in statuses.items():
+        item = db.get(BoardItem, item_id)
+        assert item is not None
+        item.parse_status = status
+    db.commit()
+    m = export_board(db, built_board.id, tmp_path / "b.zip")
+    assert m["unfinished_items"] == 2
+    item = db.get(BoardItem, built_board.note)
+    assert item is not None
+    item.parse_status = "pending"
+    db.commit()
+    assert export_board(db, built_board.id, tmp_path / "c.zip")["unfinished_items"] == 3
+
+
 def test_lists_what_it_leaves_out(tmp_path: Path, db: Session, built_board: Built) -> None:
     add_vary_run(db, built_board.id, built_board.image_a)
     m = export_board(db, built_board.id, tmp_path / "b.zip")

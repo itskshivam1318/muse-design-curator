@@ -14,6 +14,7 @@ import zlib
 from pathlib import Path
 from typing import Any
 
+from alembic.runtime.migration import MigrationContext
 from sqlalchemy import Table, delete, select, tuple_
 from sqlalchemy.orm import Session
 
@@ -120,17 +121,22 @@ def _rows(
         table = _table(t)
         columns = set(table.columns.keys())
         pk = [c.name for c in table.primary_key.columns]
-        # keys, references and paths are compared and joined below: plain values only
+        # keys and references are compared below: plain values only; paths are joined: text
         plain = [
             c.name
             for c in table.columns
-            if c.primary_key or c.foreign_keys or c.name in (*scope.FILE_COLUMNS, "lens_id")
+            if c.primary_key
+            or c.foreign_keys
+            or c.name == "lens_id"
+            or (t, c.name) in scope.NON_FK_REFS
         ]
+        paths = [c for c in scope.FILE_COLUMNS if c in columns]
         for r in data:
             if (
                 not set(r) <= columns
                 or any(r.get(c) is None for c in pk)
                 or any(not isinstance(r.get(c), str | int | None) for c in plain)
+                or any(not isinstance(r.get(c), str | None) for c in paths)
             ):
                 raise BundleError("BAD_BUNDLE", f"rows/{t}.json has a row this schema cannot hold")
         rows[t] = data
@@ -153,14 +159,21 @@ def _check_contained(rows: dict[str, list[dict[str, Any]]], board_id: str) -> No
         for col in _table(t).columns:
             if t == "lenses" and col.name == "board_id":
                 continue
-            for fk in col.foreign_keys:
-                target = fk.column.table.name
-                allowed = present(target, fk.column.name) if target in scope.TABLE_ORDER else set()
+            targets = [(fk.column.table.name, fk.column.name) for fk in col.foreign_keys]
+            if (t, col.name) in scope.NON_FK_REFS:
+                targets.append(scope.NON_FK_REFS[t, col.name])
+            for target, target_col in targets:
+                allowed = present(target, target_col) if target in scope.TABLE_ORDER else set()
                 for r in rows[t]:
                     if r.get(col.name) is not None and r[col.name] not in allowed:
                         raise BundleError(
                             "BAD_BUNDLE", f"{t}.{col.name} = {r[col.name]!r} is not in the bundle"
                         )
+    items = present("board_items", "id")
+    for r in rows["agent_steps"]:
+        ids = r.get("item_ids_json")
+        if not isinstance(ids, list) or not all(isinstance(i, str) and i in items for i in ids):
+            raise BundleError("BAD_BUNDLE", f"agent step {r['id']} names items not in the bundle")
     lens_id = rows["boards"][0].get("lens_id")
     if lens_id is not None and lens_id not in present("lenses", "id"):
         raise BundleError("BAD_BUNDLE", "the board's lens is not in the bundle")
@@ -179,8 +192,9 @@ def _check_files(paths: list[str], members: dict[str, zipfile.ZipInfo]) -> None:
 def _lenses_to_insert(
     session: Session, lenses: list[dict[str, Any]], board_id: str
 ) -> list[dict[str, Any]]:
-    """A bundled lens is this board's own or has no board; any other cannot be imported. A lens
-    already here is kept as it is, unless it is this board's own (a replace deletes those first).
+    """A bundled lens is this board's own or has no board; any other cannot be imported, nor can
+    one whose id is another board's lens here. A lens already here with no board is kept as it
+    is; this board's own are inserted again (a replace deletes those first).
     """
     out = []
     for lens in lenses:
@@ -188,7 +202,11 @@ def _lenses_to_insert(
         if owner is not None and owner != board_id:
             raise BundleError("FOREIGN_LENS", f"lens {lens['id']} belongs to board {owner}")
         here = session.get(m.Lens, lens["id"])
-        if here is not None and here.board_id != board_id:
+        if here is not None and here.board_id is not None and here.board_id != board_id:
+            raise BundleError(
+                "FOREIGN_LENS", f"lens {lens['id']} is board {here.board_id}'s on this server"
+            )
+        if here is not None and here.board_id is None:
             continue
         out.append(lens)
     return out
@@ -243,6 +261,11 @@ def _delete_board(session: Session, board_id: str) -> None:
         session.execute(delete(table).where(tuple_(*pk).in_(keys)))
 
 
+def database_head(session: Session) -> str | None:
+    """The Alembic revision the session's database is stamped with (None: never migrated)."""
+    return MigrationContext.configure(session.connection()).get_current_revision()
+
+
 def import_board(session: Session, bundle: Path, *, replace: bool = False) -> dict[str, Any]:
     """Import the bundle at `bundle` into `session`'s database and DATA_DIR; return its manifest.
     Commits nothing: the caller commits (or rolls back) the rows."""
@@ -252,6 +275,12 @@ def import_board(session: Session, bundle: Path, *, replace: bool = False) -> di
         raise BundleError("BAD_BUNDLE", f"{bundle} is not a zip: {e}") from e
     with z:
         manifest = _manifest(z)
+        migrated = database_head(session)
+        if migrated != schema_head():
+            raise BundleError(
+                "DB_NOT_MIGRATED",
+                f"this database is at {migrated or 'no revision'}, the code at {schema_head()}",
+            )
         if manifest.get("schema_head") != schema_head():
             raise BundleError(
                 "SCHEMA_MISMATCH",

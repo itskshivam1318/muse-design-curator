@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -214,6 +214,15 @@ def test_refuses_a_member_over_50_mb(
     [
         ("item_attributes", "item_id", "itm_someone_else"),  # onto another board's item
         ("board_items", "thumb_path", ["thumbs/x.webp"]),  # a path that is not a string
+        ("board_items", "storage_path", 5),  # nor is a number
+        ("item_parts", "mask_path", 5),
+        # the references that have no foreign key are held inside the board all the same
+        ("board_items", "explore_option_id", "opt_someone_else"),
+        ("board_items", "explore_option_id", ["opt_x"]),
+        ("explore_options", "kept_item_id", "itm_someone_else"),
+        ("agent_steps", "item_ids_json", ["itm_someone_else"]),
+        ("agent_steps", "item_ids_json", "itm_x"),  # not a list
+        ("agent_steps", "item_ids_json", [5]),
     ],
 )
 def test_refuses_rows_that_reach_outside_the_board(
@@ -234,6 +243,16 @@ def test_refuses_rows_that_reach_outside_the_board(
 
     bad = rewrite(bundle, tmp_path / "bad.zip", edit=edit)
     assert refused(second, bad) == "BAD_BUNDLE"
+    assert nothing_written(second, second_dir)
+
+
+def test_refuses_a_database_not_at_the_codes_revision(
+    bundle: Path, second: sessionmaker[Session], second_dir: Path
+) -> None:
+    with second() as s:
+        s.execute(text("UPDATE alembic_version SET version_num = '0001_older'"))
+        s.commit()
+    assert refused(second, bundle) == "DB_NOT_MIGRATED"
     assert nothing_written(second, second_dir)
 
 
@@ -303,6 +322,31 @@ def test_refuses_a_lens_of_another_board(
     )
     before = counts(second)
     assert refused(second, foreign) == "FOREIGN_LENS"
+    assert counts(second) == before
+    assert not second_dir.exists() or not [p for p in second_dir.rglob("*") if p.is_file()]
+
+
+def test_refuses_a_lens_whose_id_is_another_boards_here(
+    tmp_path: Path,
+    bundle: Path,
+    second: sessionmaker[Session],
+    second_dir: Path,
+    built_board: Built,
+) -> None:
+    with second() as s:
+        s.add(Board(id="brd_elsewhere", title="Someone else's"))
+        s.flush()
+        s.add(Lens(**_lens_row(id="lens_taken", board_id="brd_elsewhere")))
+        s.commit()
+    lens = _lens_row(id="lens_taken", board_id=built_board.id)  # claims this board
+    taken = rewrite(
+        bundle,
+        tmp_path / "lens.zip",
+        edit=_with_lens(lens),
+        add={"rows/lenses.json": json.dumps([lens]).encode()},
+    )
+    before = counts(second)
+    assert refused(second, taken) == "FOREIGN_LENS"
     assert counts(second) == before
     assert not second_dir.exists() or not [p for p in second_dir.rglob("*") if p.is_file()]
 

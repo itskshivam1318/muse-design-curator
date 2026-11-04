@@ -9,10 +9,12 @@ import zipfile
 from collections.abc import Sequence
 from pathlib import Path
 
+from sqlalchemy.engine import make_url
+
 from app.bundle.export import BundleError, export_board
 from app.bundle.importer import import_board
-from app.config import get_settings
-from app.db.session import make_engine_from_settings, make_session_factory
+from app.config import data_dir, get_settings
+from app.db.session import make_engine_from_settings, make_session_factory, resolve_database_url
 from app.storage.files import abs_path
 
 
@@ -52,7 +54,10 @@ def _new_files(bundle: Path) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    engine = make_engine_from_settings(get_settings())
+    settings = get_settings()
+    url = make_url(resolve_database_url(settings)).render_as_string(hide_password=True)
+    print(f"database {url}, files {data_dir(settings)}")  # which server's data this touches
+    engine = make_engine_from_settings(settings)
     session = make_session_factory(engine)()
     try:
         if args.command == "export":
@@ -61,6 +66,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"exported {manifest['title']} ({manifest['board_id']}): "
                 f"{_rows(manifest)} rows, {manifest['files']} files -> {args.out}"
             )
+            if manifest["unfinished_items"]:
+                print(
+                    f"note: {manifest['unfinished_items']} items are not finished and will be "
+                    "read again on the server (model calls)"
+                )
         else:
             new_files = _new_files(args.bundle)
             manifest = import_board(session, args.bundle, replace=args.replace)

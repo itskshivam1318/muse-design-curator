@@ -46,8 +46,8 @@ def db(client: TestClient) -> Iterator[Session]:
 
 @pytest.fixture
 def built_board(client: TestClient, db: Session) -> Built:
-    """Two images, a note, an item chained to the first image, an exploration with a parent and a
-    child option, and an agent run with two steps."""
+    """Two images, a note, an item chained to the first image (kept as the child option's take), an
+    exploration with a parent and a child option, and an agent run with two steps."""
     board = client.post("/api/boards", json={"title": "Bundle me"}).json()["id"]
     files = [
         ("files[]", (f"{n}.png", image_bytes(seed=s), "image/png")) for n, s in (("a", 1), ("b", 2))
@@ -114,6 +114,10 @@ def built_board(client: TestClient, db: Session) -> Built:
         created_at="2000-01-01T00:00:00+00:00",
     )
     db.add(child)
+    db.flush()
+    # the two references without a foreign key: an option's take and the take's option
+    chained.explore_option_id = child.id
+    child.kept_item_id = chained.id
     run = AgentRun(board_id=board, source="mcp", goal="g", deliverables_json=["d"])
     db.add(run)
     db.flush()

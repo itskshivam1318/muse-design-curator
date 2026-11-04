@@ -17,6 +17,8 @@ from app.db.ids import now_iso
 from app.db.session import alembic_config
 from app.storage.files import abs_path
 
+FINISHED_PARSE = ("completed", "failed")
+
 
 class BundleError(Exception):
     def __init__(self, code: str, message: str = "") -> None:
@@ -87,6 +89,10 @@ def export_board(session: Session, board_id: str, out: Path) -> dict[str, Any]:
         "counts": {t: len(r) for t, r in rows.items() if r},
         "files": len(paths),
         "left_out": _left_out(session, board_id),
+        # read again once imported: the importing server makes the model calls
+        "unfinished_items": sum(
+            1 for r in rows["board_items"] if r["parse_status"] not in FINISHED_PARSE
+        ),
     }
     out.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=out.parent, suffix=".tmp")

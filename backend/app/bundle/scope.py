@@ -40,6 +40,11 @@ SELF_REFS = {
     "board_items": ("parent_item_id", "put_source_item_id"),
     "explore_options": ("parent_option_id",),
 }
+# columns that hold another row's id without a foreign key (the FK would make a cycle)
+NON_FK_REFS = {
+    ("board_items", "explore_option_id"): ("explore_options", "id"),
+    ("explore_options", "kept_item_id"): ("board_items", "id"),
+}
 FILE_COLUMNS = ("storage_path", "thumb_path", "mask_path")
 
 _MODELS: dict[str, Any] = {
