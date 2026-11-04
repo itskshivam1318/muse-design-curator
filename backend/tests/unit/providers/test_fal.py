@@ -103,6 +103,13 @@ def test_download_over_cap_rejected() -> None:
     assert e.value.code == "PAYLOAD_TOO_LARGE"
 
 
+def test_download_redirect_is_not_success() -> None:
+    fal, _ = client(lambda r: httpx.Response(302, headers={"location": "https://x.test/y"}))
+    with pytest.raises(ModelError) as e:
+        fal.download("https://v3.fal.media/a.glb", 4000)
+    assert e.value.code == "MODEL_INVALID_RESPONSE"
+
+
 def test_get_fal_mock_and_live() -> None:
     mock = get_fal(Settings(FAL_PROVIDER="mock"))
     assert isinstance(mock, MockFal)

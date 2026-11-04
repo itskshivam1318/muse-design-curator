@@ -149,10 +149,11 @@ def delete_node(node_id: str, session: SessionDep) -> Response:
 
 @router.post("/nodes/{node_id}/clear-options")
 def clear_options(node_id: str, session: SessionDep) -> dict[str, Any]:
-    """Remove every option still standing from this node's runs; kept ones are ordinary items."""
+    """Remove the options still standing from this node's latest run; kept ones are ordinary
+    items, and earlier runs' options are left alone."""
     require_enabled()
-    service.require_node(session, node_id)
-    run_ids = select(PluginRun.id).where(PluginRun.node_id == node_id)
+    node = service.require_node(session, node_id)
+    run_ids = [node.last_run_id] if node.last_run_id else []
     flagged = session.scalars(
         select(BoardItem).where(
             BoardItem.option_run_id.in_(run_ids), BoardItem.removed_at.is_(None)

@@ -219,6 +219,8 @@ def locate_object(session: Session, item_id: str) -> Region:
                 with Image.open(path) as im:
                     union |= _fit(np.asarray(im.convert("L")) > 127, height, width)
     if mask_ratio(union, np.ones_like(union)) < MIN_MASK_RATIO:
+        if subject is None:  # SAM was never asked: the item has no outline to find yet
+            raise AppError(422, "NEEDS_ANALYSIS", "Analyse this item again to find its outline")
         raise AppError(422, "REGION_EMPTY", "Nothing found for this object")
     rel = _mask_rel(sha, prompt + "@parts")
     path = files.abs_path(rel)

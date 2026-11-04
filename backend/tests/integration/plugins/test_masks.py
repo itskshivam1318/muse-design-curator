@@ -156,3 +156,21 @@ def test_box_parts_are_not_handed_over_as_masks(
     db.commit()
     keys = [k for k, _, _ in prepare_masks(db, board, item, ["parts"])["parts"]]
     assert "arm" not in keys and {"seat", "leg"} <= set(keys)
+
+
+def test_item_without_subject_or_parts_needs_analysis(
+    client: TestClient, board: str, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.errors import AppError
+
+    item_id = upload_image(client, board)
+    item = db.get(BoardItem, item_id)
+    assert item is not None
+    item.subject = None  # an item analysed before the subject column, or an unkept option
+    db.commit()
+    monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: CountingSeg())
+    before = slots(board)
+    with pytest.raises(AppError) as e:
+        prepare_masks(db, board, item, ["object_mask"])
+    assert (e.value.status, e.value.code) == (422, "NEEDS_ANALYSIS")
+    assert slots(board) == before

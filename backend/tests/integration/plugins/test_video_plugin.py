@@ -256,3 +256,24 @@ def test_video_uploads_real_mime(client: TestClient, board: str, fal: MockFal) -
     assert run_node(client, node)["status"] == "done"
     (up,) = [c for c in fal.calls if c[0] == "upload"]
     assert "image/png" in str(up)
+
+
+def test_video_unexpected_download_exception_refunds(
+    client: TestClient, board: str, fal: MockFal, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(url: str, max_bytes: int) -> bytes:
+        raise OSError("socket closed")
+
+    monkeypatch.setattr(fal, "download", boom)
+    _, node = start(client, board)
+    run = run_node(client, node)
+    assert run["status"] == "failed" and run["error_code"] == "PLUGIN_MODEL_FAILED"
+    assert hits(board) == 0
+
+
+def test_video_ingest_failure_refunds(client: TestClient, board: str, fal: MockFal) -> None:
+    fal.files[VIDEO_URL] = b"not a video at all"
+    _, node = start(client, board)
+    run = run_node(client, node)
+    assert run["status"] == "failed", run
+    assert hits(board) == 0

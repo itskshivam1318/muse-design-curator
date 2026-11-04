@@ -142,4 +142,14 @@ describe('PromptField', () => {
     rerender(<PromptField id="p" nodeId="n1" value="" describe readOnly onSave={save} />)
     expect((screen.getByRole('button', { name: 'Describe' }) as HTMLButtonElement).disabled).toBe(true)
   })
+
+  it('shows the server message for a daily limit or a locked demo, a generic one otherwise', async () => {
+    vi.mocked(api.describeNode).mockRejectedValueOnce(new api.ApiError(429, 'DAILY_LIMIT', 'Daily limit reached for this board'))
+    render(<PromptField id="p" nodeId="n1" value="" describe onSave={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Describe' }))
+    expect((await screen.findByRole('alert')).textContent).toBe('Daily limit reached for this board')
+    vi.mocked(api.describeNode).mockRejectedValueOnce(new api.ApiError(500, 'BOOM', 'internal'))
+    fireEvent.click(screen.getByRole('button', { name: 'Describe' }))
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('Could not describe the inputs'))
+  })
 })

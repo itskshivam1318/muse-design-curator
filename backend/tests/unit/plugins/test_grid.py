@@ -107,6 +107,12 @@ def test_clear_options_removes_only_flagged(
     no_jobs: None,
 ) -> None:
     _, r, node = setup(client, board, db, "palette")
+    node.last_run_id = r.id
+    old = PluginRun(board_id=board, node_id=node.id, plugin_id="palette",
+                    input_item_ids_json=[], params_json={}, status="done")  # fmt: skip
+    db.add(old)
+    db.flush()
+    older = six_options(client, board, db, node.id, old.id)  # an earlier run's options stay
     ids = six_options(client, board, db, node.id, r.id)
     other_img = upload_image(client, board, seed=5)
     other = make_node(client, board, "palette", [other_img])
@@ -121,7 +127,7 @@ def test_clear_options_removes_only_flagged(
     assert res.status_code == 200
     assert sorted(res.json()["removed_item_ids"]) == sorted(ids[2:])
     db.expire_all()
-    assert all(db.get(BoardItem, i).removed_at is None for i in ids[:2] + theirs)  # type: ignore[union-attr]
+    assert all(db.get(BoardItem, i).removed_at is None for i in ids[:2] + theirs + older)  # type: ignore[union-attr]
     assert all(db.get(BoardItem, i).removed_at is not None for i in ids[2:])  # type: ignore[union-attr]
 
 
@@ -144,6 +150,7 @@ def test_clear_publishes_removed_and_restore_brings_option_back(
     client: TestClient, board: str, db: Session, no_jobs: None
 ) -> None:
     _, r, node = setup(client, board, db, "palette")
+    node.last_run_id = r.id
     ids = six_options(client, board, db, node.id, r.id)
     with events.subscribe(board) as sub:
         res = client.post(f"/api/nodes/{node.id}/clear-options")
@@ -169,3 +176,47 @@ def test_restore_live_item_404(client: TestClient, board: str) -> None:
 
 def test_clear_options_unknown_node_404(client: TestClient) -> None:
     assert client.post("/api/nodes/nope/clear-options").status_code == 404
+
+
+def test_options_inherit_the_parents_subject_and_cleanup_prompts_sam_with_it(
+    client: TestClient, board: str, db: Session, no_jobs: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.analysis import locate as locate_mod
+    from app.providers.segmentation import MockSegmentationProvider
+
+    img_id, r, node = setup(client, board, db, "palette")
+    parent = db.get(BoardItem, img_id)
+    assert parent is not None
+    parent.subject = "lounge chair"
+    db.commit()
+    ids = six_options(client, board, db, node.id, r.id)
+    option = db.get(BoardItem, ids[0])
+    assert option is not None and option.subject == "lounge chair"
+    assert option.parse_status == "completed"
+
+    nouns: list[str] = []
+
+    class Seg(MockSegmentationProvider):
+        def localize(self, image: bytes, sha256: str, noun: str):  # type: ignore[no-untyped-def]
+            nouns.append(noun)
+            return super().localize(image, sha256, noun)
+
+    monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: Seg())
+    locate_mod.locate_object(db, option.id)
+    assert nouns == ["lounge chair"]
+
+
+def test_model_item_is_completed_and_never_queued_for_analysis(
+    client: TestClient, board: str, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, r, node = setup(client, board, db, "palette")
+    queued: list[str] = []
+    monkeypatch.setattr(jobs, "enqueue", lambda name, **kw: queued.append(name))
+    out = apply_output(
+        db, r, node,
+        {"model3d": [{"glb": b"glTF" + b"\x02\x00\x00\x00", "poster": image_bytes(seed=2)}]},
+    )  # fmt: skip
+    item = db.get(BoardItem, out["created_item_ids"][0])
+    assert item is not None and item.kind == "model" and item.parse_status == "completed"
+    db.commit()
+    assert "analyse_item" not in queued

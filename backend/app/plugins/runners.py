@@ -610,8 +610,12 @@ def _run_mesh(
                 "PLUGIN_MODEL_FAILED", f"the 3D file could not be fetched: {user_message(e)}"
             )
         ) from None
+    except Exception:  # noqa: BLE001 - a paid result: any failure must reach fail() to refund
+        raise fail(PluginError("PLUGIN_MODEL_FAILED", "the 3D file could not be fetched")) from None
     if not glb:
         raise fail(_bad_output("the 3D file is empty"))
+    if not glb.startswith(b"glTF"):
+        raise fail(_bad_output("the 3D file is not a .glb"))
     return {"model3d": [{"glb": glb, "poster": png,
                          "caption": f"{inputs[0].label}, as a 3D model"}]}  # fmt: skip
 
@@ -726,6 +730,8 @@ def _run_video(
         raise fail(
             PluginError("PLUGIN_MODEL_FAILED", f"the video could not be fetched: {user_message(e)}")
         ) from None
+    except Exception:  # noqa: BLE001 - a paid result: any failure must reach fail() to refund
+        raise fail(PluginError("PLUGIN_MODEL_FAILED", "the video could not be fetched")) from None
     if not data:
         raise fail(_bad_output("the video is empty"))
     prompt = str(params.get("prompt") or "").strip()

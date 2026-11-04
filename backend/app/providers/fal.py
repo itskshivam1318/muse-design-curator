@@ -123,6 +123,10 @@ class FalClient:
             with self._http.stream("GET", url) as r:
                 if r.status_code >= 400:
                     raise ModelError(_code(r.status_code), message=f"fal file {r.status_code}")
+                if r.status_code >= 300:  # redirects are not followed: not the file
+                    raise ModelError(
+                        "MODEL_INVALID_RESPONSE", message=f"fal file redirect {r.status_code}"
+                    )
                 size = r.headers.get("content-length")
                 if size is not None and size.isdigit() and int(size) > max_bytes:
                     raise ModelError("PAYLOAD_TOO_LARGE", message="fal file over the cap")

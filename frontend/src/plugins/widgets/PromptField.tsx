@@ -1,6 +1,6 @@
 /** A multi-line prompt; Describe fills it from what the node's inputs show. */
 import { useState } from 'react'
-import { describeNode } from '../../api'
+import { ApiError, describeNode } from '../../api'
 
 interface Props {
   id: string
@@ -29,8 +29,9 @@ export function PromptField({ id, nodeId, value, describe, readOnly, onSave }: P
       const { prompt } = await describeNode(nodeId)
       setDraft(prompt)
       onSave(prompt)
-    } catch {
-      setErr('Could not describe the inputs')
+    } catch (e) {
+      const shown = e instanceof ApiError && (e.code === 'DAILY_LIMIT' || e.code === 'DEMO_LOCKED')
+      setErr(shown ? e.message : 'Could not describe the inputs')
     } finally {
       setBusy(false)
     }

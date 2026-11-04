@@ -319,6 +319,21 @@ def test_recover_stuck_analyses_requeues_pending_and_processing(
     assert gone.parse_status == "pending" and gone.id not in queued
 
 
+def test_recover_stuck_analyses_skips_models(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    board = boards_repo.create(session, "B")
+    model = add_image(session, board.id, shade=1, parse_status="pending")
+    model.kind = "model"
+    session.commit()
+    queued: list[str] = []
+    monkeypatch.setattr(service.jobs, "enqueue", lambda name, **kw: queued.append(kw["item_id"]))
+    assert service.recover_stuck_analyses(session) == 0
+    assert queued == []
+    session.refresh(model)
+    assert model.parse_status == "pending"
+
+
 def test_recovered_processing_item_gets_analysed(
     session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:

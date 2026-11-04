@@ -356,7 +356,7 @@ def execute_run(session: Session, run_id: str) -> None:
     if not claimed.rowcount:  # type: ignore[attr-defined]
         return  # superseded, or already taken
     session.commit()
-    _execute_claimed(session, run_id)
+    _execute_claimed(session, run_id, resumed=False)
 
 
 def resume_run(session: Session, run_id: str) -> None:
@@ -370,10 +370,18 @@ def resume_run(session: Session, run_id: str) -> None:
     if not claimed.rowcount:  # type: ignore[attr-defined]
         return
     session.commit()
-    _execute_claimed(session, run_id)
+    _execute_claimed(session, run_id, resumed=True)
 
 
-def _execute_claimed(session: Session, run_id: str) -> None:
+def _refund_paid(board_id: str, cap: Any) -> None:
+    """Give back the cap slot of a long-model run whose paid result could not be written."""
+    from app.analysis import limits
+
+    if cap in ("mesh", "video"):
+        limits.refund(board_id, cap)
+
+
+def _execute_claimed(session: Session, run_id: str, resumed: bool) -> None:
     run = session.get(PluginRun, run_id)
     assert run is not None
     board_id, node_id = run.board_id, run.node_id
@@ -390,13 +398,20 @@ def _execute_claimed(session: Session, run_id: str) -> None:
             partial(_progress, session, run_id, board_id, node_id),
             job=JobCtx(session, run_id),
         )
+        # the slot of a long-model run submitted by THIS process; a resumed run never refunds
+        paid = None if resumed else (run.external_json or {}).get("cap")
         session.expire_all()
         run = session.get(PluginRun, run_id)
         node = session.get(PluginNode, node_id)
         if run is None or node is None or run.status != "running":
             session.rollback()  # interrupted while it ran: a newer run owns the node
+            _refund_paid(board_id, paid)
             return
-        result = writeback.apply_output(session, run, node, out)
+        try:
+            result = writeback.apply_output(session, run, node, out)
+        except Exception:
+            _refund_paid(board_id, paid)
+            raise
     except PluginError as e:
         _finish_failed(session, run_id, e.code, e.message)
         return

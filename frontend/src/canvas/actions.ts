@@ -17,6 +17,7 @@ import { setVisualizing, upsertItems } from '../events'
 import type { ReleasePlan } from '../living/release'
 import { undoHistory as history } from './history'
 import { selection } from './selection'
+import { keepOptionItem } from './options'
 import { track } from '../telemetry'
 
 /** Calls `fn` on the first call only (one report for a release however many of its writes fail). */
@@ -217,6 +218,14 @@ export function useItemActions(boardId: string) {
           old?.map((i) => (i.id === itemId ? { ...i, parse_status: 'pending', parse_error_code: null } : i)),
         )
         await qc.invalidateQueries({ queryKey: keys.analysis(itemId) })
+      },
+      /** Keep an option; a refusal (e.g. the 429 daily-limit text) shows in the canvas error line. */
+      async keepOption(id: string) {
+        try {
+          await keepOptionItem(qc, boardId, id)
+        } catch (e) {
+          report('Could not keep this option')(e)
+        }
       },
       async chooseFrame(itemId: string, frameId: string) {
         try {

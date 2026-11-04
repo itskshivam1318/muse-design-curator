@@ -440,7 +440,7 @@ export function NodeCard({ boardId, node, plugin, run, items, view, readOnly = f
   const wantsPalettes = fields.some((f) => f.widget === 'palette')
   const paletteQueries = useQueries({
     queries: [...items.values()]
-      .filter((i) => wantsPalettes && i.kind === 'image')
+      .filter((i) => wantsPalettes && settingsOpen && i.kind === 'image')
       .map((i) => ({ queryKey: keys.attributes(i.id), queryFn: () => getAttributes(i.id) })),
   })
   const boardPalettes = paletteQueries.flatMap((q) => {

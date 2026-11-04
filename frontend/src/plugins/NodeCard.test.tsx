@@ -108,6 +108,21 @@ describe('NodeCard', () => {
     expect(params).not.toHaveProperty('first')
   })
 
+  it('fetches the board palettes only while the settings are open', async () => {
+    const plugin = makePlugin({
+      params: { type: 'object', properties: { colors: { type: 'array', items: { type: 'string' }, 'x-widget': 'palette' } } },
+    })
+    setup({ plugin, node: makeNode({ input_item_ids: ['i1'] }) })
+    vi.mocked(globalThis.fetch).mockImplementation(async (u) =>
+      new Response(JSON.stringify(String(u).includes('/attributes') ? { attributes: [] } : { demo_mode: false }), { status: 200 }),
+    )
+    const attrCalls = () => vi.mocked(globalThis.fetch).mock.calls.filter(([u]) => String(u).includes('/attributes')).length
+    await new Promise((r) => setTimeout(r, 20))
+    expect(attrCalls()).toBe(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Prompt' }))
+    await waitFor(() => expect(attrCalls()).toBeGreaterThan(0))
+  })
+
   it('Run calls runNode and caches the run', async () => {
     const { qc } = setup()
     vi.mocked(api.runNode).mockResolvedValue(makePluginRun({ id: 'r9' }))

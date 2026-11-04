@@ -13,8 +13,9 @@ vi.mock('../api', async (orig) => ({
   patchExploration: vi.fn(() => Promise.resolve()),
   patchOption: vi.fn(() => Promise.resolve()),
   analyseItem: vi.fn(() => Promise.resolve()),
+  keepOption: vi.fn(),
 }))
-const { patchItem, patchExploration, patchOption, analyseItem, ApiError } = await import('../api')
+const { patchItem, patchExploration, patchOption, analyseItem, keepOption, ApiError } = await import('../api')
 const { useItemActions } = await import('./actions')
 const { undoHistory } = await import('./history')
 
@@ -69,6 +70,15 @@ describe('useItemActions reanalyse', () => {
     const { result, qc } = setup()
     await expect(result.current.reanalyse('a')).rejects.toMatchObject({ code: 'DAILY_LIMIT' })
     expect(qc.getQueryData<{ parse_status: string }[]>(keys.items('b1'))![0].parse_status).toBe('completed')
+  })
+})
+
+describe('useItemActions keepOption', () => {
+  it('a refusal shows the server message in the action error line', async () => {
+    vi.mocked(keepOption).mockRejectedValueOnce(new ApiError(429, 'DAILY_LIMIT', 'Daily limit reached'))
+    const { result } = setup()
+    await act(() => result.current.keepOption('a'))
+    expect(result.current.error).toBe('Could not keep this option: Daily limit reached')
   })
 })
 

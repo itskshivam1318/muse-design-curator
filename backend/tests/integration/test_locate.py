@@ -254,7 +254,7 @@ def test_locate_object_prompts_sam_with_the_subject(
     assert seg.nouns == ["lounge chair"]
 
 
-def test_locate_object_without_subject_skips_sam(
+def test_locate_object_without_subject_needs_analysis_and_skips_sam(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     seg = CountingSeg()
@@ -263,7 +263,8 @@ def test_locate_object_without_subject_skips_sam(
         item_id = setup_item(s, board(client))
         with pytest.raises(AppError) as e:
             locate_mod.locate_object(s, item_id)
-    assert (e.value.status, e.value.code) == (422, "REGION_EMPTY") and seg.calls == 0
+    assert (e.value.status, e.value.code) == (422, "NEEDS_ANALYSIS") and seg.calls == 0
+    assert e.value.message == "Analyse this item again to find its outline"
 
 
 def test_locate_object_uses_cache(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:

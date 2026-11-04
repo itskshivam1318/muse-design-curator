@@ -178,3 +178,99 @@ def test_mesh_missing_url_and_empty_glb_refund(
     run = run_node(client, node["id"])
     assert run["status"] == "failed" and run["error_code"] == "PLUGIN_BAD_OUTPUT"
     assert hits(board) == 0
+
+
+def run_with_old_request(
+    client: TestClient, board: str, db: Session, monkeypatch: pytest.MonkeyPatch, resumed: bool
+) -> Any:
+    """A mesh run whose fal result is fine but whose writeback fails (the poster is garbage)."""
+    from app.db.models import PluginRun
+    from app.plugins import service
+
+    _, node = start(client, board, db)
+    monkeypatch.setattr("app.jobs.enqueue", lambda *_a, **_k: None)
+    rid = client.post(f"/api/nodes/{node['id']}/run").json()["id"]
+    run = db.get(PluginRun, rid)
+    assert run is not None
+    if resumed:
+        run.status = "running"
+        run.external_json = {"endpoint": get_settings().FAL_MESH_FAST, "request_id": "mock-old",
+                             "status": "IN_QUEUE", "cap": "mesh",
+                             "submitted_at": _iso(datetime.now(UTC))}  # fmt: skip
+        db.commit()
+        demo.windows._hits.pop(f"mesh:{board}", None)
+        from app.analysis import limits
+
+        limits.check_and_count(board, "mesh", get_settings())  # the submitting process's slot
+    monkeypatch.setattr(
+        "app.plugins.writeback._model_item",
+        lambda *_a, **_k: (_ for _ in ()).throw(
+            __import__("app.plugins.runners", fromlist=["PluginError"]).PluginError(
+                "PLUGIN_BAD_OUTPUT", "poster"
+            )
+        ),
+    )
+    service.execute_run(db, rid) if not resumed else service.resume_run(db, rid)
+    db.expire_all()
+    done = db.get(PluginRun, rid)
+    assert done is not None and done.status == "failed"
+    return done
+
+
+def test_fresh_run_writeback_failure_refunds_the_slot(
+    client: TestClient, board: str, db: Session, fal: MockFal, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_with_old_request(client, board, db, monkeypatch, resumed=False)
+    assert hits(board) == 0
+
+
+def test_resumed_run_writeback_failure_keeps_the_slot(
+    client: TestClient, board: str, db: Session, fal: MockFal, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_with_old_request(client, board, db, monkeypatch, resumed=True)
+    assert hits(board) == 1
+
+
+def test_mesh_superseded_while_running_refunds(
+    client: TestClient, board: str, db: Session, fal: MockFal, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.db.models import PluginRun
+    from app.plugins import service
+
+    _, node = start(client, board, db)
+    monkeypatch.setattr("app.jobs.enqueue", lambda *_a, **_k: None)
+    rid = client.post(f"/api/nodes/{node['id']}/run").json()["id"]
+    real = fal.result
+
+    def result_then_supersede(endpoint: str, request_id: str) -> dict[str, Any]:
+        out = real(endpoint, request_id)
+        db.query(PluginRun).filter(PluginRun.id == rid).update({"status": "failed"})
+        db.commit()
+        return out
+
+    monkeypatch.setattr(fal, "result", result_then_supersede)
+    service.execute_run(db, rid)
+    assert hits(board) == 0
+
+
+def test_mesh_rejects_non_glb_bytes_and_refunds(
+    client: TestClient, board: str, db: Session, fal: MockFal
+) -> None:
+    fal.files[GLB_URL] = b"<html>not a model</html>"
+    _, node = start(client, board, db)
+    run = run_node(client, node["id"])
+    assert run["status"] == "failed" and run["error_code"] == "PLUGIN_BAD_OUTPUT"
+    assert hits(board) == 0
+
+
+def test_mesh_unexpected_download_exception_refunds(
+    client: TestClient, board: str, db: Session, fal: MockFal, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(url: str, max_bytes: int) -> bytes:
+        raise OSError("socket closed")
+
+    monkeypatch.setattr(fal, "download", boom)
+    _, node = start(client, board, db)
+    run = run_node(client, node["id"])
+    assert run["status"] == "failed" and run["error_code"] == "PLUGIN_MODEL_FAILED"
+    assert hits(board) == 0

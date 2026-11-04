@@ -102,8 +102,12 @@ def _image_item(
     thumb = files.save_thumb(img, sha)
     w, h = default_size(*img.size)
     meta = ItemMeta(origin="generated", filename=f"{run.plugin_id}.png", x=x, y=y)
+    # recolor / clean-up keep the parent's geometry, so its subject still names the object (an
+    # unkept option is never analysed, and Clean-up / 3D on it need the subject to find an outline)
+    parent_item = session.get(BoardItem, parent) if parent else None
     return create_item(
         session, node.board_id, meta,
+        subject=parent_item.subject if parent_item is not None else None,
         kind="image", sha256=sha, storage_path=storage, thumb_path=thumb, mime="image/png",
         width=img.size[0], height=img.size[1], w=w, h=h, rights_status="generated",
         parent_item_id=parent,
@@ -142,6 +146,7 @@ def _model_item(
         mime="model/gltf-binary", width=poster.size[0], height=poster.size[1], w=w, h=h,
         rights_status="generated", parent_item_id=parent,
         generation_json={"plugin": run.plugin_id, "model": model, "run_id": run.id},
+        parse_status="completed",  # a model is never analysed
     )  # fmt: skip
 
 

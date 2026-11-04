@@ -97,20 +97,22 @@ test('variation: 24 options, shuffle, keep two, clear, undo', async ({ page }) =
   expect(run2Hashes[0]).not.toBe(run1Hashes[0]) // a different first tile
   expect([...run2Hashes].sort()).not.toEqual([...run1Hashes].sort()) // and a different set of tiles
 
-  // keep two (Keep makes them ordinary items), then Clear drops the rest
+  // keep two (Keep makes them ordinary items), then Clear drops the rest of the latest run's
+  // options; the earlier run's grid is left alone
   const [a, b] = [run2[0], run2[1]]
   await post(`/items/${a.id}/keep-option`)
   await post(`/items/${b.id}/keep-option`)
   await page.reload()
   await card.getByRole('button', { name: /^Clear options/ }).click()
-  await expect.poll(async () => (await options(boardId)).length).toBe(0)
-  await expect.poll(async () => (await items(boardId)).length).toBe(3)
-  await expectItemCount(page, 3)
+  await expect.poll(async () => (await options(boardId)).length).toBe(GRID)
+  expect((await options(boardId)).every((i) => run1Ids.has(i.id))).toBe(true)
+  await expect.poll(async () => (await items(boardId)).length).toBe(3 + GRID)
+  await expectItemCount(page, 3 + GRID)
 
   // undo: restore brings a cleared option back
   const gone = run2[5]
   await post(`/items/${gone.id}/restore`)
-  await expect.poll(async () => (await options(boardId)).length).toBe(1)
+  await expect.poll(async () => (await options(boardId)).length).toBe(GRID + 1)
 })
 
 test('clean-up: one cut-out lands on the board', async ({ page }) => {

@@ -235,6 +235,7 @@ def recover_stuck_analyses(session: Session) -> int:
             select(BoardItem.id).where(
                 BoardItem.parse_status.in_(("pending", "processing")),
                 BoardItem.removed_at.is_(None),
+                BoardItem.kind != "model",
             )
         )
     )

@@ -45,7 +45,6 @@ import type { ItemActions } from './actions'
 import { handleDrop } from './drop'
 import { FramesStrip } from './FramesStrip'
 import { ModelViewer } from './ModelViewer'
-import { keepOptionItem } from './options'
 import { VideoOverlay } from './VideoOverlay'
 import {
   type Bounds,
@@ -878,7 +877,7 @@ export function Canvas({
                 onRemove={() => actions.remove(selected)}
                 onReanalyse={actions.reanalyse}
                 readOnly={readOnly}
-                onKeep={(id) => void keepOptionItem(qc, boardId, id).catch(() => {})}
+                onKeep={(id) => void actions.keepOption(id)}
                 onOpenModel={setViewing}
                 onSize={onToolbarSize}
               />
