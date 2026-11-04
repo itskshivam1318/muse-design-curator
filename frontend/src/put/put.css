@@ -56,10 +56,9 @@
   z-index: 6;
 }
 
-/* the card on a let-go line (screen units, centred on its body) */
+/* the card on a let-go line (screen units, top-left; centred on its body unless that is cramped) */
 .put-card-anchor {
   position: absolute;
-  transform: translate(-50%, -50%);
   pointer-events: auto;
   z-index: 7;
 }

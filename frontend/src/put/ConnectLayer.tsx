@@ -5,7 +5,7 @@
  * a ghost holds the result's place until it lands. HTML over the canvas; only the dot, the card and a
  * failed ghost take the pointer.
  */
-import { type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef } from 'react'
+import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { type AnalysisView, type Item, keys, type PartView, type Point, putInto } from '../api'
 import { type Bounds, toCanvasPoint, toScreenPoint, type View } from '../canvas/geometry'
@@ -18,6 +18,7 @@ import { useAnalysis, useRegion } from '../queries'
 import { cardPlace, PUT_CARD_H, PUT_CARD_ID, PUT_CARD_W } from './bodies'
 import { GhostTile } from './GhostTile'
 import { addGhost, useGhosts } from './ghosts'
+import { placeCard } from './placeCard'
 import { PutCard } from './PutCard'
 import { aimAt, type Spot, toBody } from './spots'
 import { type Connect, itemUnder, type Placed, type useConnect } from './useConnect'
@@ -204,6 +205,21 @@ function CardOnLine({ boardId, source, target, state, view, connect, onSize }: {
   const live = useLiveBounds(PUT_CARD_ID)
   const centre = live ? { x: live.x + live.width / 2, y: live.y + live.height / 2 } : state.cardAt
   const at = toScreenPoint(centre, view)
+  const anchor = useRef<HTMLDivElement>(null)
+  const [size, setSize] = useState({ w: PUT_CARD_W, h: PUT_CARD_H })
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
+  const reportSize = useCallback((s: { width: number; height: number } | null) => {
+    if (s) setSize((p) => (p.w === s.width && p.h === s.height ? p : { w: s.width, h: s.height }))
+    onSize?.(s)
+  }, [onSize])
+  // the body's spot is where the card would sit; the card keeps off the agent card and the screen edge
+  useLayoutEffect(() => {
+    const box = anchor.current?.parentElement?.getBoundingClientRect()
+    if (!box || !box.width || !box.height) return
+    const agent = document.querySelector('.agent-card')?.getBoundingClientRect()
+    const avoid = agent ? [{ left: agent.left - box.left, top: agent.top - box.top, right: agent.right - box.left, bottom: agent.bottom - box.top }] : []
+    setPos(placeCard({ x: at.x - size.w / 2, y: at.y - size.h / 2 }, size, { w: box.width, h: box.height }, avoid))
+  }, [at.x, at.y, size])
   const submit = async (words: string) => {
     const w = words.trim()
     const body = { source_id: source.id, spots: toBody(state.spots, state.off), ...(w ? { words: w } : {}) }
@@ -212,7 +228,7 @@ function CardOnLine({ boardId, source, target, state, view, connect, onSize }: {
     connect.cancel()
   }
   return (
-    <div className="put-card-anchor" style={{ left: at.x, top: at.y, width: PUT_CARD_W }}>
+    <div ref={anchor} className="put-card-anchor" style={{ left: pos?.x ?? at.x - size.w / 2, top: pos?.y ?? at.y - size.h / 2, width: PUT_CARD_W }}>
       <PutCard
         source={source}
         target={target}
@@ -221,7 +237,7 @@ function CardOnLine({ boardId, source, target, state, view, connect, onSize }: {
         onToggle={connect.toggle}
         onCancel={connect.cancel}
         onSubmit={submit}
-        onSize={onSize}
+        onSize={reportSize}
       />
     </div>
   )
