@@ -166,9 +166,7 @@ def test_custom_domain_when_board_has_none(session: Session, reasoning: SpyReaso
     assert lens_service.propose_lens(session, board.id).id == "custom@1"
 
 
-def test_default_mock_proposal_is_stored(
-    session: Session, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_default_mock_proposal_is_stored(session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(lens_service, "get_reasoning", lambda _s: MockReasoningProvider())
     board, _ = make_board(session, 5)
     spec = lens_service.propose_lens(session, board.id)

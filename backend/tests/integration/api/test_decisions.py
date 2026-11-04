@@ -88,8 +88,9 @@ def decide(world: dict[str, Any], rid: str, cid: str, **body: Any) -> Answer:
 def n_items(world: dict[str, Any]) -> int:
     s = world["session"]
     s.expire_all()
-    return s.scalar(select(func.count()).select_from(BoardItem).where(
-        BoardItem.board_id == world["watch"]))  # type: ignore[return-value]
+    return s.scalar(
+        select(func.count()).select_from(BoardItem).where(BoardItem.board_id == world["watch"])
+    )  # type: ignore[return-value]
 
 
 def test_keep_persists_with_board_run_candidate_and_timestamp(client, world) -> None:  # type: ignore[no-untyped-def]
@@ -156,9 +157,7 @@ def test_second_kept_item_does_not_overlap_the_first(client, world) -> None:  # 
     for a in rows:
         for b in rows:
             if a is not b:
-                assert (
-                    a.x + a.w <= b.x or b.x + b.w <= a.x or a.y + a.h <= b.y or b.y + b.h <= a.y
-                )
+                assert a.x + a.w <= b.x or b.x + b.w <= a.x or a.y + a.h <= b.y or b.y + b.h <= a.y
 
 
 def test_keep_then_reject_appends_history_latest_is_reject(client, world) -> None:  # type: ignore[no-untyped-def]
@@ -238,8 +237,9 @@ def test_keep_links_existing_item_with_same_image(client, world) -> None:  # typ
     top = results(world, rid)[0]
     s = world["session"]
     sha = s.get(CorpusItem, top["corpus_item_id"]).sha256
-    twin = s.scalars(select(BoardItem).where(
-        BoardItem.sha256 == sha, BoardItem.removed_at.is_(None))).first()
+    twin = s.scalars(
+        select(BoardItem).where(BoardItem.sha256 == sha, BoardItem.removed_at.is_(None))
+    ).first()
     if twin is None:
         return  # candidate image not on this board
     before = n_items(world)
@@ -259,7 +259,13 @@ def test_csv_neutralises_formulas_and_round_trips(client, world) -> None:  # typ
     rows = list(csv.reader(io.StringIO(r.text, newline="")))
     got = [row[6] for row in rows[1:]][::-1]  # oldest first
     assert got == [
-        "'=HYPERLINK(\"x\")", "'+1", "'-2", "'@cmd", "'\tTab", "line1\nline2", 'say "hi", ok',
+        '\'=HYPERLINK("x")',
+        "'+1",
+        "'-2",
+        "'@cmd",
+        "'\tTab",
+        "line1\nline2",
+        'say "hi", ok',
     ]
     assert all(len(row) == 8 for row in rows)
 

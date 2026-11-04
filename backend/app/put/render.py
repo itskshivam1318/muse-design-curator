@@ -29,7 +29,9 @@ def has_alpha(img: Image.Image) -> bool:
     """True when the image has an alpha channel with any value below 255."""
     if "A" not in img.getbands():
         return False
-    lo = img.getchannel("A").getextrema()[0]  # one band: (min, max) of numbers, never per-band tuples
+    lo = img.getchannel("A").getextrema()[
+        0
+    ]  # one band: (min, max) of numbers, never per-band tuples
     return isinstance(lo, (int, float)) and lo < 255
 
 

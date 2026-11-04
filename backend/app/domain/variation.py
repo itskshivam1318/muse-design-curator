@@ -242,7 +242,9 @@ def propose_protected(
         reason = (
             "board_signal"
             if a.key in strength
-            else "user_confirmed" if a.status in ("edited", "confirmed") else "suggested"
+            else "user_confirmed"
+            if a.status in ("edited", "confirmed")
+            else "suggested"
         )
         rows.append(
             {

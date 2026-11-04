@@ -40,7 +40,10 @@ def test_upgrade_on_populated_db(tmp_path: Path) -> None:
             )
         )
         assert c.exec_driver_sql("PRAGMA foreign_key_check").fetchall() == []
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0013_round3_plugins"
+        assert (
+            c.execute(text("SELECT version_num FROM alembic_version")).scalar()
+            == "0013_round3_plugins"
+        )
     engine.dispose()
 
 
@@ -53,10 +56,16 @@ def test_downgrade_roundtrip(tmp_path: Path) -> None:
         cfg.attributes["connection"] = conn
         command.downgrade(cfg, "0009_living_board")
     with engine.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0009_living_board"
+        assert (
+            c.execute(text("SELECT version_num FROM alembic_version")).scalar()
+            == "0009_living_board"
+        )
         assert c.execute(text("SELECT count(*) FROM board_items")).scalar() == 1
     run_migrations(engine)
     with engine.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0013_round3_plugins"
+        assert (
+            c.execute(text("SELECT version_num FROM alembic_version")).scalar()
+            == "0013_round3_plugins"
+        )
         assert c.execute(text("SELECT count(*) FROM board_items")).scalar() == 1
     engine.dispose()

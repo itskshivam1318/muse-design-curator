@@ -208,9 +208,27 @@ def patch_item(
 
 @router.delete("/items/{item_id}", status_code=204)
 def delete_item(item_id: str, session: SessionDep) -> None:
-    item = _require_item(session, item_id)
+    soft_remove(session, _require_item(session, item_id))
+
+
+def soft_remove(session: Session, item: BoardItem) -> None:
+    """Remove `item` the way a delete does (the client's undo of it restores the item)."""
+    item_id, board_id = item.id, item.board_id
     items_repo.soft_delete(session, item_id)
     forget_deleted_take(session, item)
-    board_id = item.board_id
     after_commit(session, lambda: events.publish(board_id, "item.removed", {"id": item_id}))
     after_commit(session, lambda: profile_hook.request_recompute(board_id))
+
+
+@router.post("/items/{item_id}/keep-option")
+def keep_option(item_id: str, session: SessionDep) -> dict[str, Any]:
+    """Promote a plugin option to an ordinary item."""
+    item = _require_item(session, item_id)
+    if item.option_run_id is None:
+        raise AppError(404, "OPTION_NOT_FOUND", "This item is not an option")
+    item.option_run_id = None
+    session.flush()
+    data = item_to_dict(item)
+    board_id = item.board_id
+    after_commit(session, lambda: events.publish(board_id, "item.updated", data))
+    return data

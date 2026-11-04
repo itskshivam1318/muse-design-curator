@@ -183,7 +183,9 @@ def test_redirect_to_a_private_address_is_dropped(session, data_dir) -> None:  #
     client = _redirecting(
         {
             "https://img.test/a.png": httpx.Response(302, headers={"location": meta}),
-            "https://img.test/b.png": httpx.Response(302, headers={"location": "http://10.0.0.5/b.png"}),
+            "https://img.test/b.png": httpx.Response(
+                302, headers={"location": "http://10.0.0.5/b.png"}
+            ),
             meta: httpx.Response(200, content=image_bytes("PNG", (300, 300), 3)),
             "http://10.0.0.5/b.png": httpx.Response(200, content=image_bytes("PNG", (300, 300), 4)),
         },
@@ -202,7 +204,9 @@ def test_redirect_to_a_public_host_is_followed_and_capped_at_three(session, data
             "https://img.test/ok.png": httpx.Response(301, headers={"location": hop(1)}),
             hop(1): httpx.Response(200, content=image_bytes("PNG", (300, 300), 5)),
             "https://img.test/far.png": httpx.Response(302, headers={"location": hop(10)}),
-            **{hop(n): httpx.Response(302, headers={"location": hop(n + 1)}) for n in range(10, 14)},
+            **{
+                hop(n): httpx.Response(302, headers={"location": hop(n + 1)}) for n in range(10, 14)
+            },
             hop(14): httpx.Response(200, content=image_bytes("PNG", (300, 300), 6)),
         },
         seen,

@@ -173,9 +173,7 @@ def test_lens_and_source_readiness_409(world) -> None:  # type: ignore[no-untype
     assert s.scalar(select(func.count()).select_from(VariationRun)) == 0
 
 
-def test_provider_timeout_during_verify_is_uncertain_and_run_completes(
-    world, monkeypatch
-) -> None:  # type: ignore[no-untyped-def]
+def test_provider_timeout_during_verify_is_uncertain_and_run_completes(world, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     class Down:
         id, model, is_mock = "down", "m", False
 
