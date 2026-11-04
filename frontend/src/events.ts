@@ -3,6 +3,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { useSyncExternalStore } from 'react'
 import {
   type AgentRun,
+  type AgentMessage,
   type AgentRunWithSteps,
   type AgentStep,
   API_ORIGIN,
@@ -41,6 +42,8 @@ export const EVENT_TYPES = [
   'plugin_run.failed',
   'agent.step',
   'agent.run',
+  'agent.message',
+  'agent.question',
   'put.done',
   'put.failed',
 ] as const
@@ -377,6 +380,16 @@ function applyToCache(qc: QueryClient, boardId: string, type: string, d: Record<
         return
       }
       qc.setQueryData<AgentRunWithSteps>(key, (old) => (old ? { ...old, steps: mergeSteps(old.steps, step) } : old))
+      return
+    }
+    case 'agent.message':
+    case 'agent.question': {
+      const msg = d as unknown as AgentMessage
+      if (!msg.id || !msg.run_id) return
+      qc.setQueryData<AgentMessage[]>(keys.agentMessages(msg.run_id), (old) => {
+        const list = old ?? []
+        return list.some((m) => m.id === msg.id) ? list.map((m) => (m.id === msg.id ? msg : m)) : [...list, msg]
+      })
       return
     }
     case 'agent.run': {

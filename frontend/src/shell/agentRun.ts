@@ -48,6 +48,7 @@ export function toolCall(step: AgentStep): string {
 export const STATUS_TEXT: Record<AgentRunStatus, string> = {
   running: 'working',
   needs_input: 'needs you',
+  waiting: 'waiting for you',
   done: 'done',
   paused: 'paused',
 }

@@ -1,4 +1,4 @@
-import type { AgentRun, AgentStep, BoardProfile, Item } from '../api'
+import type { AgentMessage, AgentRun, AgentStep, BoardProfile, Item } from '../api'
 
 export function makeItem(over: Partial<Item> = {}): Item {
   return {
@@ -50,5 +50,16 @@ export const makeRun = (over: Partial<AgentRun> = {}): AgentRun => ({
   note: null,
   created_at: '2026-11-03T10:00:00Z',
   updated_at: '2026-11-03T10:00:00Z',
+  ...over,
+})
+
+export const makeMessage = (over: Partial<AgentMessage> = {}): AgentMessage => ({
+  id: 'm1',
+  run_id: 'r1',
+  role: 'agent',
+  text: 'Hello',
+  data: null,
+  answered: false,
+  created_at: '2026-11-04T10:00:00Z',
   ...over,
 })

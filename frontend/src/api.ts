@@ -253,7 +253,7 @@ export interface NodesResponse {
 }
 
 export type AgentSource = 'mcp' | 'muse'
-export type AgentRunStatus = 'running' | 'needs_input' | 'done' | 'paused'
+export type AgentRunStatus = 'running' | 'needs_input' | 'waiting' | 'done' | 'paused'
 
 export interface AgentOutput {
   title: string
@@ -294,6 +294,35 @@ export interface AgentStep {
 export interface AgentRunWithSteps extends AgentRun {
   /** In turn order. */
   steps: AgentStep[]
+}
+
+export interface AgentAnswer {
+  call_id: string
+  text?: string
+  choice?: string
+  box?: number[]
+}
+
+export interface AgentMessageData {
+  selection?: string[]
+  call_id?: string
+  tool?: 'ask_user' | 'confirm_part'
+  args?: Record<string, unknown>
+  region?: { kind: string; box: number[] | null; mask_url: string | null } | null
+  answer?: AgentAnswer
+  /** Internal bookkeeping; the UI ignores it. */
+  consumed?: boolean
+}
+
+/** One line of a chat with the board agent: what the person said, what it said, or a question it asked. */
+export interface AgentMessage {
+  id: string
+  run_id: string
+  role: 'person' | 'agent' | 'question'
+  text: string
+  data: AgentMessageData | null
+  answered: boolean
+  created_at: string
 }
 
 export interface Board {
@@ -515,6 +544,7 @@ export const keys = {
   attributeHistory: (itemId: string, key: string) => ['attributeHistory', itemId, key] as const,
   agentRuns: (boardId: string) => ['agentRuns', boardId] as const,
   agentRun: (runId: string) => ['agentRun', runId] as const,
+  agentMessages: (runId: string) => ['agentMessages', runId] as const,
 }
 
 /** The API origin with no trailing slash; empty means same origin (the dev proxy). */
@@ -653,6 +683,20 @@ export const getAgentRuns = (boardId: string) =>
 export const getAgentRun = (runId: string) => request<AgentRunWithSteps>(`/agent-runs/${enc(runId)}`)
 export const patchAgentRun = (runId: string, body: { status: 'paused' }) =>
   request<AgentRun>(`/agent-runs/${enc(runId)}`, { method: 'PATCH', json: body })
+
+export const getAgentMessages = (runId: string) =>
+  request<{ messages: AgentMessage[] }>(`/agent-runs/${enc(runId)}/messages`).then((r) => r.messages)
+export const sendAgentMessage = (
+  boardId: string,
+  body: { text: string; selection: string[]; answer?: AgentAnswer },
+) =>
+  request<{ run: AgentRun; message: AgentMessage }>(`/boards/${enc(boardId)}/agent/messages`, {
+    method: 'POST',
+    json: body,
+  })
+export const newChat = (runId: string) => request<AgentRun>(`/agent-runs/${enc(runId)}/new-chat`, { method: 'POST' })
+export const getChatStatus = () => request<{ available: boolean; reason: string | null }>('/agent/chat-status')
+export const agentTraceUrl = (runId: string) => `${BASE}/agent-runs/${enc(runId)}/trace`
 
 export const patchAgentStep =(stepId: string, body: { highlight: boolean }) =>
   request<AgentStep>(`/agent-steps/${enc(stepId)}`, { method: 'PATCH', json: body })

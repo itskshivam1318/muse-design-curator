@@ -1,9 +1,9 @@
 import { QueryClient } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
-import { type AgentRun, type AgentRunWithSteps, type Exploration, type Item, keys, type NodesResponse, type PluginNode, type PluginRun } from './api'
+import { type AgentMessage, type AgentRun, type AgentRunWithSteps, type Exploration, type Item, keys, type NodesResponse, type PluginNode, type PluginRun } from './api'
 import { applyEvent, connectBoardEvents, boardActivity, type DescribeContext, describeEvent, noteVisualizeStore, seedVisualizing } from './events'
 import { countedItems, visibleItems } from './queries'
-import { makeItem, makeRun, makeStep } from './test/fixtures'
+import { makeItem, makeMessage, makeRun, makeStep } from './test/fixtures'
 
 function qcWith(items: Item[]) {
   const qc = new QueryClient()
@@ -42,6 +42,24 @@ describe('applyEvent', () => {
     applyEvent(qc, 'b1', 'agent.step', makeStep({ run_id: 'r7' }))
     expect(spy).toHaveBeenCalledWith({ queryKey: keys.agentRun('r7') })
     expect(qc.getQueryData(keys.agentRun('r7'))).toBeUndefined()
+  })
+
+  it("agent.message appends to the run's messages once", () => {
+    const qc = new QueryClient()
+    const m = makeMessage({ id: 'm1' })
+    applyEvent(qc, 'b1', 'agent.message', m)
+    applyEvent(qc, 'b1', 'agent.message', m)
+    expect(qc.getQueryData<AgentMessage[]>(keys.agentMessages('r1'))!.map((x) => x.id)).toEqual(['m1'])
+  })
+
+  it('agent.question appends after earlier messages', () => {
+    const qc = new QueryClient()
+    qc.setQueryData<AgentMessage[]>(keys.agentMessages('r1'), [makeMessage({ id: 'm1' })])
+    applyEvent(qc, 'b1', 'agent.question', makeMessage({ id: 'm2', role: 'question', data: { call_id: 'c1', tool: 'ask_user' } }))
+    expect(qc.getQueryData<AgentMessage[]>(keys.agentMessages('r1'))!.map((x) => [x.id, x.role])).toEqual([
+      ['m1', 'agent'],
+      ['m2', 'question'],
+    ])
   })
 
   it('agent.run puts a new run first and updates a known one in place', () => {
@@ -321,7 +339,7 @@ describe('connectBoardEvents', () => {
     expect(noteVisualizeStore.get().ids.has('nx')).toBe(true)
     listeners['note.visualized']({ data: JSON.stringify({ note_id: 'nx' }) } as MessageEvent<string>)
     expect(noteVisualizeStore.get().ids.has('nx')).toBe(false)
-    for (const t of ['agent.step', 'agent.run', 'plugin_run.queued', 'plugin_run.progress', 'plugin_run.done', 'plugin_run.failed', 'note.visualize_failed'])
+    for (const t of ['agent.step', 'agent.run', 'agent.message', 'agent.question', 'plugin_run.queued', 'plugin_run.progress', 'plugin_run.done', 'plugin_run.failed', 'note.visualize_failed'])
       expect(listeners[t]).toBeTypeOf('function')
     stop()
   })
