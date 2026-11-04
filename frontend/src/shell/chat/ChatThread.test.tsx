@@ -49,4 +49,26 @@ describe('ChatThread', () => {
     )
     expect(screen.getByText('asked: Which one?')).toBeTruthy()
   })
+
+  it('keeps the newest line in view while the person follows along', () => {
+    const msg = (id: string, role: 'person' | 'agent') => ({ kind: 'message', message: makeMessage({ id, role, text: id }) }) as Entry
+    const props = { onFocusItem: () => undefined }
+    const { rerender } = render(<ChatThread entries={[msg('m1', 'person')]} {...props} />)
+    const list = screen.getByRole('list', { name: 'Chat' })
+    let height = 500
+    Object.defineProperty(list, 'scrollHeight', { configurable: true, get: () => height })
+    Object.defineProperty(list, 'clientHeight', { configurable: true, value: 200 })
+    rerender(<ChatThread entries={[msg('m1', 'person'), msg('m2', 'agent')]} {...props} />)
+    expect(list.scrollTop).toBe(500)
+    // scrolled up to read: a new agent line leaves the view where it is
+    list.scrollTop = 0
+    fireEvent.scroll(list)
+    height = 600
+    rerender(<ChatThread entries={[msg('m1', 'person'), msg('m2', 'agent'), msg('m3', 'agent')]} {...props} />)
+    expect(list.scrollTop).toBe(0)
+    // the person's own message always comes into view
+    height = 700
+    rerender(<ChatThread entries={[msg('m1', 'person'), msg('m2', 'agent'), msg('m3', 'agent'), msg('m4', 'person')]} {...props} />)
+    expect(list.scrollTop).toBe(700)
+  })
 })

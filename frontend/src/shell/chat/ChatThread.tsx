@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { type ReactNode, useLayoutEffect, useRef } from 'react'
 import type { AgentMessage } from '../../api'
 import { toolCall } from '../agentRun'
 import { type Entry, textParts } from './thread'
@@ -20,6 +20,9 @@ function AgentText({ text, onFocusItem }: { text: string; onFocusItem: (itemId: 
   )
 }
 
+/** Within this many pixels of the end, the person is following along and new lines scroll in. */
+const NEAR_END = 40
+
 /**
  * The chat with Muse's agent, oldest first: the person's and the agent's bubbles, and the agent's tool
  * calls between them as short lines. A question shows as text unless `renderQuestion` draws it.
@@ -33,8 +36,25 @@ export function ChatThread({
   onFocusItem: (itemId: string) => void
   renderQuestion?: (message: AgentMessage) => ReactNode
 }) {
+  const list = useRef<HTMLOListElement>(null)
+  // measured on scroll, before new lines change the height: was the person at the end?
+  const atEnd = useRef(true)
+  const last = entries.at(-1)
+  const ownLast = last?.kind === 'message' && last.message.role === 'person'
+  useLayoutEffect(() => {
+    const el = list.current
+    // the first render, a person following along, or their own message: show the newest line
+    if (el && (atEnd.current || ownLast)) {
+      el.scrollTop = el.scrollHeight
+      atEnd.current = true
+    }
+  }, [entries.length, ownLast])
+  const onScroll = () => {
+    const el = list.current
+    if (el) atEnd.current = el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_END
+  }
   return (
-    <ol className="chat-thread" aria-label="Chat">
+    <ol ref={list} className="chat-thread" aria-label="Chat" onScroll={onScroll}>
       {entries.map((e) => {
         if (e.kind === 'step') {
           const { step } = e
