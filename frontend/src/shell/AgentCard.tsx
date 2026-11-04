@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   type AgentRunWithSteps,
   type AgentStep,
@@ -33,7 +33,7 @@ function useRun(boardId: string, chosenId: string | null) {
     },
     enabled: run !== undefined,
   })
-  return { runs: all, run, steps: detail.data?.steps ?? [] }
+  return { runs: all, run, steps: detail.data?.steps ?? [], loaded: runs.isSuccess && (run === undefined || detail.isSuccess) }
 }
 
 /**
@@ -45,8 +45,10 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
   const entries = useActivity()
   const { drawer } = useSelection()
   const { locked } = useDemo()
-  const [pick, setPick] = useState<string | null>(null)
-  const { runs, run, steps } = useRun(boardId, pick)
+  // a link /boards/<id>?replay=<run> opens that run's replay, once
+  const [linked] = useState(() => new URLSearchParams(window.location.search).get('replay'))
+  const [pick, setPick] = useState<string | null>(linked)
+  const { runs, run, steps, loaded } = useRun(boardId, pick)
   const spotlight = useSpotlight()
   const qc = useQueryClient()
   const star = useMutation({
@@ -61,6 +63,15 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
     mutationFn: (runId: string) => patchAgentRun(runId, { status: 'paused' }),
     onSuccess: (paused) => applyEvent(qc, boardId, 'agent.run', paused),
   })
+  const linkHandled = useRef(linked === null)
+  useEffect(() => {
+    if (linkHandled.current || !loaded) return
+    linkHandled.current = true
+    if (run?.id === linked && run.status === 'done' && replaySteps(steps).length > 0) startSpotlight(run.id, steps)
+    const url = new URL(window.location.href)
+    url.searchParams.delete('replay')
+    window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
+  }, [loaded, run, steps, linked])
   const [wantExpanded, setExpanded] = useState(false)
   // a replay collapses the card: expanded it would cover the board
   const expanded = wantExpanded && !spotlight

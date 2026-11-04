@@ -18,6 +18,7 @@ afterEach(() => {
   boardActivity.clear()
   selection.reset()
   closeSpotlight()
+  window.history.replaceState(null, '', '/')
   vi.restoreAllMocks()
 })
 
@@ -349,5 +350,20 @@ describe('AgentCard, replay', () => {
     expect(screen.queryByRole('button', { name: 'Show me how' })).toBeNull()
     act(() => closeSpotlight())
     expect(screen.getByRole('button', { name: 'Show me how' })).toBeTruthy()
+  })
+
+  it('opens the replay named in the link, once', () => {
+    window.history.replaceState(null, '', '/boards/b1?replay=r1')
+    renderCard({ run: makeRun({ status: 'done' }), steps: [makeStep({ highlight: true })] })
+    expect(spotlightStore.get()?.runId).toBe('r1')
+    expect(window.location.search).toBe('')
+    expect(window.location.pathname).toBe('/boards/b1')
+  })
+
+  it('ignores a link to a run that is not on the board', () => {
+    window.history.replaceState(null, '', '/boards/b1?replay=nope')
+    renderCard({ run: makeRun({ status: 'done' }), steps: [makeStep({ highlight: true })] })
+    expect(spotlightStore.get()).toBeNull()
+    expect(window.location.search).toBe('')
   })
 })
