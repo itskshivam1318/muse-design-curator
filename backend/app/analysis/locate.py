@@ -1,6 +1,7 @@
 """Lazy part regions: box and text parts are stored; a mask part runs SAM the first time it is asked for."""
 
 import io
+from typing import Any
 
 import numpy as np
 from PIL import Image
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.analysis.types import Region
 from app.config import get_settings
 from app.db.models import ItemAttribute, ItemPart
+from app.db.repos import masks as masks_repo
 from app.errors import AppError
 from app.extraction.service import _fit, _image_for, _mask_rel, _part_mask, _require_item
 from app.measure.palette import mask_ratio
@@ -141,3 +143,74 @@ def locate(session: Session, item_id: str, part_key: str) -> Region:
     part.region_json = [round(c, 6) for c in bbox]
     session.commit()
     return _mask_region(part)
+
+
+# ---- the whole object ----
+
+
+class _ObjectSeg:
+    """Caches under "object:<text>" but asks SAM for <text>."""
+
+    def __init__(self, seg: SegmentationProvider) -> None:
+        self._seg, self.id = seg, seg.id
+
+    def localize(self, image: bytes, sha: str, noun: str) -> Any:
+        return self._seg.localize(image, sha, noun.removeprefix("object:"))
+
+
+def object_text(session: Session, item_id: str) -> str:
+    """What SAM is asked for to find the whole object. The analysis summary is not stored on the
+    item (only its parts and dimensions are), so: the parts' labels joined, else "main object"."""
+    labels = [
+        p.label
+        for p in session.scalars(
+            select(ItemPart).where(ItemPart.item_id == item_id, ItemPart.removed.is_(False))
+        )
+    ]
+    text = " ".join(" ".join(labels).split()[:MAX_PROMPT_WORDS])
+    return text or "main object"
+
+
+def object_cached(session: Session, item: Any) -> bool:
+    """True when locate_object needs no SAM call."""
+    sha = _image_for(session, item)[1]
+    row = masks_repo.get(session, sha, "object:" + object_text(session, item.id))
+    if row is None:
+        return False
+    return not row.found or bool(row.mask_path and files.abs_path(row.mask_path).is_file())
+
+
+def locate_object(session: Session, item_id: str) -> Region:
+    """The whole main object: SAM prompted with the item's summary text (cached under
+    "object:<text>"); falls back to the union of the item's located mask parts."""
+    item = _require_item(session, item_id)
+    image, sha = _image_for(session, item)
+    text = object_text(session, item.id)
+    prompt = "object:" + text
+    with Image.open(io.BytesIO(image)) as im:
+        width, height = im.size
+    try:
+        mask, _ = _part_mask(
+            session, _ObjectSeg(get_segmentation(get_settings())), image, sha, prompt,
+            (height, width),
+        )  # fmt: skip
+    except ModelError as e:
+        raise AppError(502, "REGION_FAILED", "Could not locate the object") from e
+    if mask is not None and mask_ratio(mask, np.ones_like(mask)) >= MIN_MASK_RATIO:
+        return Region(kind="mask", mask_url=_mask_url(_mask_rel(sha, prompt)))
+    union = np.zeros((height, width), dtype=bool)
+    for part in session.scalars(
+        select(ItemPart).where(ItemPart.item_id == item.id, ItemPart.removed.is_(False))
+    ):
+        if part.region_kind == "mask" and part.mask_path:
+            path = files.abs_path(part.mask_path)
+            if path.is_file():
+                with Image.open(path) as im:
+                    union |= _fit(np.asarray(im.convert("L")) > 127, height, width)
+    if mask_ratio(union, np.ones_like(union)) < MIN_MASK_RATIO:
+        raise AppError(422, "REGION_EMPTY", "Nothing found for this object")
+    rel = _mask_rel(sha, prompt + "@parts")
+    path = files.abs_path(rel)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(union.astype(np.uint8) * 255).save(path, "PNG")
+    return Region(kind="mask", mask_url=_mask_url(rel))
