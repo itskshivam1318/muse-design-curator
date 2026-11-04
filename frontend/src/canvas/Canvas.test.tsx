@@ -9,6 +9,8 @@ import { stubCanvasContext } from '../test/canvasStub'
 import { makeItem } from '../test/fixtures'
 import { KEPT_EXTRA, petalRadius } from '../living/ring'
 import { selection } from './selection'
+import { closeSpotlight, startSpotlight } from '../shell/spotlight'
+import type { AgentStep } from '../api'
 
 // remember each world the canvas makes, so a test can watch it
 const worlds: import('../living/world').LivingWorld[] = []
@@ -80,6 +82,7 @@ afterEach(() => {
   selection.clear()
   undoHistory.clear()
   localStorage.clear()
+  closeSpotlight()
 })
 
 describe('Canvas flowers', () => {
@@ -544,5 +547,56 @@ describe('Canvas lineage lines', () => {
   it('neither selected draws no lineage line', () => {
     const links = board()
     expect(links()).toEqual([])
+  })
+})
+
+describe('Canvas spotlight replay', () => {
+  const sized = () => {
+    stubCanvasContext()
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1600)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(1200)
+  }
+  const step = (item_ids: string[]): AgentStep => ({
+    id: 's1', run_id: 'r1', turn: 1, tool: 'arrange', args: {}, say: 'Grouped the reds', ok: true,
+    result: {}, item_ids, highlight: true, created_at: '2026-11-04T00:00:00Z',
+  })
+
+  it('fits the view to all lit items', () => {
+    sized()
+    const far = [
+      makeItem({ id: 'a', board_id: 'b1', x: 0, y: 0 }),
+      makeItem({ id: 'b', board_id: 'b1', x: 3000, y: 0 }),
+      makeItem({ id: 'c', board_id: 'b1', x: 0, y: 2500 }),
+    ]
+    renderBoard(client([], far))
+    const stage = Konva.stages.at(-1)!
+    expect(stage.x()).toBe(80) // not fitted yet: b and c are off screen
+    act(() => startSpotlight('r1', [step(['a', 'b', 'c'])]))
+    const s = stage.scaleX()
+    expect(s).toBeLessThan(1)
+    for (const i of far) {
+      const left = i.x * s + stage.x()
+      const top = i.y * s + stage.y()
+      expect(left).toBeGreaterThanOrEqual(0)
+      expect(top).toBeGreaterThanOrEqual(0)
+      expect(left + i.w * s).toBeLessThanOrEqual(1600)
+      expect(top + i.h * s).toBeLessThanOrEqual(1200 - 240) // the card keeps its room underneath
+    }
+    // a hole is cut for each lit item
+    const d = document.querySelector('.spotlight-dim')!.getAttribute('d')!
+    expect(d.match(/M/g)).toHaveLength(4)
+  })
+
+  it('draws no item toolbar during a replay', () => {
+    sized()
+    renderBoard(client([], [makeItem({ id: 'a', board_id: 'b1', x: 0, y: 0 })]))
+    act(() => selection.select(['a']))
+    expect(screen.getByRole('toolbar', { name: 'Item actions' })).toBeTruthy()
+    act(() => startSpotlight('r1', [step(['a'])]))
+    expect(screen.queryByRole('toolbar', { name: 'Item actions' })).toBeNull()
+    expect(screen.getByRole('dialog', { name: 'Replay' })).toBeTruthy()
+    act(() => closeSpotlight())
+    expect(screen.getByRole('toolbar', { name: 'Item actions' })).toBeTruthy()
+    expect(screen.queryByRole('dialog', { name: 'Replay' })).toBeNull()
   })
 })

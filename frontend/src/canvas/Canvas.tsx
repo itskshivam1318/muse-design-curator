@@ -38,6 +38,7 @@ import { ConnectLayer } from '../put/ConnectLayer'
 import { useGhosts } from '../put/ghosts'
 import { useConnect } from '../put/useConnect'
 import { useAnalysis, useBoardLens, useExplorations, useRegion, visibleItems } from '../queries'
+import { currentStep, useSpotlight } from '../shell/spotlight'
 import { setTool, useTool } from '../shell/tools'
 import type { ItemActions } from './actions'
 import { handleDrop } from './drop'
@@ -59,6 +60,7 @@ import { ItemDecorations, type ItemHandlers, ItemNode, NoteVisualizing } from '.
 import { CreditCaption } from './CreditCaption'
 import { creditTargets } from './credit'
 import { ItemToolbar, TOOLBAR_GAP } from './ItemToolbar'
+import { SpotlightLayer } from './SpotlightLayer'
 import { itemBounds, lineagePoints, statusLabel } from './nodeProps'
 import { NoteBar } from './NoteBar'
 import { NoteEditor } from './NoteEditor'
@@ -238,6 +240,19 @@ export function Canvas({
     }, 300) // let a batch of item.added events settle first
     return () => clearTimeout(t)
   }, [items.length, size.width, fit])
+
+  // ---- spotlight replay: the step's pictures still on the board, framed once per step ----
+  const spotlight = useSpotlight()
+  const step = currentStep(spotlight)
+  const lit = useMemo(() => (step ? items.filter((i) => step.item_ids.includes(i.id)) : []), [items, step])
+  const spotKey = spotlight ? `${spotlight.runId}:${spotlight.index}` : null
+  // adjusted while rendering (not in an effect), so the step's first paint is already framed
+  const [framedSpot, setFramedSpot] = useState<string | null>(null)
+  if (spotKey !== framedSpot && (spotKey === null || size.width > 0)) {
+    setFramedSpot(spotKey)
+    // room under the lit pictures for the caption card
+    if (spotKey !== null && lit.length > 0) setView(fitView(lit.map(itemBounds), size, { ...fitInsets(size.width), bottom: 240 }))
+  }
 
   useImperativeHandle(
     ref,
@@ -789,10 +804,11 @@ export function Canvas({
           toolbar={toolbar}
           onCardSize={onPutCardSize}
         />
-        {hoveredItem && hoveredItem.kind !== 'link' && hoveredItem.kind !== 'note' && hoveredItem.parse_status !== 'completed' && (
+        {!spotlight && hoveredItem && hoveredItem.kind !== 'link' && hoveredItem.kind !== 'note' && hoveredItem.parse_status !== 'completed' && (
           <Live items={[hoveredItem]}>{(b) => <StatusTip item={hoveredItem} screen={toScreenBounds(b, view)} />}</Live>
         )}
-        {!dragging &&
+        {!spotlight &&
+          !dragging &&
           !marquee &&
           creditTargets(hoveredItem, selectedItems)
             // the item showing its callout cards: a card sits where its caption would
@@ -802,7 +818,7 @@ export function Canvas({
                 {(b) => <CreditCaption item={i} screen={toScreenBounds(b, view)} verdict={itemVerdict(i, explorations, labels)} />}
               </Live>
             ))}
-        {selectedItems.length > 0 && !dragging && !marquee && !onlyNotes && (
+        {!spotlight && selectedItems.length > 0 && !dragging && !marquee && !onlyNotes && (
           <Live items={selectedItems}>
             {(b) => (
               <ItemToolbar
@@ -908,6 +924,13 @@ export function Canvas({
           </button>
         )}
         {dropActive && <div className="drop-hint">Drop to add here</div>}
+        {spotlight && (
+          <LiveEach items={lit}>
+            {(boxes) => (
+              <SpotlightLayer key={spotlight.runId} spotlight={spotlight} lit={boxes.map((b) => toScreenBounds(b, view))} size={size} />
+            )}
+          </LiveEach>
+        )}
         <ItemList items={listed} selected={selected} />
       </div>
     </LivingProvider>
@@ -922,6 +945,12 @@ function Live({ items, children }: { items: readonly Item[]; children: (b: Bound
   const live = useLiveBoxes(items.map((i) => i.id))
   const b = unionBounds(live ?? items.map(itemBounds))
   return <>{children(b ?? { x: 0, y: 0, width: 0, height: 0 })}</>
+}
+
+/** Like Live, but with each item's own bounds (in the order given) rather than their union. */
+function LiveEach({ items, children }: { items: readonly Item[]; children: (boxes: Bounds[]) => ReactNode }) {
+  const live = useLiveBoxes(items.map((i) => i.id))
+  return <>{children(live ?? items.map(itemBounds))}</>
 }
 
 function StatusTip({ item, screen: b }: { item: Item; screen: Bounds }) {
