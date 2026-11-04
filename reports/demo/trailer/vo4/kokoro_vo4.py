@@ -17,6 +17,7 @@ for line in (vo / "lines.txt").read_text().splitlines():
         continue
     n, voice, text = line.split("|", 2)
     pipe = pipes["b" if voice.startswith("b") else "a"]
-    audio = np.concatenate([a for _, _, a in pipe(text.replace("...", ","), voice=voice, speed=1.0)])
+    speed = 0.94 if voice == "am_michael" else 1.0  # the narrator a touch slower, with room to breathe
+    audio = np.concatenate([a for _, _, a in pipe(text.replace("...", ","), voice=voice, speed=speed)])
     sf.write(vo / f"{n}.wav", audio, 24000)
     print(n, voice, round(len(audio) / 24000, 1))

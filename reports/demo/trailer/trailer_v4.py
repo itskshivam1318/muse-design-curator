@@ -23,7 +23,53 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 from trailer import (ALERT, ENC, HL, INK, OUT, PAPER, W, H, anim, chip, concat, ease, fit,
-                     font, framed, img, labels, marker, marks, run, shadowed)
+                     font, framed, img, labels, marks, run, shadowed)
+HAND = "/System/Library/Fonts/Noteworthy.ttc"  # a marker-pen hand, for the labels a person would scribble
+
+
+def marker(d: ImageDraw.ImageDraw, x: int, y: int, text: str, t: float, size: int = 40,
+           fill=HL, ink=INK) -> None:
+    """The highlighter bar sweeps in, then the words land on it, in a handwritten marker."""
+    from PIL import ImageFont
+    f = ImageFont.truetype(HAND, int(size * 1.15), index=1)
+    w = int(d.textlength(text, font=f)) + 44
+    a = ease(t / 0.35)
+    if a <= 0:
+        return
+    wob = int(3 * math.sin(x * 0.13))  # bars aren't ruled straight by hand
+    d.rounded_rectangle([x, y + wob, x + max(12, int(w * a)), y + size + 30 - wob], 10, fill=fill)
+    if t > 0.25:
+        d.text((x + 22, y + 2), text, font=f, fill=ink)
+
+
+def pen_ring(d: ImageDraw.ImageDraw, box: tuple[float, float, float, float], t: float, col=HL, seed: int = 3) -> None:
+    """A ring drawn on by hand: a slightly wobbly ellipse that overshoots its start."""
+    x, y, w, h = box
+    cx, cy, rx, ry = x + w / 2, y + h / 2, w / 2 + 26, h / 2 + 22
+    a = ease(t / 0.7)
+    if a <= 0:
+        return
+    rnd = random.Random(seed)
+    phase = [rnd.uniform(0, 6.28) for _ in range(3)]
+    pts = []
+    for k in range(int(130 * a) + 1):
+        th = -1.9 + k / 120 * 6.6
+        wob = 1 + 0.035 * math.sin(3 * th + phase[0]) + 0.02 * math.sin(7 * th + phase[1])
+        pts.append((cx + rx * wob * math.cos(th), cy + ry * wob * math.sin(th) + 4 * math.sin(th + phase[2])))
+    if len(pts) > 1:
+        d.line(pts, fill=col, width=8, joint="curve")
+
+
+def on_screen(box: list[int], focus: tuple[float, float, float] | None) -> tuple[float, float, float, float]:
+    """Where a logged box (1920x1080 CSS px) lands inside framed()'s browser window, after its focus crop."""
+    from trailer import WIN
+    wx, wy, ww, wh = WIN
+    cx, cy, z = focus or (0.5, 0.5, 1.0)
+    x0, y0 = (1920 - 1920 / z) * cx, (1080 - 1080 / z) * cy
+    sx, sy = ww / (1920 / z), wh / (1080 / z)
+    bx, by, bw, bh = box
+    return (wx + (bx - x0) * sx, wy + (by - y0) * sy, bw * sx, bh * sy)
+
 
 HERE = Path(__file__).resolve().parent
 VO = HERE / "vo4"
@@ -280,8 +326,13 @@ def domain_beat(part, slug: str, tag: str, first: str, second: str, last: str) -
            overlay=labels([(0.3, lambda d, t: marker(d, 240, 985, second, t))]))
     framed(ps[3], src, m["render"] + 0.6, 2.0, speed=max(1.0, (m["checked"] - m["render"] - 0.6) / 2.0), push=0.03,
            focus=near_card)
-    framed(ps[4], src, m["checked"] + 0.2, min(3.6, m["zoom-out"] - m["checked"] - 0.3), push=0.05, focus=near_card,
-           overlay=labels([(0.4, lambda d, t: marker(d, 240, 985, last, t, fill=INK, ink=HL))]))
+    card_box = boxes.get("card-checked") or boxes.get("card")
+    ring_at = on_screen(card_box, near_card) if card_box else None
+    ring_for = (m["kept"] - m["checked"] - 0.6) if "kept" in m else 99.0  # the card closes when Keep is pressed
+    framed(ps[4], src, m["checked"] + 0.2, min(3.6, m["zoom-out"] - m["checked"] - 0.3), push=0.0, focus=near_card,
+           overlay=labels([(0.4, lambda d, t: marker(d, 240, 985, last, t, fill=INK, ink=HL))]
+                          + ([(0.2, lambda d, t: t < ring_for and pen_ring(d, ring_at, t, ALERT if "not added" in last else HL))]
+                             if ring_at else [])))
     return ps
 
 
@@ -417,7 +468,22 @@ def main() -> None:
             ms = int(max(0.0, at - 0.3) * 1000)
             mix += f";[{nv + 1 + k}:a]adelay={ms}|{ms}[w{k}]"
         mix += ";" + "".join(f"[w{k}]" for k in range(len(cuts))) + f"amix=inputs={len(cuts)}:normalize=0[sfx]"
-        mix += (f";[vo][sfx]amix=inputs=2:normalize=0,loudnorm=I=-16:TP=-1.5:LRA=11,"
+        music = HERE / "assets" / "music.mp3"
+        if not music.is_file():
+            music = HERE / "assets" / "music.wav"  # music.py: an original bed
+        layers = "[vo2][sfx]"
+        mix = mix.replace("normalize=0[vo]", "normalize=0,asplit=2[vo2][key]")
+        if music.is_file():
+            inputs += ["-stream_loop", "-1", "-i", str(music)]
+            mi = nv + 1 + len(cuts)
+            mix += (f";[{mi}:a]atrim=0:{clock:.2f},volume=0.55,afade=t=in:d=1.0,"
+                    f"afade=t=out:st={max(0.0, clock - 3.5):.2f}:d=3.5[m];"
+                    f"[key]apad=whole_dur={clock:.2f}[keyp];"
+                    "[m][keyp]sidechaincompress=threshold=0.015:ratio=8:attack=20:release=600[duck]")
+            layers += "[duck]"
+        else:
+            mix += ";[key]anullsink"
+        mix += (f";{layers}amix=inputs={layers.count('[')}:normalize=0,loudnorm=I=-16:TP=-1.5:LRA=11,"
                 f"apad=whole_dur={clock:.2f}[aout]")
         name = "muse-trailer-v5" if SHOW_FIELDS else "muse-trailer-v4"
         final = tmp / f"{name}.mp4"
