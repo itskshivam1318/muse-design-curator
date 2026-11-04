@@ -311,7 +311,7 @@ def test_failure_after_0004_leaves_0003_with_its_version_stamp(tmp_path: Path) -
     script = tmp_path / "alembic"
     shutil.copytree(BACKEND_DIR / "alembic", script, ignore=shutil.ignore_patterns("__pycache__"))
     (script / "versions" / "9999_boom.py").write_text(
-        'revision = "9999_boom"\ndown_revision = "0011_board_agent"\n\n\n'
+        'revision = "9999_boom"\ndown_revision = "0012_board_chat"\n\n\n'
         "def upgrade() -> None:\n    raise RuntimeError('boom')\n\n\n"
         "def downgrade() -> None:\n    pass\n"
     )
@@ -330,7 +330,7 @@ def test_failure_after_0004_leaves_0003_with_its_version_stamp(tmp_path: Path) -
         cols = {r[1] for r in c.exec_driver_sql("PRAGMA table_info(board_items)")}
     assert "explore_option_id" not in cols
     run_migrations(engine)  # and the run can simply be retried
-    assert _state(engine)[0] == "0011_board_agent"
+    assert _state(engine)[0] == "0012_board_chat"
     engine.dispose()
 
 
@@ -362,5 +362,5 @@ def test_foreign_keys_back_on_after_a_successful_run() -> None:
     engine = _one_conn_engine()
     run_migrations(engine)
     version, _, fks = _state(engine)
-    assert version == "0011_board_agent" and fks == 1
+    assert version == "0012_board_chat" and fks == 1
     engine.dispose()

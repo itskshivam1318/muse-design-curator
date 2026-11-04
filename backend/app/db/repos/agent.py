@@ -4,20 +4,21 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models import AgentRun, AgentStep
+from app.db.models import AgentMessage, AgentRun, AgentStep
 
 # Held while a step's turn is numbered and committed, and while a run is started: parallel tool
 # calls would otherwise read the same max turn, or both find no open run and start two.
 WRITE_LOCK = threading.Lock()
 
+# a run in one of these still owns the board
+OPEN = ("running", "needs_input", "waiting")
 
-def open_run(session: Session, board_id: str) -> AgentRun | None:
-    return session.scalar(
-        select(AgentRun)
-        .where(AgentRun.board_id == board_id, AgentRun.status.in_(("running", "needs_input")))
-        .order_by(AgentRun.id.desc())
-        .limit(1)
-    )
+
+def open_run(session: Session, board_id: str, source: str | None = None) -> AgentRun | None:
+    q = select(AgentRun).where(AgentRun.board_id == board_id, AgentRun.status.in_(OPEN))
+    if source is not None:
+        q = q.where(AgentRun.source == source)
+    return session.scalar(q.order_by(AgentRun.id.desc()).limit(1))
 
 
 def create_run(
@@ -87,3 +88,41 @@ def set_highlight(session: Session, step: AgentStep, highlight: bool) -> AgentSt
     step.highlight = highlight
     session.flush()
     return step
+
+
+def add_message(
+    session: Session, run_id: str, board_id: str, role: str, text: str,
+    data: dict[str, Any] | None = None,
+) -> AgentMessage:  # fmt: skip
+    m = AgentMessage(run_id=run_id, board_id=board_id, role=role, text=text, data_json=data)
+    session.add(m)
+    session.flush()
+    return m
+
+
+def messages(session: Session, run_id: str) -> list[AgentMessage]:
+    return list(
+        session.scalars(
+            select(AgentMessage).where(AgentMessage.run_id == run_id).order_by(AgentMessage.id)
+        )
+    )
+
+
+def open_question(session: Session, run_id: str) -> AgentMessage | None:
+    return session.scalar(
+        select(AgentMessage)
+        .where(
+            AgentMessage.run_id == run_id,
+            AgentMessage.role == "question",
+            AgentMessage.answered.is_(False),
+        )
+        .order_by(AgentMessage.id.desc())
+        .limit(1)
+    )
+
+
+def message_to_dict(m: AgentMessage) -> dict[str, Any]:
+    return {
+        "id": m.id, "run_id": m.run_id, "role": m.role, "text": m.text, "data": m.data_json,
+        "answered": m.answered, "created_at": m.created_at,
+    }  # fmt: skip

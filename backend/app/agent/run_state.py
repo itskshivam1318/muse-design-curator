@@ -11,7 +11,7 @@ from app.api.deps import new_session
 from app.db.models import AgentRun
 from app.db.repos import agent as agent_repo
 
-OPEN = ("running", "needs_input")
+OPEN = agent_repo.OPEN
 
 
 def _start(

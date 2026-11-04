@@ -529,7 +529,8 @@ class PluginRun(Base):
 
 
 AGENT_SOURCES = ("mcp", "muse")
-AGENT_STATUS = ("running", "needs_input", "done", "paused")
+AGENT_STATUS = ("running", "needs_input", "waiting", "done", "paused")
+AGENT_ROLES = ("person", "agent", "question")
 
 
 class AgentRun(Base):
@@ -543,6 +544,7 @@ class AgentRun(Base):
     output_json: Mapped[Any] = _json()
     finish_refusals: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     note: Mapped[str | None] = mapped_column(String)
+    history_json: Mapped[Any] = _json()
     created_at: Mapped[str] = _created()
     updated_at: Mapped[str] = mapped_column(String, default=now_iso, onupdate=now_iso)
     __table_args__ = (
@@ -566,3 +568,16 @@ class AgentStep(Base):
     highlight: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("0"))
     created_at: Mapped[str] = _created()
     __table_args__ = (Index("ix_agent_steps_board_created", "board_id", "created_at"),)
+
+
+class AgentMessage(Base):
+    __tablename__ = "agent_messages"
+    id: Mapped[str] = _id("agent_msg")
+    run_id: Mapped[str] = mapped_column(ForeignKey("agent_runs.id"), index=True)
+    board_id: Mapped[str] = mapped_column(String)
+    role: Mapped[str] = mapped_column(String)
+    text: Mapped[str] = mapped_column(String)
+    data_json: Mapped[Any] = _json()
+    answered: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    created_at: Mapped[str] = _created()
+    __table_args__ = (CheckConstraint(_in("role", AGENT_ROLES), name="ck_agent_message_role"),)

@@ -15,7 +15,7 @@ from app.errors import AppError
 
 router = APIRouter(prefix="/api")
 
-OPEN = ("running", "needs_input")
+OPEN = agent_repo.OPEN
 
 
 class StepPatch(BaseModel):
