@@ -94,6 +94,20 @@ describe('PartColors', () => {
   })
 })
 
+describe('colour inputs', () => {
+  it('a drag of input events then a commit saves once with the final colour', () => {
+    const save = vi.fn()
+    render(<PaletteField id="p" value={{ name: 'x', colors: ['#ff0000', '#ffaa00'] }} onSave={save} />)
+    const input = screen.getByLabelText('Colour 1')
+    for (const v of ['#110000', '#220000', '#330000']) fireEvent.input(input, { target: { value: v } })
+    expect(save).not.toHaveBeenCalled()
+    fireEvent.change(input, { target: { value: '#330000' } })
+    fireEvent.blur(input)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenCalledWith({ name: 'Custom', colors: ['#330000', '#ffaa00'] })
+  })
+})
+
 describe('FrameSlot', () => {
   const a = makeItem({ id: 'a', original_filename: 'a.png' })
   const b = makeItem({ id: 'b', original_filename: 'b.png' })

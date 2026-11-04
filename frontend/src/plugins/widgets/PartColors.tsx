@@ -1,5 +1,6 @@
 /** A colour per mask part of the input item, saved as {part key: hex}. */
 import { useAnalysis } from '../../queries'
+import { ColorInput } from './ColorInput'
 
 interface Props {
   id: string
@@ -26,12 +27,11 @@ export function PartColors({ id, itemId, value, readOnly, onSave }: Props) {
       {parts.map((p) => (
         <li key={p.key}>
           <span>{p.label}</span>
-          <input
-            type="color"
+          <ColorInput
             value={(cur[p.key] ?? '#808080').toLowerCase()}
-            aria-label={`${p.label} colour`}
+            label={`${p.label} colour`}
             disabled={readOnly}
-            onChange={(e) => save({ ...cur, [p.key]: e.target.value })}
+            onCommit={(hex) => save({ ...cur, [p.key]: hex })}
           />
           {p.key in cur && (
             <button

@@ -1,6 +1,7 @@
 /** A named colour list: presets and the board's palettes to start from, one swatch at a time to edit, copy as hex. */
 import { useState } from 'react'
 import type { PalettePreset } from '../nodeLogic'
+import { ColorInput } from './ColorInput'
 
 export interface PaletteValue {
   name?: string
@@ -86,12 +87,11 @@ export function PaletteField({ id, value, presets = [], boardPalettes = [], minI
       <div className="node-palette-row" role="group" aria-label="Colours">
         {cur.colors.map((c, i) => (
           <span key={i} className="node-swatch">
-            <input
-              type="color"
+            <ColorInput
               value={c.toLowerCase()}
-              aria-label={`Colour ${i + 1}`}
+              label={`Colour ${i + 1}`}
               disabled={readOnly}
-              onChange={(e) => set(cur.colors.map((x, j) => (j === i ? e.target.value : x)), 'Custom')}
+              onCommit={(hex) => set(cur.colors.map((x, j) => (j === i ? hex : x)), 'Custom')}
             />
             {cur.colors.length > minItems && !readOnly && (
               <button type="button" className="node-swatch-x" aria-label={`Remove colour ${i + 1}`} onClick={() => set(cur.colors.filter((_, j) => j !== i), 'Custom')}>
