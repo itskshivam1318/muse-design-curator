@@ -154,6 +154,51 @@ async def test_lens_tools_pass_refusals_on(ctx: ToolContext) -> None:
     assert chosen["error"] == "LENS_NOT_FOUND"
 
 
+async def test_set_lens_confirms_a_proposal_over_the_curated_lens(
+    ctx: ToolContext, client: TestClient, board: str
+) -> None:
+    # the board already uses its domain's curated lens; a later proposal must still be confirmable
+    from app.api import deps
+    from app.db.repos import lenses as lenses_repo
+    from app.lens_service import curated_lens
+
+    spec = curated_lens("interior")
+    assert spec is not None
+    assert (
+        client.put(f"/api/boards/{board}/lens", json=spec.model_dump(mode="json")).status_code
+        == 200
+    )
+    with deps._factory()() as s:
+        proposed = lenses_repo.save(s, board, "interior", "proposed", spec.model_dump(mode="json"))
+        s.commit()
+        proposed_id = proposed.id
+
+    chosen = await tools.run_tool(ctx, "set_lens", {"lens_id": proposed_id})
+    assert chosen["lens"]["status"] == "confirmed"
+    lens = client.get(f"/api/boards/{board}/lens").json()["lens"]
+    assert lens["id"] == chosen["lens"]["id"]
+    assert lens["spec"]["attributes"] == spec.model_dump(mode="json")["attributes"]
+
+
+async def test_set_lens_refuses_another_boards_lens(
+    ctx: ToolContext, client: TestClient, board: str
+) -> None:
+    from app.api import deps
+    from app.db.repos import lenses as lenses_repo
+    from app.lens_service import curated_lens
+
+    spec = curated_lens("interior")
+    assert spec is not None
+    other = client.post("/api/boards", json={"title": "Other"}).json()["id"]
+    with deps._factory()() as s:
+        theirs = lenses_repo.save(s, other, "interior", "proposed", spec.model_dump(mode="json"))
+        s.commit()
+        theirs_id = theirs.id
+
+    chosen = await tools.run_tool(ctx, "set_lens", {"lens_id": theirs_id})
+    assert chosen["error"] == "LENS_NOT_FOUND"
+
+
 async def test_locked_demo_refuses_writes(
     ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
 ) -> None:
