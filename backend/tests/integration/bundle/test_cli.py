@@ -2,12 +2,15 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 from sqlalchemy.orm import Session
 
-from app.db.session import make_engine, run_migrations
-from tests.integration.bundle.conftest import Built
+from app.bundle import __main__ as cli
+from app.db.models import Board
+from app.db.session import make_engine, make_session_factory, run_migrations
+from tests.integration.bundle.conftest import Built, add_vary_run
 
 BACKEND = Path(__file__).resolve().parents[3]
 
@@ -52,15 +55,37 @@ def test_export_then_import_into_another_server(
     assert again.returncode == 1
     assert again.stderr.startswith("error BOARD_EXISTS:")
 
+    # a visitor's Vary run on the target server is removed by --replace, and the CLI says so
+    engine = make_engine(f"sqlite:///{other / 'dle.sqlite'}")
+    with make_session_factory(engine)() as s:
+        add_vary_run(s, built_board.id, built_board.image_a)
+    engine.dispose()
     replaced = _cli(other, "import", str(out), "--replace")
     assert replaced.returncode == 0, replaced.stderr
     assert "0 new files" in replaced.stdout
+    lines = replaced.stdout.splitlines()
+    assert lines[1].startswith("removed from this server: ")
+    assert "variation_runs 1" in lines[1]
 
 
-def test_unexpected_failure_exits_1_with_the_exception_name(tmp_path: Path) -> None:
-    bad = tmp_path / "x.zip"
-    bad.write_bytes(b"not a zip")
-    (tmp_path / "d").mkdir()
-    r = _cli(tmp_path / "d", "import", str(bad))
-    assert r.returncode == 1
-    assert r.stderr.startswith("error ")
+def test_unexpected_failure_rolls_back_and_names_the_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    data = tmp_path / "d"
+    url = f"sqlite:///{data / 'dle.sqlite'}"
+    engine = make_engine(url)
+    run_migrations(engine)
+    monkeypatch.setenv("DATABASE_URL", url)
+    monkeypatch.setenv("DATA_DIR", str(data))
+
+    def half_import(session: Session, bundle: Path, *, replace: bool = False) -> dict[str, Any]:
+        session.add(Board(id="brd_half", title="half"))
+        session.flush()  # written in the transaction, then the import fails
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(cli, "import_board", half_import)
+    assert cli.main(["import", str(tmp_path / "x.zip")]) == 1
+    assert capsys.readouterr().err == "error RuntimeError: boom\n"
+    with make_session_factory(engine)() as s:
+        assert s.get(Board, "brd_half") is None
+    engine.dispose()

@@ -46,8 +46,15 @@ export and deploy from the same commit.
 fly ssh sftp shell
 ```
 
-At the `>>` prompt, for each zip (the directory may need creating first with
-`fly ssh console -C "mkdir -p /data/bundles"`):
+First make the upload directory, as the app user (the app runs as `user`, uid 1000, and
+`fly ssh` connects as root unless told otherwise; root-owned files on `/data` can leave the app
+unable to write its own database or images):
+
+```
+fly ssh console -u user -C "mkdir -p /data/bundles"
+```
+
+Then, at the `>>` prompt of `fly ssh sftp shell`, for each zip:
 
 ```
 put bundles/car-3.zip /data/bundles/car-3.zip
@@ -58,13 +65,22 @@ put bundles/outerwear-2.zip /data/bundles/outerwear-2.zip
 
 (`fly ssh sftp put <local> <remote>` does the same one file at a time.)
 
+The upload writes the files as root. Hand them to the app user before importing, so nothing
+under `/data` is left that `user` cannot read or replace:
+
+```
+fly ssh console -C "chown -R user:user /data/bundles"
+```
+
 ## 5. Import each one
 
 ```
-fly ssh console -C "python -m app.bundle import /data/bundles/car-3.zip"
+fly ssh console -u user -C "python -m app.bundle import /data/bundles/car-3.zip"
 ```
 
-and likewise for `ui`, `room` and `outerwear-2`. (The image puts its virtualenv on `PATH`, so
+Run it as `user` (`-u user`), never as root: the import writes new image files and the sqlite
+`-wal`/`-shm` files under `/data`, and root-owned ones there make the app fail with "attempt to
+write a readonly database" or permission errors. Likewise for `ui`, `room` and `outerwear-2`. (The image puts its virtualenv on `PATH`, so
 `python` is the app's; `uv run python` also works if you prefer it.) Each prints
 `imported <title> (<board_id>): <n> rows, <m> new files`. On an error it prints
 `error <CODE>: <message>` and exits 1, and nothing from that board is kept.
