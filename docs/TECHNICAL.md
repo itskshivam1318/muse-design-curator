@@ -68,7 +68,7 @@ part's mask or box, or Muse Spark rewriting only that passage); the result is ch
 puts it on the board as an ordinary item with its own callouts, so the loop starts again from
 there. **Extract** cuts a part out as a linked item. **Notes**: press `N` and click to write on the
 board. **Plugins** are nodes you add from the rail and place from the toolbar's Nodes menu; see
-[Plugins](#plugins) and [docs/plugins.md](docs/plugins.md).
+[Plugins](#plugins) and [docs/plugins.md](plugins.md).
 
 **Put one picture into another.** Select a picture and drag from the dot on its right edge onto
 another: the parts you aim at light up (every part of the same kind, or just the spot under the
@@ -116,7 +116,7 @@ Plugins are tools you place on the board as nodes: connect items, set params, Ru
 lands beside the node (images, notes) or on the inputs (attributes). Built-ins: Image, Palette and
 Critique. Your own go in `data/plugins/<id>/` (python or llm), reloaded with
 `POST /api/plugins/reload`; they run on your machine with your permissions (not a sandbox) and are
-never loaded in demo mode. See [docs/plugins.md](docs/plugins.md) for the manifest, the I/O
+never loaded in demo mode. See [docs/plugins.md](plugins.md) for the manifest, the I/O
 contract and two examples. `PLUGINS_ENABLED=0` turns the feature off.
 
 ## Working a board from Claude Code (MCP)
@@ -286,8 +286,7 @@ cd extension && npm test    # extension unit tests (vitest)
 make e2e            # Playwright: builds the extension, runs the full demo flow and the extension flow
 ```
 
-Current counts (2026-10-27): backend **558 passed**, frontend **109 passed**, extension **14 passed**,
-e2e **2 passed** (`demo-flow.spec.ts`, `extension.spec.ts`).
+Current counts (2026-11-04): backend **1261 passed**, frontend **638 passed**, extension **14 passed**.
 
 `make e2e` is fully offline and ignores the providers in `.env`: Playwright starts a mock-provider
 backend on ports 8765 (data in `data/e2e/`, wiped and re-seeded from the fixture corpus each run), a
@@ -429,70 +428,5 @@ covers `localhost:8000` only, and pairing needs the passcode on a demo.
 
 ## Built during the hackathon
 
-Generated with `git log --reverse --format='%ad %s' --date=short`:
-
-```
-2026-10-26 docs: spec, plan and research for Design Language Engine
-2026-10-26 docs: make plan tasks self-contained; add item embedding columns
-2026-10-26 chore: scaffold backend, frontend, extension; meta smoke script
-2026-10-26 fix: load .env from repo root regardless of cwd
-2026-10-26 feat(domain): seven attribute kinds, lens schema, four curated lenses
-2026-10-26 feat(db): boards, items, lineage, profiles, runs schema and repos
-2026-10-26 fix(db): monotonic ids for ordering; unique curated lens versions
-2026-10-26 feat(ingest): images, video keyframes, link unfurl
-2026-10-26 fix(ingest): bounded video sampling, duration cap, pinned SSRF connections
-2026-10-26 feat(providers): Meta client, SAM decode, embedders, reliability, cache, mocks
-2026-10-26 fix(providers): accept documented hyphenated selector values
-2026-10-26 feat(measure): palette, shape and crop measurement
-2026-10-26 fix(measure): typing
-2026-10-26 feat(lens): board-driven lens selection and proposal
-2026-10-26 fix(lens): defer events and jobs until after commit
-2026-10-26 feat(parsing): lens-driven item parsing with edit-preserving merge
-2026-10-26 fix(parsing): measure whole-image parts and release write lock before model call
-2026-10-26 feat(board): live board profile and SSE
-2026-10-26 test(board): cover attribute edit route recompute
-2026-10-26 feat(corpus): licensed importers, provenance, indexer, seed
-2026-10-26 fix(corpus): keep invalid items pending, drop index-time dedupe
-2026-10-26 fix(corpus): failed rows that turn invalid become pending
-2026-10-26 feat(variation): request invariants incl. nudge
-2026-10-26 feat(retrieval): domain pool, comparators, exclusions
-2026-10-26 feat(retrieval): scores and diversity selection
-2026-10-26 fix(retrieval): clamp pair similarity so diversity stays in 0..1
-2026-10-26 feat(validation): per-kind validator with batched verify
-2026-10-26 fix(validation): unreliable number cannot pass a nudge
-2026-10-26 feat(runs): orchestration, summary, API
-2026-10-26 feat(feedback): decisions, keep onto board, not-this
-2026-10-26 fix(feedback): neutralise spreadsheet formulas in decisions CSV
-2026-10-26 feat(retrieval): exclude candidates already on the board
-2026-10-26 feat(extension): one-click capture to board
-2026-10-26 fix(extension): limit pair-code attempts and validate code format
-2026-10-26 feat(api): serve item images and video frames by id; board lens lookup
-2026-10-27 feat(ui): typed API client, SSE cache sync, upload validation
-2026-10-27 feat(ui): infinite board canvas, add flow, context and board signals
-2026-10-27 fix(api): board lens lookup returns {lens: null} instead of 404
-2026-10-27 fix(ui): end marquee on any mouseup, guard stray file drops, keep Space for focused buttons
-2026-10-27 fix(ui): no third-party favicon fetch; abort uploads on unmount and on Cancel
-2026-10-27 feat(ui): typed attribute/run/decision client and pure vary logic
-2026-10-27 feat(ui): Inspect and Vary drawer panels
-2026-10-27 feat(ui): Maybe strip, candidate popover and keep/reject decisions
-2026-10-27 feat(ui): Compare, toolbar and board wiring for inspect/vary/strip
-2026-10-27 fix(ui): Inspect skips a PATCH when the value is unchanged; toolbar tests
-2026-10-27 chore: make install target; keep live Meta recordings separate from test fixtures
-2026-10-27 fix(ui): only http(s) source links; modal, focus-trapped candidate and shortfall dialogs
-2026-10-27 test(providers): replay live Meta recordings
-2026-10-27 fix(providers): mock lens proposal is a valid lens
-2026-10-27 fix(seed): leave candidates in the pool
-2026-10-27 fix(feedback): place kept items without overlap
-2026-10-27 fix(boards): choosing a curated domain attaches its lens
-2026-10-27 feat(ingest): test-only LINK_ALLOW_PRIVATE_HOSTS exemption
-2026-10-27 feat(frontend): VITE_API_URL for a cross-origin API; DLE_API_PROXY for dev
-2026-10-27 test(e2e): offline Playwright demo flow and extension suite
-2026-10-27 build(deploy): HF Docker Space image for the API, Vercel config for the app
-2026-10-27 docs: README with quick start, live vs mock, keys, corpus licences, extension, architecture, tests, limitations, deploy
-2026-10-27 test(e2e): wait for the nudge run itself, not the previous run's status
-2026-10-27 feat(demo): DEMO_MODE guard - read-only until unlocked, capped Vary runs
-2026-10-27 feat(api): serve the built frontend with an SPA fallback when FRONTEND_DIST is set
-2026-10-27 feat(frontend): demo badge, passcode unlock, read-only controls while locked
-2026-10-27 style(frontend): show the + button as disabled in a locked demo
-2026-10-27 build(deploy): one Space serves API and app; root multi-stage Dockerfile
-```
+Every commit from 2026-10-26 to 2026-11-04 is listed, oldest first, in [BUILD_LOG.md](BUILD_LOG.md).
+Each feature has a design spec and an implementation plan in [superpowers/](superpowers/).

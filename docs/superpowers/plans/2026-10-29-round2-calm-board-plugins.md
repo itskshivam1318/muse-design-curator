@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Worktree `/Users/shivam/Desktop/muse-round2`, branch `feat/round2-calm-board-plugins`, base `main` at `12fbb91`. Never touch `/Users/shivam/Desktop/muse-design-curator` or `/Users/shivam/Desktop/muse-explore`.
+- Worktree `../muse-round2`, branch `feat/round2-calm-board-plugins`, base `main` at `12fbb91`. Never touch `../muse-design-curator` or `../muse-explore`.
 - Baseline must stay green: 690 backend (`cd backend && uv run pytest -q`), 177 frontend (`cd frontend && npm test`), lint (`make lint`: ruff + mypy, oxlint + `tsc -b`, extension lint), e2e (`make e2e`) 3/3. Run the task's own tests and the full suite of the side you touched before committing.
 - Accent `#2a4aae` for the active axis and selection only. No all-caps section labels, no explainer line under headings, no emoji icons (inline stroke SVG). Real `<button>`s, `aria-label` on icon-only buttons, primary controls ≥44 px, text contrast ≥4.5:1.
 - Image model only through `get_image_provider()`; tests use the mock providers (`IMAGE_PROVIDER=mock`, mock reasoning).

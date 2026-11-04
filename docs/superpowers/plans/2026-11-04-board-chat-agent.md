@@ -21,7 +21,7 @@
 - At most **40** model steps per person message (`MAX_STEPS = 40`).
 - `say` is at most 200 characters (existing `SAY_MAX`).
 - Backend checks: `cd backend && uv run pytest -q`, `uv run ruff check .`, `uv run mypy app scripts`. Frontend: `cd frontend && npm test`, `npm run lint`, `npx tsc -b`.
-- Work in the worktree `/Users/shivam/Desktop/muse-agent-chat` on `feat/board-chat-agent`. Never touch `/Users/shivam/Desktop/muse-design-curator` (main's tree) or its dev DB.
+- Work in the worktree `../muse-agent-chat` on `feat/board-chat-agent`. Never touch `../muse-design-curator` (main's tree) or its dev DB.
 
 ## Review Focus
 
