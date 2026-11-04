@@ -1,0 +1,76 @@
+{
+ "board": 6.65,
+ "zoom-in": 9.15,
+ "callouts": 12.22,
+ "setting-explore": 13.16,
+ "setting-petals": 28.36,
+ "setting-card": 30.36,
+ "setting-render": 31.16,
+ "setting-checked": 75.92,
+ "setting-kept": 78.92,
+ "trim-explore": 81.93,
+ "trim-petals": 98.08,
+ "trim-card": 100.08,
+ "boxes": [
+  {
+   "name": "setting-dim",
+   "t": 12.24,
+   "box": [
+    1090,
+    299,
+    108,
+    24
+   ]
+  },
+  {
+   "name": "setting-petal",
+   "t": 27.16,
+   "box": [
+    1099,
+    611,
+    0,
+    0
+   ]
+  },
+  {
+   "name": "setting-card",
+   "t": 30.36,
+   "box": [
+    1577,
+    155,
+    260,
+    242
+   ]
+  },
+  {
+   "name": "setting-checked",
+   "t": 75.92,
+   "box": [
+    1575,
+    156,
+    260,
+    398
+   ]
+  },
+  {
+   "name": "trim-dim",
+   "t": 80.95,
+   "box": [
+    883,
+    264,
+    108,
+    24
+   ]
+  },
+  {
+   "name": "trim-petal",
+   "t": 96.88,
+   "box": [
+    1194,
+    578,
+    0,
+    0
+   ]
+  }
+ ]
+}

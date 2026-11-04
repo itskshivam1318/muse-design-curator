@@ -138,10 +138,100 @@ async function agentKept(sentAt) {
   return d.steps.some((s) => s.tool === 'keep_option' && s.ok && Date.parse(s.created_at) > sentAt)
 }
 
-const LIVE = new Set(['car-explore', 'car-chat', 'story'])
+async function keptSince(sentAt) {
+  const r = await (await fetch(`${LIVE_API}/api/boards/${args.car}/agent-runs`)).json()
+  const run = (r.runs ?? r)[0]
+  if (!run) return 0
+  const d = await (await fetch(`${LIVE_API}/api/agent-runs/${run.id}`)).json()
+  return d.steps.filter((s) => s.tool === 'keep_option' && s.ok && Date.parse(s.created_at) > sentAt).length
+}
+
+const LIVE = new Set(['car-explore', 'car-chat', 'story', 'story-dims', 'story-settings'])
 const HIRES = new Set() // Chrome's headless screencast films at CSS size too, so no HIRES shot for now
 
 const SHOTS = {
+  // LIVE: more dimensions, one at a time, on the same coupe (real board zoom in and out)
+  'story-dims': async (page) => {
+    await page.goto(`${args.app}/boards/${args.car}`)
+    await page.waitForTimeout(4000)
+    mark('board')
+    await page.mouse.move(1500, 900)
+    await pick(page, 'note.png', 0)
+    const st = await page.locator('.board-stage').boundingBox()
+    const cx = st.x + st.width / 2, cy = st.y + st.height / 2
+    await page.waitForTimeout(1000)
+    mark('zoom-in')
+    await smoothZoom(page, cx, cy, 4)
+    await page.waitForTimeout(1500)
+    mark('callouts')
+    // shape attributes (lamp form, intake form) can't be explored, so two text dimensions
+    for (const [key, re, flowerRe] of [['setting', /studio background/i, /background.*flower/i], ['trim', /trim extent/i, /trim.*flower/i]]) {
+      const dim = page.locator('.callout-dim', { hasText: re }).first()
+      if (!(await dim.count())) continue
+      await box(page, `${key}-dim`, dim)
+      await clickGlide(page, dim)
+      mark(`${key}-explore`)
+      const fresh = page.getByRole('group', { name: flowerRe }).locator('[data-testid="petal"].is-note')
+      await fresh.first().waitFor({ timeout: 120000 })
+      // the boldest option shows the move best: a wild one if there is one
+      const wild = fresh.filter({ has: page.locator('.petal-tag[data-distance="wild"]') })
+      const petal = (await wild.count()) ? wild.first() : fresh.first()
+      await box(page, `${key}-petal`, petal)
+      await page.waitForTimeout(1200)
+      mark(`${key}-petals`)
+      await clickGlide(page, petal)
+      await page.waitForTimeout(1200)
+      await box(page, `${key}-card`, '.petal-card')
+      mark(`${key}-card`)
+      await clickGlide(page, page.locator('.petal-render, .petal-primary').first())
+      mark(`${key}-render`)
+      await page.locator('.petal-check').first().waitFor({ timeout: 240000 })
+      await box(page, `${key}-checked`, '.petal-card')
+      mark(`${key}-checked`)
+      await page.waitForTimeout(2200)
+      const keep = page.locator('button.petal-primary', { hasText: 'Keep' }).first()
+      if (await keep.count()) { await clickGlide(page, keep); mark(`${key}-kept`); await page.waitForTimeout(2000) }
+    }
+    mark('zoom-out')
+    await smoothZoom(page, cx, cy, 4, 30)
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(2500)
+    mark('end')
+  },
+  // LIVE: the coupe in real places, asked of Muse in the chat
+  'story-settings': async (page) => {
+    await page.goto(`${args.app}/boards/${args.car}`)
+    await page.waitForTimeout(4000)
+    mark('board')
+    const ask = page.getByPlaceholder('Ask Muse about this board')
+    await glide(page, ask)
+    await box(page, 'chat', '.agent-card')
+    mark('ask')
+    await typeSlowly(page, ask, 'Show the coupe in three real places: a coastal road at dusk, a rainy city street at night, and a mountain pass at sunrise. Keep the car exactly as it is.')
+    await page.waitForTimeout(400)
+    await page.keyboard.press('Enter')
+    mark('sent')
+    const sentAt = Date.now()
+    const q = page.locator('.question-card:not(.is-answered)').first()
+    const until = Date.now() + 8 * 60000
+    let answered = false
+    while (Date.now() < until) {
+      if (!answered && (await q.count())) {
+        await page.waitForTimeout(800)
+        await box(page, 'question', q)
+        mark('question')
+        await page.waitForTimeout(2200)
+        await clickGlide(page, q.locator('.question-choice').first())
+        mark('answered')
+        answered = true
+      }
+      if ((await keptSince(sentAt)) >= 3) { mark('landed'); break }
+      await page.waitForTimeout(2000)
+    }
+    await box(page, 'chat-done', '.agent-card')
+    await page.waitForTimeout(3000)
+    mark('end')
+  },
   // LIVE, 2x resolution, one take: the board, the coupe's parts, explore paint, then ask Muse.
   // Writes boxes into marks (marks.boxes) so the trailer's camera can zoom to each action.
   story: async (page) => {
