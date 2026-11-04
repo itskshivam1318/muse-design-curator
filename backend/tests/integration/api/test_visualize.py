@@ -566,6 +566,14 @@ def test_text_rewrite_is_a_staged_note_beside_the_source(client: TestClient, wor
     assert option_row(world, oid).status == "visualized"
 
 
+def test_text_rewrite_lands_in_the_slot_held_for_it(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
+    """A note's option written at once carries the slot write_notes held: the take lands there."""
+    _note, oid = _note_option(world, "quiet words", physical=False)
+    assert run(client, oid, at={"x": 7000, "y": 7100}).status_code == 202
+    (take,) = generated(world, oid)
+    assert (take.x, take.y) == (7000, 7100)
+
+
 def test_abstract_text_dimension_rewrites_the_whole_note(client: TestClient, world) -> None:  # type: ignore[no-untyped-def]
     _note, oid = _note_option(world, "quiet words", physical=False)
     assert run(client, oid).status_code == 202

@@ -14,9 +14,11 @@ import {
 } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Group, Layer, Line, Rect, Stage } from 'react-konva'
-import { type Exploration, exploreItem, isGenerated, type Item, keys, patchItem, type Point, type UploadOrigin } from '../api'
+import { type Exploration, type ExploreOption, exploreItem, isGenerated, type Item, keepTake, keys, patchItem, type Point, type UploadOrigin } from '../api'
 import { useDemo } from '../demo'
-import { withExploration } from '../explore/logic'
+import { withExploration, withOption } from '../explore/logic'
+import { notesBeingWritten, pendingNotes } from '../explore/noteTakes'
+import { dismissOption } from '../explore/optionActions'
 import { itemVerdict } from '../explore/verdict'
 import { staleDocked } from '../living/dockIn'
 import { Edges } from '../living/Edges'
@@ -65,6 +67,7 @@ import { PartConfirmLayer } from './PartConfirmLayer'
 import { SpotlightLayer } from './SpotlightLayer'
 import { itemBounds, lineagePoints, statusLabel } from './nodeProps'
 import { NoteBar } from './NoteBar'
+import { keyLabel, PendingNoteBar, WritingChip } from './PendingNoteBar'
 import { NoteEditor } from './NoteEditor'
 import { NOTE_MIN_H, NOTE_W, noteHeight, sizedNote } from './noteSize'
 import { useCanvasPalette, usePrefersReducedMotion } from './palette'
@@ -146,8 +149,19 @@ export function Canvas({
   const { exploreEnabled } = useDemo()
   const qc = useQueryClient()
   const [hoveredPart, setHoveredPart] = useState<{ itemId: string; part: string } | null>(null)
-  // staged takes wait in their option's stage; notes are drawn at the size their text needs
-  const visible = useMemo(() => visibleItems(allItems).map(sizedNote), [allItems])
+  const explorations = useExplorations(boardId).data
+  // a note's written versions wait on the board (still staged on the server) until kept or removed
+  const pending = useMemo(() => pendingNotes(allItems, explorations ?? []), [allItems, explorations])
+  const writing = useMemo(() => notesBeingWritten(allItems, explorations ?? []), [allItems, explorations])
+  // other staged takes wait in their option's stage; notes are drawn at the size their text needs
+  const visible = useMemo(
+    () =>
+      [...visibleItems(allItems), ...allItems.filter((i) => pending.has(i.id)).map((i) => ({ ...i, staged: false, pending: true }))].map(
+        sizedNote,
+      ),
+    [allItems, pending],
+  )
+  const [pendingBusy, setPendingBusy] = useState<string | null>(null)
   const tool = useTool()
   const [editing, setEditing] = useState<Editing | null>(null)
   const [noteHover, setNoteHover] = useState<string | null>(null)
@@ -170,7 +184,6 @@ export function Canvas({
   // the cards' bodies take their real height, and nothing floats under the toolbar
   const [calloutHeights, setCalloutHeights] = useState<Record<string, number>>({})
   const [toolbarSize, setToolbarSize] = useState<{ width: number; height: number } | null>(null)
-  const explorations = useExplorations(boardId).data
   const lensAttrs = useBoardLens(boardId).data?.spec.attributes
   const labels = useMemo(() => new Map((lensAttrs ?? []).map((a) => [a.key, a.label])), [lensAttrs])
   // every board item is drawn where its body is, docked takes included
@@ -674,6 +687,16 @@ export function Canvas({
   // a dimension clicked on a callout: open its flower when it has one, else ask for options first (notes, no media)
   const openDimension = async (item: Item, key: string) => {
     const live = explorations?.find((e) => e.item_id === item.id && e.key === key)
+    if (item.kind === 'note') {
+      // text needs no flower: the versions are written at once and land beside the note; again writes more
+      try {
+        const e = await exploreItem(item.id, { key, mode: live ? 'more' : 'initial' })
+        qc.setQueryData<Exploration[]>(keys.explorations(boardId), (old) => withExploration(old, e))
+      } catch (e) {
+        actions.report('Could not write versions', e)
+      }
+      return
+    }
     if (live) {
       setCollapsed(boardId, live.id, false)
       world.pulse(`hub:${live.id}`) // a swell on the hub says where it is
@@ -689,6 +712,32 @@ export function Canvas({
     const e = await exploreItem(item.id, { key, mode: 'initial' })
     qc.setQueryData<Exploration[]>(keys.explorations(boardId), (old) => withExploration(old, e))
     setCollapsed(boardId, e.id, false)
+  }
+  // a pending note kept where it sits now becomes an ordinary note; removed, it is dismissed (⌘Z undoes)
+  const keepPending = async (item: Item, option: ExploreOption) => {
+    setPendingBusy(item.id)
+    try {
+      const body = world.body(item.id)
+      const at = body ? { x: body.x - body.w / 2, y: body.y - body.h / 2 } : { x: item.x, y: item.y }
+      const next = await keepTake(option.id, item.id, at)
+      qc.setQueryData<Exploration[]>(keys.explorations(boardId), (old) => withOption(old, next))
+      qc.setQueryData<Item[]>(keys.items(boardId), (old) => old?.map((i) => (i.id === item.id ? { ...i, staged: false, ...at } : i)))
+      world.pulse(item.id)
+    } catch (e) {
+      actions.report('Could not keep', e)
+    } finally {
+      setPendingBusy(null)
+    }
+  }
+  const removePending = async (item: Item, option: ExploreOption) => {
+    setPendingBusy(item.id)
+    try {
+      await dismissOption(qc, boardId, option)
+    } catch (e) {
+      actions.report('Could not remove', e)
+    } finally {
+      setPendingBusy(null)
+    }
   }
   const addNoteAtCenter = () => {
     const c = toCanvasPoint({ x: size.width / 2, y: size.height / 2 }, viewRef.current)
@@ -850,6 +899,37 @@ export function Canvas({
             .map((i) => (
               <Live key={`credit-${i.id}`} items={[i]}>
                 {(b) => <CreditCaption item={i} screen={toScreenBounds(b, view)} verdict={itemVerdict(i, explorations, labels)} />}
+              </Live>
+            ))}
+        {!spotlight &&
+          !dragging &&
+          visible
+            .filter((i) => i.pending)
+            .map((i) => {
+              const p = pending.get(i.id)
+              if (!p) return null
+              return (
+                <Live key={`pending-${i.id}`} items={[i]}>
+                  {(b) => (
+                    <PendingNoteBar
+                      option={p.option}
+                      dimension={labels.get(p.exploration.key) ?? keyLabel(p.exploration.key)}
+                      screen={toScreenBounds(b, view)}
+                      readOnly={readOnly}
+                      busy={pendingBusy === i.id}
+                      onKeep={() => void keepPending(i, p.option)}
+                      onRemove={() => void removePending(i, p.option)}
+                    />
+                  )}
+                </Live>
+              )
+            })}
+        {!spotlight &&
+          visible
+            .filter((i) => writing.has(i.id))
+            .map((i) => (
+              <Live key={`writing-${i.id}`} items={[i]}>
+                {(b) => <WritingChip count={writing.get(i.id)!} screen={toScreenBounds(b, view)} />}
               </Live>
             ))}
         {!spotlight && selectedItems.length > 0 && !dragging && !marquee && !onlyNotes && (

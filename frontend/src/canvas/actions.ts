@@ -131,6 +131,8 @@ export function useItemActions(boardId: string) {
     () => ({
       error,
       clearError: () => setError(null),
+      /** Show a failed action's message where the board shows its errors. */
+      report: (msg: string, e: unknown) => report(msg)(e),
       history,
       /**
        * Everything one pointer release changed (items, docked takes carried along, hub offsets, dock

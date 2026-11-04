@@ -4,6 +4,7 @@ import io
 import threading
 import time
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import partial
 
@@ -80,10 +81,11 @@ def reserve_slot(
 
 
 def free_slot(
-    session: Session, board_id: str, near: Bounds, size: tuple[float, float], gap: float = GAP
+    session: Session, board_id: str, near: Bounds, size: tuple[float, float], gap: float = GAP,
+    extra: Sequence[Bounds] = (),
 ) -> tuple[float, float]:
-    """The first spot right of `near`, else below, else left, that no shown item covers and
-    no queued job has reserved.
+    """The first spot right of `near`, else below, else left, that no shown item covers, no
+    queued job has reserved and none of `extra` (spots the caller holds) covers.
 
     Each side is scanned in steps of `gap`, moving away from `near`; the result is deterministic.
     """
@@ -91,7 +93,7 @@ def free_slot(
     taken = [
         Bounds(i.x, i.y, i.w, i.h)
         for i in items_repo.list_active(session, board_id, include_staged=False)
-    ] + _reserved_on(board_id)
+    ] + _reserved_on(board_id) + list(extra)
     right = (near.x + near.w + gap, near.y)
     below = (near.x, near.y + near.h + gap)
     left = (near.x - gap - w, near.y)

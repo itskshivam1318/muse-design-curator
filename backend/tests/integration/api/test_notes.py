@@ -43,7 +43,8 @@ def test_patch_note_text_on_image_is_400(client: TestClient, world: Any) -> None
 def test_explore_on_a_note_reads_its_text(
     client: TestClient, world: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A note is explored like any item: no image, its text in the prompt."""
+    """A note is explored with no image, its text in the prompt; its options (at most four)
+    are written at once, each into its own slot beside the note."""
     f = fake(monkeypatch, SIX)
     n = client.post(
         f"/api/boards/{world['watch']}/notes",
@@ -56,7 +57,11 @@ def test_explore_on_a_note_reads_its_text(
     assert r.status_code == 201, r.json()
     r = explore(client, n["id"])
     assert r.status_code == 200, r.json()
-    assert len(r.json()["options"]) == 6
+    opts = r.json()["options"]
+    assert len(opts) == 4
+    assert {o["status"] for o in opts} == {"visualizing"}
+    slots = {(o["x"], o["y"]) for o in opts}
+    assert len(slots) == 4 and all(x >= n["x"] + n["w"] or y >= n["y"] + n["h"] for x, y in slots)
     assert f.images == [[]]
     assert "<<<TEXT\nstrap in waxed canvas\nTEXT>>>" in f.prompts[0]
 
