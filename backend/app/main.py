@@ -69,10 +69,22 @@ def _recover_visualizing() -> None:
         log.exception("could not reset options left visualizing")
 
 
+def _reset_chat_runs() -> None:
+    """Chat runs left `running` by a previous process wait for the next message instead."""
+    from app.agent.chat import runner
+
+    try:
+        if n := runner.reset_running_on_startup():
+            log.info("reset %d chat runs left running", n)
+    except Exception:
+        log.exception("could not reset chat runs left running")
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     demo.check_settings(get_settings())
     _recover_visualizing()
+    _reset_chat_runs()
     async with mcp.run():
         yield
 

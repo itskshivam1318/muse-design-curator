@@ -201,6 +201,10 @@ class _Turn:
         self.stopped = False  # a stop came between two calls of one model turn
 
     def take_person(self, message: dict[str, Any]) -> None:
+        """Add a person message to the history, once: `next_message` may hand back one the turn
+        already took in at its start."""
+        if message["id"] in self.consumed:
+            return
         first = not self.history
         self.history.append(_person_item(self.board_id, message, first))
         self.consumed.append(message["id"])
