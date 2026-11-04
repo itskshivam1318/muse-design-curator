@@ -2,7 +2,7 @@
 // logs when each card appears so the rough cut can pick them out. Read-only: it only opens
 // /boards/<id>?replay=<run> and presses Next.
 //
-//   node reports/demo/record_replays.mjs [--app http://localhost:5173] [--hold 4]
+//   node reports/demo/record_replays.mjs [--app http://localhost:5173] [--hold 4] [--only slug,slug]
 //
 // Writes reports/demo/replays/<slug>.webm and reports/demo/replays/<slug>.json
 // ([{card, of, step, say, t}] with t in seconds since the video began).
@@ -17,7 +17,11 @@ const require = createRequire(join(here, '../../frontend/package.json'))
 const { chromium } = require('@playwright/test')
 
 const { values: args } = parseArgs({
-  options: { app: { type: 'string', default: 'http://localhost:5173' }, hold: { type: 'string', default: '4' } },
+  options: {
+    app: { type: 'string', default: 'http://localhost:5173' },
+    hold: { type: 'string', default: '4' },
+    only: { type: 'string' },
+  },
 })
 const HOLD_MS = Number(args.hold) * 1000
 const RUNS = [
@@ -26,12 +30,15 @@ const RUNS = [
   ['room', 'brd_01m6j4rrnz1zzx6qax1rya3j27', 'arun_01m6j4sg80tqra73g2y11dvnx9'],
   ['outerwear', 'brd_01m6j5n5eqdmxv33zhw03qesx5', 'arun_01m6j5npnz586e22mbk8vrxat4'],
   ['outerwear-2', 'brd_01m6j5n5eqdmxv33zhw03qesx5', 'arun_01m6j84dj1qq9h5pznksgzmwha'],
+  ['ui-premium', 'brd_01m6hcp4q8vrt11mnpw6jrmpb4', 'arun_01m6jqd3132yctrry60vehkftr'],
+  ['car-put', 'brd_01m6h989kz0tz8xjvjbp6zbz9x', 'arun_01m6jqa2kbp7784pvd1pj9fm6r'],
 ]
 const out = join(here, 'replays')
 mkdirSync(out, { recursive: true })
 
 const browser = await chromium.launch()
 for (const [slug, board, run] of RUNS) {
+  if (args.only && !args.only.split(',').includes(slug)) continue
   const ctx = await browser.newContext({
     viewport: { width: 1920, height: 1080 },
     recordVideo: { dir: out, size: { width: 1920, height: 1080 } },

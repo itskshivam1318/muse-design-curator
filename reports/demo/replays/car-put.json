@@ -1,0 +1,30 @@
+[
+ {
+  "card": 1,
+  "of": 4,
+  "step": 1,
+  "say": "A new run: take one part from one picture and put it into another.",
+  "t": 1.195
+ },
+ {
+  "card": 2,
+  "of": 4,
+  "step": 2,
+  "say": "The Taycan's wheels, put into the coupe. Only the wheels change.",
+  "t": 5.927
+ },
+ {
+  "card": 3,
+  "of": 4,
+  "step": 3,
+  "say": "Both wheels this time: the Taycan's design on the coupe. Nothing else moves.",
+  "t": 10.663
+ },
+ {
+  "card": 4,
+  "of": 4,
+  "step": 5,
+  "say": "The sheet: the coupe with the Taycan wheel.",
+  "t": 15.389
+ }
+]

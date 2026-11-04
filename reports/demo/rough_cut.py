@@ -35,6 +35,7 @@ INK, PAPER, ACCENT = (24, 24, 27), (236, 239, 242), (44, 72, 168)
 # | ("replay", slug, card_no)  a spotlight replay card (replays/<slug>.webm), held REPLAY_HOLD s;
 #   the card carries the step's own narration, so no caption is added
 REPLAY_HOLD = 3.8
+FADE = 0.3  # title cards fade in from and out to black
 CUT = [
     ("card", 3, "Muse", "Claude Code works real design boards in Muse, live, through its tools."),
     ("card", 4.5, "Problem 1: curation along dimensions",
@@ -55,8 +56,7 @@ CUT = [
     ("card", 2.5, '2 · What "premium" means', "Pin a vague word to dimensions, then design in it."),
     ("ui/ui.webm", 8, 12, 'Goal first. "Premium" means nothing until it is pinned to dimensions and values.'),
     ("replay", "ui", 4), ("replay", "ui", 5), ("replay", "ui", 6),
-    ("ui/ui.webm", 238, 10, "The board's own check catches a bad render: three screens where one was asked for."),
-    ("replay", "ui", 7), ("replay", "ui", 8), ("replay", "ui", 10), ("replay", "ui", 12),
+    ("replay", "ui", 7), ("replay", "ui", 8), ("replay", "ui", 9), ("replay", "ui", 10), ("replay", "ui", 12),
 
     ("card", 2.5, "3 · One room, four materials", "Keep the room. Vary only material and palette."),
     ("room/room.webm", 19, 12, "Japanese bones, Danish furniture: references from open collections."),
@@ -117,13 +117,16 @@ def main() -> None:
         tmp = Path(os.environ.get("KEEP_PARTS") or tmp_s)
         tmp.mkdir(exist_ok=True)
         parts = []
+        timeline: list[str] = []
+        clock = 0.0
         for i, seg in enumerate(CUT):
             part = tmp / f"{i:02d}.mp4"
             if seg[0] == "card":
                 _, secs, title, body = seg
                 png = tmp / f"{i:02d}.png"
                 card_png(png, title, body)
-                run("-loop", "1", "-t", str(secs), "-i", str(png), "-vf", f"scale={W}:{H}", *enc, str(part))
+                fade = f"fade=t=in:d={FADE},fade=t=out:st={secs - FADE}:d={FADE}"
+                run("-loop", "1", "-t", str(secs), "-i", str(png), "-vf", f"scale={W}:{H},{fade}", *enc, str(part))
             elif seg[0] == "replay":
                 _, slug, card_no = seg
                 cards = json.loads((HERE / "replays" / f"{slug}.json").read_text())
@@ -147,12 +150,19 @@ def main() -> None:
                 vf = f"[0:v]{pick}scale={W}:{H},setpts=PTS/{SPEED}[v];[v][1:v]overlay=0:0"
                 run(*inp, "-i", str(cap), "-filter_complex", vf, *enc, str(part))
             parts.append(part)
+            secs_out = float(subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(part)],
+                capture_output=True, text=True, check=True).stdout)
+            label = seg[2] if seg[0] == "card" else (f"replay {seg[1]} card {seg[2]}" if seg[0] == "replay" else f"{seg[0]} @{seg[1]}s: {seg[3]}")
+            timeline.append(f"{clock:6.1f}s  +{secs_out:4.1f}s  {label}")
+            clock += secs_out
             print(f"{i:02d} done")
         listing = tmp / "parts.txt"
         listing.write_text("".join(f"file '{p}'\n" for p in parts))
         final = tmp / "rough-cut.mp4"
         run("-f", "concat", "-safe", "0", "-i", str(listing), "-c", "copy", "-movflags", "+faststart", str(final))
         shutil.move(final, OUT / "rough-cut.mp4")
+        (OUT / "timeline.txt").write_text("\n".join(timeline) + f"\n{clock:6.1f}s  end\n")
     print(OUT / "rough-cut.mp4")
 
 
