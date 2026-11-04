@@ -8,6 +8,7 @@ import { setBoard, track } from '../telemetry'
 import { makeMessage, makeRun, makeStep } from '../test/fixtures'
 import { AgentCard } from './AgentCard'
 import { closeSpotlight, spotlightStore } from './spotlight'
+import { partConfirmStore } from './partConfirm'
 
 beforeEach(() => {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{}', { status: 500 }))
@@ -401,6 +402,32 @@ describe('AgentCard, questions', () => {
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([u]) => String(u).endsWith('/boards/b1/agent/messages'))).toBe(true))
     const [, init] = vi.mocked(fetch).mock.calls.find(([u]) => String(u).endsWith('/boards/b1/agent/messages'))!
     expect(JSON.parse(String(init?.body))).toEqual({ text: 'Warm', selection: [], answer: { call_id: 'c1', choice: 'Warm' } })
+  })
+
+  it('an answered question shows no buttons, and takes no second answer', async () => {
+    const run = makeRun({ source: 'muse', status: 'needs_input', goal: 'Warmer' })
+    const question = makeMessage({
+      id: 'q1',
+      role: 'question',
+      text: 'Is this the shade?',
+      data: { call_id: 'c2', tool: 'confirm_part', args: { item_id: 'itm_7', part: 'shade', why: 'recolour' }, region: null },
+    })
+    const reply = makeMessage({ id: 'm9', role: 'person', text: 'Yes', created_at: '2026-11-04T10:00:05Z' })
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    vi.mocked(fetch).mockImplementation(async (url) =>
+      String(url).endsWith('/boards/b1/agent/messages') ? json({ run: { ...run, status: 'running' }, message: reply }) : new Response('{}', { status: 500 }),
+    )
+    // the question stays answered: false (the server sends no update for it)
+    renderCard({ chat: true, run, messagesByRun: { r1: [question] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Show activity' }))
+    const yes = screen.getByRole('button', { name: 'Yes' })
+    fireEvent.click(yes)
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Fix' })).toBeNull())
+    expect(screen.queryByRole('textbox', { name: 'Answer' })).toBeNull()
+    expect(partConfirmStore.get()).toBeNull()
+    fireEvent.click(yes) // a stale button
+    const posts = vi.mocked(fetch).mock.calls.filter(([u]) => String(u).endsWith('/boards/b1/agent/messages'))
+    expect(posts).toHaveLength(1)
   })
 
   it('says so when the answer cannot be sent', async () => {

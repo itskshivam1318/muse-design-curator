@@ -1,7 +1,8 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { makeMessage } from '../../test/fixtures'
-import { partConfirmStore } from '../partConfirm'
+import { PartConfirmLayer } from '../../canvas/PartConfirmLayer'
+import { partConfirmStore, usePartConfirm } from '../partConfirm'
 import { QuestionCard } from './QuestionCard'
 import { answerLine } from './thread'
 
@@ -105,6 +106,65 @@ describe('QuestionCard', () => {
     render(<QuestionCard message={confirm(true)} onAnswer={vi.fn()} />)
     expect(screen.queryAllByRole('button')).toHaveLength(0)
     expect(partConfirmStore.get()).toBeNull()
+  })
+})
+
+/** The card and, as the canvas would draw it, the board layer over a 200×100 item. */
+function WithBoard(props: Parameters<typeof QuestionCard>[0]) {
+  const c = usePartConfirm()
+  return (
+    <>
+      <QuestionCard {...props} />
+      {c && <PartConfirmLayer confirm={c} screen={{ x: 0, y: 0, width: 200, height: 100 }} />}
+    </>
+  )
+}
+
+const drag = (pad: Element) => {
+  fireEvent.pointerDown(pad, { button: 0, pointerId: 1, clientX: 20, clientY: 10 })
+  fireEvent.pointerUp(pad, { pointerId: 1, clientX: 120, clientY: 60 })
+}
+
+describe('QuestionCard and the board', () => {
+  it('Fix then Yes leaves draw mode: no pad on the board', () => {
+    const onAnswer = vi.fn()
+    const { container } = render(<WithBoard message={confirm()} onAnswer={onAnswer} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Fix' }))
+    expect(container.querySelector('.part-confirm-draw')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Yes' }))
+    expect(onAnswer).toHaveBeenCalledWith({ call_id: 'c2', text: 'yes' })
+    expect(partConfirmStore.get()?.mode).toBe('show')
+    expect(container.querySelector('.part-confirm-draw')).toBeNull()
+  })
+
+  it('Fix then a typed answer leaves draw mode', () => {
+    const { container } = render(<WithBoard message={confirm()} onAnswer={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Fix' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Answer' }), { target: { value: 'the base' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send answer' }))
+    expect(container.querySelector('.part-confirm-draw')).toBeNull()
+  })
+
+  it('a drag while an answer is pending sends nothing', () => {
+    const onAnswer = vi.fn()
+    const { container, rerender } = render(<WithBoard message={confirm()} onAnswer={onAnswer} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Fix' }))
+    const pad = container.querySelector('.part-confirm-draw')!
+    rerender(<WithBoard message={confirm()} onAnswer={onAnswer} disabled />)
+    // draw mode ends; a drag already under way (or a direct call) still sends nothing
+    expect(container.querySelector('.part-confirm-draw')).toBeNull()
+    drag(pad)
+    act(() => partConfirmStore.get()!.answer({ call_id: 'c2', box: [0, 0, 1, 1] }))
+    expect(onAnswer).not.toHaveBeenCalled()
+  })
+
+  it('a drawn box answers once and ends draw mode', () => {
+    const onAnswer = vi.fn()
+    const { container } = render(<WithBoard message={confirm()} onAnswer={onAnswer} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Fix' }))
+    drag(container.querySelector('.part-confirm-draw')!)
+    expect(onAnswer).toHaveBeenCalledTimes(1)
+    expect(container.querySelector('.part-confirm-draw')).toBeNull()
   })
 })
 

@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useRef, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { type AgentAnswer, type AgentMessage, itemIdImageUrl } from '../../api'
 import { clearPartConfirm, partConfirmStore, setConfirmMode, usePartConfirm } from '../partConfirm'
 import { textParts } from './thread'
@@ -32,11 +32,23 @@ export function QuestionCard({
   const maskUrl = data?.region?.mask_url ?? null
   const rawBox = data?.region?.box
   const boxKey = isBox(rawBox) ? rawBox.join(',') : ''
-  // the latest onAnswer, so a parent's new callback each render does not restart the confirmation
+  // the latest onAnswer and disabled, so a parent's new callback each render does not restart the confirmation
   const answerRef = useRef(onAnswer)
+  const disabledRef = useRef(disabled)
   useEffect(() => {
     answerRef.current = onAnswer
+    disabledRef.current = disabled
   })
+  // every answer (a button, the field, a box drawn on the board) goes through here: none while disabled,
+  // and any answer ends box drawing
+  const give = useCallback(
+    (a: AgentAnswer) => {
+      if (disabledRef.current) return
+      if (partConfirmStore.get()?.callId === callId) setConfirmMode('show')
+      answerRef.current(a)
+    },
+    [callId],
+  )
   useEffect(() => {
     if (!open || confirmItem === null) return
     partConfirmStore.set({
@@ -45,10 +57,14 @@ export function QuestionCard({
       maskUrl,
       box: boxKey ? boxKey.split(',').map(Number) : null,
       mode: 'show',
-      answer: (a) => answerRef.current(a),
+      answer: give,
     })
     return () => clearPartConfirm(callId)
-  }, [open, callId, confirmItem, maskUrl, boxKey])
+  }, [open, callId, confirmItem, maskUrl, boxKey, give])
+  // while answers are off (one being sent, or chat off) the board takes no box
+  useEffect(() => {
+    if (disabled && partConfirmStore.get()?.callId === callId) setConfirmMode('show')
+  }, [disabled, callId])
   const confirm = usePartConfirm()
   const drawing = confirm?.callId === callId && confirm.mode === 'draw'
 
@@ -76,7 +92,8 @@ export function QuestionCard({
     e.preventDefault()
     const t = text.trim()
     if (!t) return
-    onAnswer({ call_id: callId, text: t })
+    if (disabled) return
+    give({ call_id: callId, text: t })
     setText('')
   }
   return (
@@ -86,11 +103,11 @@ export function QuestionCard({
         <div className="question-choices">
           {choices.map((c) =>
             ITEM_ID.test(c) ? (
-              <button key={c} type="button" className="question-choice is-item" aria-label={c} disabled={disabled} onClick={() => onAnswer({ call_id: callId, choice: c })}>
+              <button key={c} type="button" className="question-choice is-item" aria-label={c} disabled={disabled} onClick={() => give({ call_id: callId, choice: c })}>
                 <img src={itemIdImageUrl(c)} alt="" />
               </button>
             ) : (
-              <button key={c} type="button" className="question-choice" disabled={disabled} onClick={() => onAnswer({ call_id: callId, choice: c })}>
+              <button key={c} type="button" className="question-choice" disabled={disabled} onClick={() => give({ call_id: callId, choice: c })}>
                 {c}
               </button>
             ),
@@ -99,7 +116,7 @@ export function QuestionCard({
       )}
       {confirmItem !== null && (
         <div className="question-choices">
-          <button type="button" className="question-choice" disabled={disabled} onClick={() => onAnswer({ call_id: callId, text: 'yes' })}>
+          <button type="button" className="question-choice" disabled={disabled} onClick={() => give({ call_id: callId, text: 'yes' })}>
             Yes
           </button>
           <button

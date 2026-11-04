@@ -109,9 +109,15 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
     setExpanded(true)
   }
   // an answer to the agent's question; its line is what the person's bubble says
+  // the questions answered here: the server does not say when a question is answered, so they are
+  // shown answered at once and take no second answer
+  const [answeredCalls, setAnsweredCalls] = useState<ReadonlySet<string>>(() => new Set())
   const answer = useMutation({
     mutationFn: (a: AgentAnswer) => sendAgentMessage(boardId, { text: answerLine(a), selection: [...selected], answer: a }),
-    onSuccess: onSent,
+    onSuccess: (sent, a) => {
+      setAnsweredCalls((done) => new Set(done).add(a.call_id))
+      onSent(sent)
+    },
   })
   const linkHandled = useRef(linked === null)
   useEffect(() => {
@@ -223,7 +229,7 @@ export function AgentCard({ boardId, onFocusItem }: { boardId: string; onFocusIt
                   onFocusItem={onFocusItem}
                   renderQuestion={(m) => (
                     <QuestionCard
-                      message={m}
+                      message={m.data?.call_id && answeredCalls.has(m.data.call_id) ? { ...m, answered: true } : m}
                       onAnswer={(a) => answer.mutate(a)}
                       onFocusItem={onFocusItem}
                       disabled={answer.isPending || offReason !== null}
