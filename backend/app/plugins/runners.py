@@ -340,6 +340,12 @@ def _run_python(
             out = json.loads(bytes(stdout))
         except ValueError:
             raise _bad_output(f"{p.manifest.name} printed output that is not JSON") from None
+        if (
+            isinstance(out, dict)
+            and isinstance(out.get("images"), list)
+            and len(out["images"]) > MAX_PYTHON_IMAGES
+        ):
+            raise _bad_output(f"{p.manifest.name} returned more than {MAX_PYTHON_IMAGES} images")
         return _image_paths_to_b64(out, tmp)
 
 

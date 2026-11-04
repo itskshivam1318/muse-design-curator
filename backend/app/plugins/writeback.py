@@ -3,6 +3,7 @@ input items. Runs inside the run's final transaction; events go out after the co
 
 import base64
 import io
+import math
 import re
 import uuid
 from functools import partial
@@ -14,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import events, jobs
+from app.analysis.extract import Bounds, free_slot
 from app.analysis.spec import spec_for
 from app.api.schemas import item_to_dict
 from app.db.models import BoardItem, ItemAttribute, PluginNode, PluginRun
@@ -33,6 +35,8 @@ from app.storage import files
 
 COLUMN_GAP = 40  # node edge to the output column
 STACK_GAP = 24  # between outputs in the column
+GRID_COLS = 4
+GRID_GAP = 24
 DEFAULT_CONFIDENCE = {"python": 1.0, "llm": 0.7, "model": 1.0}
 # Attribute changes are announced with the event the extraction pipeline sends when an item's
 # attributes change (the attributes API itself sends none); the board refetches that item's
@@ -74,14 +78,24 @@ def _earlier_outputs(session: Session, run: PluginRun) -> list[str]:
     return [i for out in runs if isinstance(out, dict) for i in out.get("created_item_ids", [])]
 
 
-def _image_item(
-    session: Session, run: PluginRun, node: PluginNode, data_b64: str, x: float, y: float,
-    model: str, parent: str | None,
-) -> BoardItem:  # fmt: skip
+def grid_cells(
+    n: int, cell: tuple[float, float], cols: int = GRID_COLS, gap: float = GRID_GAP
+) -> list[tuple[float, float]]:
+    """Offsets from the grid's top-left for `n` cells, row-major, `cols` wide."""
+    return [((k % cols) * (cell[0] + gap), (k // cols) * (cell[1] + gap)) for k in range(n)]
+
+
+def _decode(data_b64: str) -> Image.Image:
     try:
-        img = decode_image(base64.b64decode(data_b64))
+        return decode_image(base64.b64decode(data_b64))
     except AppError:
         raise PluginError("PLUGIN_BAD_OUTPUT", "an image in the result could not be read") from None
+
+
+def _image_item(
+    session: Session, run: PluginRun, node: PluginNode, img: Image.Image, x: float, y: float,
+    model: str, parent: str | None, option: bool = False,
+) -> BoardItem:  # fmt: skip
     data = _stamped(img, run.plugin_id, run.id)
     sha = files.sha256_hex(data)
     storage = files.save_original(data, sha, "png")
@@ -94,6 +108,7 @@ def _image_item(
         width=img.size[0], height=img.size[1], w=w, h=h, rights_status="generated",
         parent_item_id=parent,
         generation_json={"plugin": run.plugin_id, "model": model, "run_id": run.id},
+        option_run_id=run.id if option else None,
     )  # fmt: skip
 
 
@@ -215,13 +230,29 @@ def apply_output(
     x = node.x + node.w + COLUMN_GAP
     y = _column_top(session, node, x, _earlier_outputs(session, run))
     created: list[str] = []
-    for image in out.get("images", []):
-        item = _image_item(session, run, node, image["data_b64"], x, y, model, parent)
+    images = [_decode(image["data_b64"]) for image in out.get("images", [])]
+    options = len(images) > 1
+    cells: list[tuple[float, float]] = []
+    if options:
+        sizes = [default_size(*im.size) for im in images]
+        cell = (max(w for w, _ in sizes), max(h for _, h in sizes))
+        cells = grid_cells(len(images), cell)
+        cols = min(GRID_COLS, len(images))
+        rows = math.ceil(len(images) / GRID_COLS)
+        block = (cols * cell[0] + (cols - 1) * GRID_GAP, rows * cell[1] + (rows - 1) * GRID_GAP)
+        near = Bounds(node.x, node.y, node.w, node.h)
+        gx, gy = free_slot(session, node.board_id, near, block)
+        x, y = gx, gy + block[1] + STACK_GAP  # notes go under the grid
+    for n, im in enumerate(images):
+        ix, iy = (gx + cells[n][0], gy + cells[n][1]) if options else (x, y)
+        item = _image_item(session, run, node, im, ix, iy, model, parent, option=options)
         created.append(item.id)
-        y += item.h + STACK_GAP
+        if not options:
+            y += item.h + STACK_GAP
         added = item_to_dict(item)
         after_commit(session, partial(events.publish, item.board_id, "item.added", added))
         after_commit(session, partial(jobs.enqueue, "analyse_item", item_id=item.id))
+    option_ids = list(created) if options else []
     for note in out.get("notes", []):
         item = create_note(session, node.board_id, note["text"], x, y)
         created.append(item.id)
@@ -235,5 +266,6 @@ def apply_output(
         after_commit(session, partial(_recompute, node.board_id))
     result: dict[str, Any] = {k: out[k] for k in ("text", "table") if k in out}
     result["created_item_ids"] = created
+    result["option_item_ids"] = option_ids
     result["skipped_attributes"] = skipped
     return result
