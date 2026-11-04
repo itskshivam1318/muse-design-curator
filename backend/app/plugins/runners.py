@@ -234,6 +234,16 @@ def validate_output(manifest: Manifest, out: Any) -> dict[str, Any]:
                 raise _bad_output("each 3D model needs glb and poster bytes and a text caption")
             models.append({"glb": glb, "poster": poster, "caption": caption})
         clean["model3d"] = models
+    if out.get("video") is not None:
+        if manifest.runner != "model":
+            raise _bad_output("only the model runner may return a video")
+        clips = []
+        for x in _list_of_dicts(out, "video"):
+            data, caption = x.get("data"), x.get("caption", "")
+            if not isinstance(data, bytes) or not data or not isinstance(caption, str):
+                raise _bad_output("each video needs bytes and a text caption")
+            clips.append({"data": data, "caption": caption})
+        clean["video"] = clips
     if out.get("text") is not None:
         if not isinstance(out["text"], str):
             raise _bad_output("text must be a string")
@@ -602,6 +612,109 @@ def _run_mesh(
                          "caption": f"{inputs[0].label}, as a 3D model"}]}  # fmt: skip
 
 
+def frame_image(session: Any, board_id: str, item_id: str, which: str) -> bytes:
+    """The picture of a frame the person chose: an image on this board, not removed, not staged.
+    Anything else is PLUGIN_BAD_INPUT."""
+    from app.db.models import BoardItem
+    from app.errors import AppError
+    from app.extraction.service import _image_for
+
+    item = session.get(BoardItem, item_id)
+    ok = (
+        item is not None and item.board_id == board_id and item.kind == "image"
+        and item.removed_at is None and not item.staged
+    )  # fmt: skip
+    if not ok:
+        raise _bad_input(f"the {which} frame is not a picture on this board")
+    try:
+        return _image_for(session, item)[0]
+    except AppError:
+        raise _bad_input(f"the {which} frame's picture is missing") from None
+
+
+def _video_payload(endpoint_is_pro: bool, prompt: str, duration: int, start: str,
+                   end: str | None) -> dict[str, Any]:  # fmt: skip
+    """The two Kling tiers name their frame fields differently; pro also makes sound unless told
+    not to (playback is muted and sound costs more)."""
+    body: dict[str, Any] = {"prompt": prompt, "duration": str(duration)}
+    if endpoint_is_pro:
+        body |= {"start_image_url": start, "generate_audio": False}
+        if end:
+            body["end_image_url"] = end
+    else:
+        body["image_url"] = start
+        if end:
+            body["tail_image_url"] = end
+    return body
+
+
+def _run_video(
+    p: Plugin, inputs: list[RunInput], params: dict[str, Any], board: BoardCtx,
+    settings: Settings, progress: Callable[[str], None], job: JobCtx | None,
+) -> Any:  # fmt: skip
+    from app.analysis import limits
+    from app.db.models import PluginRun
+    from app.plugins import longjob
+
+    if job is None:
+        raise PluginError("PLUGIN_NOT_CONNECTED", "video runs only as a queued job")
+    run = job.session.get(PluginRun, job.run_id)
+    if run is None:
+        raise PluginError("PLUGIN_CRASHED", "the run is gone")
+    # everything that can be wrong with the inputs is checked before a slot or a submit
+    start_id = str(params.get("start") or "").strip()
+    end_id = str(params.get("end") or "").strip()
+    if start_id:
+        start_png = frame_image(job.session, run.board_id, start_id, "start")
+    elif inputs and inputs[0].image is not None:
+        start_png = inputs[0].image
+    else:
+        raise _bad_input("connect a picture")
+    end_png = frame_image(job.session, run.board_id, end_id, "end") if end_id else None
+    prompt = str(params.get("prompt") or "").strip()
+    if not prompt:
+        raise _bad_input("write a direction for the clip, or use Describe")
+    pro = params.get("type", "standard") == "pro"
+    endpoint = settings.FAL_VIDEO_PRO if pro else settings.FAL_VIDEO_STANDARD
+    duration = int(params.get("duration") or 5)
+
+    def payload(hb: Callable[[str], None]) -> dict[str, Any]:
+        fal = get_fal(settings)
+        start = fal.upload(start_png, "image/png")
+        hb("Uploaded the start frame")
+        end = None
+        if end_png is not None:
+            end = fal.upload(end_png, "image/png")
+            hb("Uploaded the end frame")
+        return _video_payload(pro, prompt, duration, start, end)
+
+    resumed = bool((run.external_json or {}).get("request_id"))
+
+    def fail(err: PluginError) -> PluginError:
+        if not resumed:  # a resumed run holds no slot of this process
+            limits.refund(run.board_id, "video")
+        return err
+
+    result = longjob.run_fal(job.session, run, endpoint, payload, "video", progress)
+    video = result.get("video")
+    url = video.get("url") if isinstance(video, dict) else None
+    if not isinstance(url, str) or not url:
+        raise fail(_bad_output("the model returned no video"))
+    progress("Fetching the video")
+    try:
+        data = get_fal(settings).download(url, settings.MAX_VIDEO_BYTES)
+    except ModelError as e:
+        if e.code == "PAYLOAD_TOO_LARGE":
+            raise fail(_bad_output("the video is larger than the size limit")) from None
+        raise fail(
+            PluginError("PLUGIN_MODEL_FAILED", f"the video could not be fetched: {user_message(e)}")
+        ) from None
+    if not data:
+        raise fail(_bad_output("the video is empty"))
+    caption = prompt if len(prompt) <= 200 else prompt[:199] + "…"
+    return {"video": [{"data": data, "caption": caption}]}
+
+
 ModelHandler = Callable[
     [Plugin, list[RunInput], dict[str, Any], BoardCtx, Settings, Callable[[str], None],
      JobCtx | None],
@@ -612,6 +725,7 @@ MODEL_HANDLERS: dict[ModelName, ModelHandler] = {
     "image.edit": _run_image,
     "image.generate": _run_image,
     "mesh.from_image": _run_mesh,
+    "video.generate": _run_video,
 }
 
 

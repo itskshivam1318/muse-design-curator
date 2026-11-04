@@ -36,6 +36,7 @@ from app.plugins.runners import (
     RunInput,
     check_input_kinds,
     check_params,
+    frame_image,
     run_plugin,
 )
 
@@ -211,6 +212,51 @@ def request_run(session: Session, node_id: str) -> PluginRun:
 def _job_for(p: Plugin) -> str:
     m = p.manifest
     return LONG_JOB if m.runner == "model" and m.model in longjob.LONG_MODELS else JOB
+
+
+DESCRIBE_PROMPT = (
+    "This picture is the first frame of a short video clip. In one or two plain sentences, "
+    "describe the motion and camera move that would suit it: what moves, how, and how the "
+    "camera behaves. Write the direction only, no preamble."
+)
+DESCRIBE_SCHEMA = {
+    "type": "object", "title": "video_direction",
+    "properties": {"prompt": {"type": "string"}}, "required": ["prompt"],
+}  # fmt: skip
+
+
+def describe_node(session: Session, node_id: str) -> str:
+    """One reasoning call on the node's start frame: a suggested direction for the clip. Takes a
+    render slot, given back when the model fails."""
+    from app.analysis import limits
+    from app.providers import get_reasoning
+    from app.providers.reliability import ModelError, user_message
+
+    node = require_node(session, node_id)
+    p = _plugin(node.plugin_id)
+    props = (p.manifest.params or {}).get("properties") or {}
+    if not any(isinstance(v, dict) and v.get("x-describe") for v in props.values()):
+        raise AppError(400, "PLUGIN_NO_DESCRIBE", f"{p.manifest.name} cannot describe a frame")
+    params = node.params_json or {}
+    ids = list(node.input_item_ids_json or [])
+    frame_id = str(params.get("start") or "").strip() or (ids[0] if ids else "")
+    try:
+        if not frame_id:
+            raise PluginError("PLUGIN_BAD_INPUT", "connect a picture first")
+        image = frame_image(session, node.board_id, frame_id, "start")
+    except PluginError as e:
+        raise AppError(400, e.code, e.message) from None
+    limits.check_and_count(node.board_id, "render")
+    try:
+        raw = get_reasoning(get_settings()).structured([image], DESCRIBE_SCHEMA, DESCRIBE_PROMPT)
+    except ModelError as e:
+        limits.refund(node.board_id, "render")
+        raise AppError(502, e.code, user_message(e)) from None
+    text = raw.get("prompt") if isinstance(raw, dict) else None
+    if not isinstance(text, str) or not text.strip():
+        limits.refund(node.board_id, "render")
+        raise AppError(502, "MODEL_BAD_OUTPUT", "The model returned no description")
+    return text.strip()
 
 
 def _check_live_inputs(session: Session, node: PluginNode, p: Plugin) -> None:

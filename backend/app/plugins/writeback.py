@@ -143,6 +143,23 @@ def _model_item(
     )  # fmt: skip
 
 
+def _video_item(
+    session: Session, run: PluginRun, node: PluginNode, v: dict[str, Any], x: float, y: float,
+    model: str, parent: str | None,
+) -> BoardItem:  # fmt: skip
+    from app.ingest.video import ingest_video
+
+    meta = ItemMeta(origin="generated", filename=f"{run.plugin_id}.mp4", x=x, y=y)
+    res = ingest_video(session, node.board_id, v["data"], meta)
+    item = res.item
+    if not res.deduped:
+        item.rights_status = "generated"
+        item.parent_item_id = parent
+        item.generation_json = {"plugin": run.plugin_id, "model": model, "run_id": run.id}
+        session.flush()
+    return item
+
+
 def _kind(value: Any) -> str:
     if isinstance(value, bool):  # before int: a bool is an int
         return "boolean"
@@ -289,6 +306,14 @@ def apply_output(
         y += item.h + STACK_GAP
         added = item_to_dict(item)
         after_commit(session, partial(events.publish, item.board_id, "item.added", added))
+    for v in out.get("video", []):
+        item = _video_item(session, run, node, v, x, y, model, parent)
+        created.append(item.id)
+        y += item.h + STACK_GAP
+        added = item_to_dict(item)
+        after_commit(session, partial(events.publish, item.board_id, "item.added", added))
+        if item.parse_status == "pending":
+            after_commit(session, partial(jobs.enqueue, "analyse_item", item_id=item.id))
     option_ids = list(created) if options else []
     for note in out.get("notes", []):
         item = create_note(session, node.board_id, note["text"], x, y)
