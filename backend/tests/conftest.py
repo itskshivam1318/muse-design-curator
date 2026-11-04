@@ -26,6 +26,16 @@ def _mock_providers(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _fresh_mock_fal() -> Iterator[None]:
+    """The mock fal client is shared per process: every test starts and ends with a new one."""
+    from app.providers import reset_mock_fal
+
+    reset_mock_fal()
+    yield
+    reset_mock_fal()
+
+
+@pytest.fixture(autouse=True)
 def _no_live_search(monkeypatch: pytest.MonkeyPatch) -> None:
     """Live source search is off unless a test turns it on (and then uses fake transports)."""
     monkeypatch.setenv("LIVE_SEARCH", "0")

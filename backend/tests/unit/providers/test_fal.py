@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from app.config import Settings
-from app.providers import get_fal
+from app.providers import get_fal, reset_mock_fal
 from app.providers.fal import FalClient, MockFal
 from app.providers.reliability import ModelError
 
@@ -104,7 +104,11 @@ def test_download_over_cap_rejected() -> None:
 
 
 def test_get_fal_mock_and_live() -> None:
-    assert isinstance(get_fal(Settings(FAL_PROVIDER="mock")), MockFal)
+    mock = get_fal(Settings(FAL_PROVIDER="mock"))
+    assert isinstance(mock, MockFal)
+    assert get_fal(Settings(FAL_PROVIDER="mock")) is mock  # one per process
+    reset_mock_fal()
+    assert get_fal(Settings(FAL_PROVIDER="mock")) is not mock
     assert isinstance(get_fal(Settings(FAL_PROVIDER="fal", FAL_KEY="k")), FalClient)
     with pytest.raises(ModelError) as e:
         get_fal(Settings(FAL_PROVIDER="fal", FAL_KEY=None))

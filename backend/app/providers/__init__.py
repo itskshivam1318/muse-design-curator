@@ -26,6 +26,7 @@ __all__ = [
     "get_image_provider",
     "get_reasoning",
     "get_segmentation",
+    "reset_mock_fal",
 ]
 
 
@@ -71,10 +72,26 @@ def get_image_provider(settings: Settings) -> ImageProvider:
     raise ModelError("PROVIDER_MISCONFIGURED", message=f"unknown IMAGE_PROVIDER {name!r}")
 
 
+# One MockFal per process, so the uploads, submits and downloads of a run (made through separate
+# get_fal calls) share its files and call log; tests reset it.
+_mock_fal: MockFal | None = None
+_mock_fal_lock = threading.Lock()
+
+
+def reset_mock_fal() -> None:
+    global _mock_fal
+    with _mock_fal_lock:
+        _mock_fal = None
+
+
 def get_fal(settings: Settings) -> FalClient | MockFal:
+    global _mock_fal
     name = settings.FAL_PROVIDER.replace("_", "-")
     if name == "mock":
-        return MockFal()
+        with _mock_fal_lock:
+            if _mock_fal is None:
+                _mock_fal = MockFal()
+            return _mock_fal
     if name == "fal":
         return FalClient(_need(settings.FAL_KEY, "FAL_KEY", "FAL_PROVIDER=fal"))
     raise ModelError("PROVIDER_MISCONFIGURED", message=f"unknown FAL_PROVIDER {name!r}")

@@ -26,7 +26,7 @@ from app.errors import AppError
 from app.explore.visualize import _iso
 from app.extraction.service import _image_for
 from app.notes.service import board_notes_context
-from app.plugins import writeback
+from app.plugins import longjob, writeback
 from app.plugins.registry import Plugin, get_registry, status
 from app.plugins.runners import (
     BoardCtx,
@@ -41,6 +41,7 @@ from app.plugins.runners import (
 log = logging.getLogger(__name__)
 
 JOB = "plugin_run"
+LONG_JOB = "plugin_run_long"  # the same job on the long queue: fal-backed runs poll for minutes
 RESUME_JOB = "plugin_resume"
 NODE_W = 300
 NODE_H = 360
@@ -202,8 +203,13 @@ def request_run(session: Session, node_id: str) -> PluginRun:
         raise AppError(409, "NODE_RUNNING", "This node is already running")
     session.refresh(node)
     _publish(session, node.board_id, "plugin_run.queued", {"node_id": node.id, "run_id": run.id})
-    after_commit(session, partial(jobs.enqueue, JOB, run_id=run.id))
+    after_commit(session, partial(jobs.enqueue, _job_for(p), run_id=run.id))
     return run
+
+
+def _job_for(p: Plugin) -> str:
+    m = p.manifest
+    return LONG_JOB if m.runner == "model" and m.model in longjob.LONG_MODELS else JOB
 
 
 def _check_live_inputs(session: Session, node: PluginNode, p: Plugin) -> None:
@@ -381,4 +387,5 @@ def recover_stuck_runs(session: Session) -> int:
 
 
 jobs.register(JOB, plugin_run_job)
-jobs.register(RESUME_JOB, plugin_resume_job)
+jobs.register(LONG_JOB, plugin_run_job, queue="long")
+jobs.register(RESUME_JOB, plugin_resume_job, queue="long")

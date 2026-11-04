@@ -6,6 +6,11 @@ process that dies mid-poll leaves the run `running` with its request id; at star
 `service.recover_stuck_runs` queues a resume job that runs the plugin again, and `run_fal` then
 sees the stored request and only polls it (`resume`): no second submit, no second cap slot.
 A paid submit is never retried.
+
+Claim heartbeat: `progress` refreshes the run's claim (`service._progress`), so it is called
+before the payload is built, after each upload the builder makes (the builder is handed
+`progress` and must call it between uploads), and on every poll; a slow upload or a long queue
+then never outlives `service.claim_ttl_s`.
 """
 
 from __future__ import annotations
@@ -30,7 +35,11 @@ from app.providers.reliability import RETRYABLE, ModelError, user_message
 log = logging.getLogger(__name__)
 
 Cap = Literal["mesh", "video"]
-Payload = dict[str, Any] | Callable[[], dict[str, Any]]
+Progress = Callable[[str], None]
+# a dict, or a builder called (with the heartbeat) only when a submit is due
+Payload = dict[str, Any] | Callable[[Progress], dict[str, Any]]
+# model handlers that run fal jobs: their runs go on the jobs "long" queue
+LONG_MODELS = frozenset({"mesh.from_image", "video.generate"})
 _WAITING = {"IN_QUEUE": "Waiting in the model's queue", "IN_PROGRESS": "The model is working"}
 
 
@@ -49,12 +58,16 @@ def run_fal(
     endpoint: str,
     payload: Payload,
     cap: Cap,
-    progress: Callable[[str], None],
+    progress: Progress,
 ) -> dict[str, Any]:
-    """fal's result dict for this run's job. `payload` may be a callable, built only when a
-    submit is due (so a resume does not upload the inputs again). Raises AppError 429
-    DAILY_LIMIT when the cap is spent (nothing submitted), PluginError otherwise; the slot is
-    refunded on every failure of a job this call submitted."""
+    """fal's result dict for this run's job. `payload` may be a builder `(progress) -> dict`,
+    called only when a submit is due (so a resume does not upload the inputs again); it must
+    call `progress` after each upload. Raises AppError 429 DAILY_LIMIT when the cap is spent
+    (nothing submitted), PluginError otherwise.
+
+    Once the slot is taken, any Exception refunds it: the run is then failed and nothing will
+    resume it. Only the process dying (no Exception reaches here) leaves the slot charged and
+    the stored request to `resume`."""
     ext = run.external_json or {}
     if ext.get("request_id"):
         return resume(session, run, progress)
@@ -62,30 +75,28 @@ def run_fal(
     limits.check_and_count(run.board_id, cap, settings)
     try:
         fal = get_fal(settings)
-        body = payload() if callable(payload) else payload
+        if callable(payload):
+            progress("Uploading inputs")
+            body = payload(progress)
+        else:
+            body = payload
         progress("Sending to the model")
         request_id = fal.submit(endpoint, body)
-    except ModelError as e:
+        ext = {
+            "endpoint": endpoint, "request_id": request_id, "status": "IN_QUEUE", "cap": cap,
+            "submitted_at": _iso(datetime.now(UTC)),
+        }  # fmt: skip
+        _store(session, run, ext)
+        return _poll(session, run, fal, ext, progress)
+    except ModelError as e:  # get_fal / upload / submit: _poll maps its own
         limits.refund(run.board_id, cap)
         raise _failed(f"the model failed: {user_message(e)}") from None
-    except BaseException:
-        limits.refund(run.board_id, cap)
-        raise
-    ext = {
-        "endpoint": endpoint, "request_id": request_id, "status": "IN_QUEUE", "cap": cap,
-        "submitted_at": _iso(datetime.now(UTC)),
-    }  # fmt: skip
-    _store(session, run, ext)
-    try:
-        return _poll(session, run, fal, ext, progress)
-    except PluginError:
+    except Exception:
         limits.refund(run.board_id, cap)
         raise
 
 
-def resume(
-    session: Session, run: PluginRun, progress: Callable[[str], None] | None = None
-) -> dict[str, Any]:
+def resume(session: Session, run: PluginRun, progress: Progress | None = None) -> dict[str, Any]:
     """Poll the request stored on the run, without submitting. The cap slot was taken by the
     process that submitted (daily counts live in process memory), so nothing is charged or
     refunded here."""
@@ -112,7 +123,7 @@ def _poll(
     run: PluginRun,
     fal: FalClient | MockFal,
     ext: dict[str, Any],
-    progress: Callable[[str], None],
+    progress: Progress,
 ) -> dict[str, Any]:
     """Status every FAL_POLL_S until COMPLETED / FAILED / FAL_TIMEOUT_S after the submit (always
     asked at least once, so a job that finished while the server was down is still collected).
@@ -144,4 +155,4 @@ def _poll(
         time.sleep(settings.FAL_POLL_S)
 
 
-__all__ = ["Cap", "Payload", "resume", "run_fal"]
+__all__ = ["LONG_MODELS", "Cap", "Payload", "Progress", "resume", "run_fal"]
