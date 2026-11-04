@@ -632,6 +632,13 @@ def frame_image(session: Any, board_id: str, item_id: str, which: str) -> bytes:
         raise _bad_input(f"the {which} frame's picture is missing") from None
 
 
+def _mime(data: bytes) -> str:
+    from app.ingest.sniff import sniff_image
+
+    sniffed = sniff_image(data)
+    return sniffed[0] if sniffed else "image/png"
+
+
 def _video_payload(endpoint_is_pro: bool, prompt: str, duration: int, start: str,
                    end: str | None) -> dict[str, Any]:  # fmt: skip
     """The two Kling tiers name their frame fields differently; pro also makes sound unless told
@@ -661,34 +668,40 @@ def _run_video(
     run = job.session.get(PluginRun, job.run_id)
     if run is None:
         raise PluginError("PLUGIN_CRASHED", "the run is gone")
-    # everything that can be wrong with the inputs is checked before a slot or a submit
-    start_id = str(params.get("start") or "").strip()
-    end_id = str(params.get("end") or "").strip()
-    if start_id:
-        start_png = frame_image(job.session, run.board_id, start_id, "start")
-    elif inputs and inputs[0].image is not None:
-        start_png = inputs[0].image
-    else:
-        raise _bad_input("connect a picture")
-    end_png = frame_image(job.session, run.board_id, end_id, "end") if end_id else None
-    prompt = str(params.get("prompt") or "").strip()
-    if not prompt:
-        raise _bad_input("write a direction for the clip, or use Describe")
+    resumed = bool((run.external_json or {}).get("request_id"))
     pro = params.get("type", "standard") == "pro"
     endpoint = settings.FAL_VIDEO_PRO if pro else settings.FAL_VIDEO_STANDARD
-    duration = int(params.get("duration") or 5)
+    payload: Callable[[Callable[[str], None]], dict[str, Any]]
+    if resumed:
+        # the clip is already paid for and in flight: frames deleted meanwhile no longer matter
 
-    def payload(hb: Callable[[str], None]) -> dict[str, Any]:
-        fal = get_fal(settings)
-        start = fal.upload(start_png, "image/png")
-        hb("Uploaded the start frame")
-        end = None
-        if end_png is not None:
-            end = fal.upload(end_png, "image/png")
-            hb("Uploaded the end frame")
-        return _video_payload(pro, prompt, duration, start, end)
+        def payload(hb: Callable[[str], None]) -> dict[str, Any]:
+            raise PluginError("PLUGIN_CRASHED", "a resumed run never submits")
 
-    resumed = bool((run.external_json or {}).get("request_id"))
+    else:
+        # everything that can be wrong with the inputs is checked before a slot or a submit
+        start_id = str(params.get("start") or "").strip()
+        end_id = str(params.get("end") or "").strip()
+        if start_id:
+            start_png = frame_image(job.session, run.board_id, start_id, "start")
+        elif inputs and inputs[0].image is not None:
+            start_png = inputs[0].image
+        else:
+            raise _bad_input("connect a picture")
+        end_png = frame_image(job.session, run.board_id, end_id, "end") if end_id else None
+        if not str(params.get("prompt") or "").strip():
+            raise _bad_input("write a direction for the clip, or use Describe")
+        duration = int(params.get("duration") or 5)
+
+        def payload(hb: Callable[[str], None]) -> dict[str, Any]:
+            fal = get_fal(settings)
+            start = fal.upload(start_png, _mime(start_png))
+            hb("Uploaded the start frame")
+            end = None
+            if end_png is not None:
+                end = fal.upload(end_png, _mime(end_png))
+                hb("Uploaded the end frame")
+            return _video_payload(pro, str(params["prompt"]).strip(), duration, start, end)
 
     def fail(err: PluginError) -> PluginError:
         if not resumed:  # a resumed run holds no slot of this process
@@ -711,6 +724,7 @@ def _run_video(
         ) from None
     if not data:
         raise fail(_bad_output("the video is empty"))
+    prompt = str(params.get("prompt") or "").strip()
     caption = prompt if len(prompt) <= 200 else prompt[:199] + "…"
     return {"video": [{"data": data, "caption": caption}]}
 

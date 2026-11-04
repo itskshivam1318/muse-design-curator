@@ -190,3 +190,69 @@ def test_raw_bytes_for_video_only_from_model_runner() -> None:
     py = Manifest.model_validate({**base, "runner": "python", "entry": "main.py"})
     with pytest.raises(PluginError):
         validate_output(py, {"video": [{"data": b"x", "caption": ""}]})
+
+
+def _primed_resume(
+    client: TestClient, board: str, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> tuple[str, str]:
+    """A run whose fal request is already in flight, with its end frame deleted since."""
+    from datetime import UTC, datetime
+
+    from app.analysis import limits
+    from app.db.models import PluginRun
+    from app.explore.visualize import _iso
+
+    _, node = start(client, board)
+    end = upload_image(client, board, seed=2)
+    client.patch(f"/api/nodes/{node}", json={"params": {"prompt": "x", "end": end}})
+    monkeypatch.setattr("app.jobs.enqueue", lambda *_a, **_k: None)
+    rid = client.post(f"/api/nodes/{node}/run").json()["id"]
+    run = db.get(PluginRun, rid)
+    assert run is not None
+    run.external_json = {
+        "endpoint": get_settings().FAL_VIDEO_STANDARD, "request_id": "mock-old",
+        "status": "IN_QUEUE", "cap": "video", "submitted_at": _iso(datetime.now(UTC)),
+    }  # fmt: skip
+    db.commit()
+    assert client.delete(f"/api/items/{end}").status_code in (200, 204)
+    limits.check_and_count(board, "video", get_settings())  # another run's hit
+    return rid, end
+
+
+def test_video_resumed_run_ignores_deleted_frame(
+    client: TestClient, board: str, db: Session, fal: MockFal, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.db.models import PluginRun
+    from app.plugins import service
+
+    rid, _ = _primed_resume(client, board, db, monkeypatch)
+    service.execute_run(db, rid)
+    db.expire_all()
+    done = db.get(PluginRun, rid)
+    assert done is not None and done.status == "done", (done.error_code, done.error_message)
+    assert len(done.output_json["created_item_ids"]) == 1
+    assert fal.count("upload") == 0 and fal.count("submit") == 0
+    assert hits(board) == 1
+
+
+def test_video_resumed_download_failure_keeps_other_slots(
+    client: TestClient, board: str, db: Session, fal: MockFal, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.db.models import PluginRun
+    from app.plugins import service
+
+    monkeypatch.setenv("MAX_VIDEO_BYTES", "8")
+    rid, _ = _primed_resume(client, board, db, monkeypatch)
+    service.execute_run(db, rid)
+    db.expire_all()
+    done = db.get(PluginRun, rid)
+    assert done is not None and done.status == "failed"
+    assert done.error_code == "PLUGIN_BAD_OUTPUT", done.error_code
+    assert fal.count("download") == 1 and fal.count("submit") == 0 and hits(board) == 1
+
+
+def test_video_uploads_real_mime(client: TestClient, board: str, fal: MockFal) -> None:
+    _, node = start(client, board)
+    assert run_node(client, node)["status"] == "done"
+    (up,) = [c for c in fal.calls if c[0] == "upload"]
+    assert "image/png" in str(up)

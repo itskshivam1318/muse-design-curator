@@ -84,3 +84,17 @@ def test_describe_locked_in_demo(
     r = client.post(f"/api/nodes/{nid}/describe")
     assert r.status_code == 403 and r.json()["error"]["code"] == "DEMO_LOCKED"
     assert renders(board) == 0
+
+
+def test_describe_refunds_on_unexpected_error(
+    client: TestClient, node: tuple[str, str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Boom:
+        def structured(self, *_a: Any) -> Any:
+            raise RuntimeError("boom")
+
+    board, _, nid = node
+    monkeypatch.setattr("app.providers.get_reasoning", lambda _s: Boom())
+    with pytest.raises(RuntimeError):
+        client.post(f"/api/nodes/{nid}/describe")
+    assert renders(board) == 0

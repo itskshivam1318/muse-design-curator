@@ -252,6 +252,9 @@ def describe_node(session: Session, node_id: str) -> str:
     except ModelError as e:
         limits.refund(node.board_id, "render")
         raise AppError(502, e.code, user_message(e)) from None
+    except Exception:
+        limits.refund(node.board_id, "render")
+        raise
     text = raw.get("prompt") if isinstance(raw, dict) else None
     if not isinstance(text, str) or not text.strip():
         limits.refund(node.board_id, "render")
