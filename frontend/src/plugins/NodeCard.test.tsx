@@ -81,6 +81,29 @@ describe('NodeCard', () => {
     expect(runButton().textContent).toBe('Run')
   })
 
+  it('an integer enum saves a number; frame swap exchanges two params in one save', async () => {
+    const plugin = makePlugin({
+      params: {
+        type: 'object',
+        properties: {
+          duration: { type: 'integer', enum: [5, 10], 'x-widget': 'segmented' },
+          first: { type: 'string', 'x-widget': 'frame', 'x-swap-with': 'last' },
+          last: { type: 'string', 'x-widget': 'frame', 'x-swap-with': 'first' },
+        },
+      },
+    })
+    setup({ plugin, node: makeNode({ input_item_ids: ['i1'], params: { first: 'i1' } }) })
+    fireEvent.click(screen.getByRole('button', { name: 'Prompt' }))
+    fireEvent.click(screen.getByRole('radio', { name: '10' }))
+    await waitFor(() => expect(api.patchNode).toHaveBeenCalledWith('node1', { params: { first: 'i1', duration: 10 } }))
+    vi.mocked(api.patchNode).mockClear()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Swap' })[0])
+    await waitFor(() => expect(api.patchNode).toHaveBeenCalledTimes(1))
+    const params = vi.mocked(api.patchNode).mock.calls[0][1].params
+    expect(params).toMatchObject({ last: 'i1' })
+    expect(params).not.toHaveProperty('first')
+  })
+
   it('Run calls runNode and caches the run', async () => {
     const { qc } = setup()
     vi.mocked(api.runNode).mockResolvedValue(makePluginRun({ id: 'r9' }))

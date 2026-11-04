@@ -27,7 +27,26 @@ export interface Field {
   default?: unknown
   /** Shown only while every listed param has the listed value (manifest `x-show-if`). */
   showIf?: Record<string, unknown>
+  /** An integer enum: options are the numbers as strings, and a choice saves a number. */
+  numeric?: boolean
+  widget?: Widget
+  /** `x-presets` of a palette widget. */
+  presets?: PalettePreset[]
+  /** `x-swap-with` of a frame widget: the other frame param. */
+  swapWith?: string
+  /** `x-describe` of a prompt widget: offer Describe. */
+  describe?: boolean
+  minItems?: number
+  maxItems?: number
 }
+
+export type Widget = 'segmented' | 'palette' | 'seed' | 'part-colors' | 'frame' | 'prompt'
+export interface PalettePreset {
+  name: string
+  colors: string[]
+}
+const WIDGETS: readonly string[] = ['segmented', 'palette', 'seed', 'part-colors', 'frame', 'prompt']
+const HEX = /^#[0-9a-fA-F]{6}$/
 
 const humanize = (key: string) => {
   const s = key.replace(/[_-]+/g, ' ').trim()
@@ -42,6 +61,7 @@ export function paramFields(schema: Record<string, unknown>): Field[] {
   return Object.entries(props).flatMap(([key, raw]) => {
     if (!isObj(raw)) return []
     const enumValues = Array.isArray(raw.enum) ? raw.enum.map(String) : null
+    const numeric = enumValues !== null && raw.type === 'integer'
     const type: FieldType = enumValues
       ? 'enum'
       : raw.type === 'string'
@@ -53,6 +73,25 @@ export function paramFields(schema: Record<string, unknown>): Field[] {
             : 'json'
     const field: Field = { key, label: typeof raw.title === 'string' ? raw.title : humanize(key), type }
     if (enumValues) field.options = enumValues
+    if (numeric) field.numeric = true
+    const w = raw['x-widget']
+    if (typeof w === 'string' && WIDGETS.includes(w)) {
+      field.widget = w as Widget
+      if (field.widget === 'segmented' && !enumValues) delete field.widget
+      if (field.widget === 'palette') {
+        const props = isObj(raw.properties) && isObj(raw.properties.colors) ? raw.properties.colors : {}
+        if (typeof props.minItems === 'number') field.minItems = props.minItems
+        if (typeof props.maxItems === 'number') field.maxItems = props.maxItems
+        if (Array.isArray(raw['x-presets']))
+          field.presets = raw['x-presets'].flatMap((p): PalettePreset[] =>
+            isObj(p) && typeof p.name === 'string' && Array.isArray(p.colors)
+              ? [{ name: p.name, colors: p.colors.filter((c): c is string => typeof c === 'string' && HEX.test(c)) }]
+              : [],
+          )
+      }
+      if (field.widget === 'frame' && typeof raw['x-swap-with'] === 'string') field.swapWith = raw['x-swap-with']
+      if (field.widget === 'prompt' && raw['x-describe'] === true) field.describe = true
+    }
     if (typeof raw.minimum === 'number') field.min = raw.minimum
     if (typeof raw.maximum === 'number') field.max = raw.maximum
     if ('default' in raw) field.default = raw.default
