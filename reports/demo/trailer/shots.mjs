@@ -1,8 +1,14 @@
-// Films the trailer's live UI shots in the real app (read-only: it selects and hovers, nothing more),
-// with a visible mouse pointer. Writes reports/demo/trailer/shots/<name>.webm.
+// Films the trailer's live UI shots in the real app with a visible mouse pointer.
+// Writes reports/demo/trailer/shots/<name>.webm and <name>.marks.json (seconds since the shot began,
+// for each moment the trailer cuts on).
 //
-//   node reports/demo/trailer/shots.mjs [--app http://localhost:5173] [--only name]
-import { mkdirSync, renameSync } from 'node:fs'
+//   node reports/demo/trailer/shots.mjs [--app http://localhost:5173] [--only name] [--live]
+//
+// The read-only shots (select and hover) always run. The LIVE shots click real actions (explore,
+// render, keep, chat): they call the models, add items to the board and spend credit, so they run
+// only with --live or --only <name>. Run them on an imported copy of the board
+// (make board-export / board-import), not the original.
+import { mkdirSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
@@ -12,7 +18,13 @@ const here = dirname(fileURLToPath(import.meta.url))
 const require = createRequire(join(here, '../../../frontend/package.json'))
 const { chromium } = require('@playwright/test')
 const { values: args } = parseArgs({
-  options: { app: { type: 'string', default: 'http://localhost:5173' }, only: { type: 'string' } },
+  options: {
+    app: { type: 'string', default: 'http://localhost:5173' },
+    only: { type: 'string' },
+    live: { type: 'boolean', default: false },
+    car: { type: 'string', default: 'brd_01m6h989kz0tz8xjvjbp6zbz9x' }, // pass the copy's id
+    room: { type: 'string', default: 'brd_01m6j4rrnz1zzx6qax1rya3j27' },
+  },
 })
 const out = join(here, 'shots')
 mkdirSync(out, { recursive: true })
@@ -25,6 +37,15 @@ const CURSOR = `
     Object.assign(c.style, { position: 'fixed', left: '0', top: '0', zIndex: 2147483647, pointerEvents: 'none', transform: 'translate(-200px,-200px)' })
     document.body.appendChild(c)
     addEventListener('mousemove', (e) => { c.style.transform = 'translate(' + (e.clientX - 4) + 'px,' + (e.clientY - 2) + 'px)' }, true)
+    // a yellow ripple on every click, so a viewer sees what was pressed
+    addEventListener('mousedown', (e) => {
+      const r = document.createElement('div')
+      Object.assign(r.style, { position: 'fixed', left: e.clientX - 22 + 'px', top: e.clientY - 22 + 'px', width: '44px', height: '44px',
+        borderRadius: '50%', border: '4px solid #ffd640', zIndex: 2147483646, pointerEvents: 'none', transition: 'transform .45s ease-out, opacity .45s ease-out' })
+      document.body.appendChild(r)
+      requestAnimationFrame(() => { r.style.transform = 'scale(1.9)'; r.style.opacity = '0' })
+      setTimeout(() => r.remove(), 500)
+    }, true)
   })`
 
 async function glide(page, locator, steps = 30) {
@@ -49,7 +70,90 @@ async function pick(page, label, notches) {
   await page.keyboard.up('Control')
 }
 
+// moments to cut on, per shot: mark('render') stores seconds since the shot began
+let t0 = 0
+let marks = {}
+const mark = (name) => { marks[name] = +((Date.now() - t0) / 1000).toFixed(2) }
+
+// type like a person, not a paste
+async function typeSlowly(page, locator, text) {
+  await locator.click()
+  for (const ch of text) {
+    await page.keyboard.type(ch)
+    await page.waitForTimeout(45 + Math.random() * 40)
+  }
+}
+
+async function clickGlide(page, locator) {
+  await locator.scrollIntoViewIfNeeded()
+  await glide(page, locator, 25)
+  await page.waitForTimeout(350)
+  await locator.click()
+}
+
+const LIVE = new Set(['car-explore', 'car-chat'])
+
 const SHOTS = {
+  // LIVE. The core loop on one picture: dimension -> flower of options -> render one -> check -> keep.
+  'car-explore': async (page) => {
+    await page.goto(`${args.app}/boards/${args.car}`)
+    await page.waitForTimeout(3500)
+    await page.mouse.move(1500, 900)
+    await pick(page, 'note.png', 3)
+    await page.waitForTimeout(2500)
+    mark('callouts')
+    const dim = page.locator('.callout-dim', { hasText: /paint|colour|color/i }).first()
+    await clickGlide(page, dim)
+    mark('explore')
+    // the options arrive as petals around the hub
+    const petal = page.locator('[data-exploration-id] button:not(.flower-badge):not(.flower-collapse)').nth(1)
+    await petal.waitFor({ timeout: 120000 })
+    await page.waitForTimeout(1500)
+    mark('petals')
+    await clickGlide(page, petal)
+    await page.waitForTimeout(1200)
+    mark('card')
+    const render = page.locator('.petal-render, .petal-primary').first()
+    await clickGlide(page, render)
+    mark('render')
+    await page.locator('.petal-check').first().waitFor({ timeout: 240000 })
+    mark('checked')
+    await page.waitForTimeout(3000) // hold on the check line
+    const keep = page.locator('button.petal-primary', { hasText: 'Keep' }).first()
+    if (await keep.count()) {
+      await clickGlide(page, keep)
+      mark('kept')
+      await page.waitForTimeout(3000)
+    }
+  },
+  // LIVE. Ask the in-app agent; film its steps landing on the board and answer its question.
+  'car-chat': async (page) => {
+    await page.goto(`${args.app}/boards/${args.car}`)
+    await page.waitForTimeout(3500)
+    await page.mouse.move(1500, 900)
+    const ask = page.getByPlaceholder('Ask Muse about this board')
+    await glide(page, ask)
+    mark('ask')
+    await typeSlowly(page, ask, 'Give me a darker colourway. Keep everything else exactly as it is.')
+    await page.waitForTimeout(500)
+    await page.keyboard.press('Enter')
+    mark('sent')
+    // film the agent working; answer its first question if it asks one
+    const q = page.locator('.question-card:not(.is-answered)').first()
+    const done = Date.now() + 8 * 60000
+    while (Date.now() < done) {
+      if (await q.count()) {
+        mark('question')
+        await page.waitForTimeout(2500)
+        const choice = q.locator('.question-choice').first()
+        await clickGlide(page, choice)
+        mark('answered')
+      }
+      if (await page.locator('.petal-check').count()) { mark('checked'); break }
+      await page.waitForTimeout(1000)
+    }
+    await page.waitForTimeout(4000)
+  },
   // physical dimensions: the coupe's parts light up one by one
   'car-physical': async (page) => {
     await page.goto(`${args.app}/boards/brd_01m6h989kz0tz8xjvjbp6zbz9x`)
@@ -83,12 +187,15 @@ const SHOTS = {
 const browser = await chromium.launch()
 for (const [name, shot] of Object.entries(SHOTS)) {
   if (args.only && args.only !== name) continue
+  if (LIVE.has(name) && !args.live && args.only !== name) continue
   const ctx = await browser.newContext({
     viewport: { width: 1920, height: 1080 },
     recordVideo: { dir: out, size: { width: 1920, height: 1080 } },
   })
   await ctx.addInitScript(CURSOR)
   const page = await ctx.newPage()
+  t0 = Date.now()
+  marks = {}
   try {
     await shot(page)
   } catch (err) {
@@ -98,6 +205,7 @@ for (const [name, shot] of Object.entries(SHOTS)) {
   const video = page.video()
   await ctx.close()
   renameSync(await video.path(), join(out, `${name}.webm`))
+  writeFileSync(join(out, `${name}.marks.json`), JSON.stringify(marks, null, 1))
   console.log(`${name} done`)
 }
 await browser.close()

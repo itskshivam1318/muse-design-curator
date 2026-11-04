@@ -2,4 +2,4 @@ out/
 shots/
 assets/
 vo/*.aiff
-vo/*.wav
+vo/**/*.wav
