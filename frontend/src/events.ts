@@ -386,7 +386,13 @@ function applyToCache(qc: QueryClient, boardId: string, type: string, d: Record<
     case 'agent.question': {
       const msg = d as unknown as AgentMessage
       if (!msg.id || !msg.run_id) return
-      qc.setQueryData<AgentMessage[]>(keys.agentMessages(msg.run_id), (old) => {
+      const key = keys.agentMessages(msg.run_id)
+      if (qc.getQueryData(key) === undefined) {
+        // not loaded yet (or a fetch is in flight that may predate the message): fetch it afresh
+        void qc.invalidateQueries({ queryKey: key })
+        return
+      }
+      qc.setQueryData<AgentMessage[]>(key, (old) => {
         const list = old ?? []
         return list.some((m) => m.id === msg.id) ? list.map((m) => (m.id === msg.id ? msg : m)) : [...list, msg]
       })

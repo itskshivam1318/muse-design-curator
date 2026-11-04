@@ -46,10 +46,31 @@ describe('applyEvent', () => {
 
   it("agent.message appends to the run's messages once", () => {
     const qc = new QueryClient()
+    qc.setQueryData<AgentMessage[]>(keys.agentMessages('r1'), [])
     const m = makeMessage({ id: 'm1' })
     applyEvent(qc, 'b1', 'agent.message', m)
     applyEvent(qc, 'b1', 'agent.message', m)
     expect(qc.getQueryData<AgentMessage[]>(keys.agentMessages('r1'))!.map((x) => x.id)).toEqual(['m1'])
+  })
+
+  it('agent.message for a run not in the cache refetches instead of seeding a partial list', () => {
+    const qc = new QueryClient()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+    applyEvent(qc, 'b1', 'agent.message', makeMessage({ run_id: 'r7' }))
+    expect(spy).toHaveBeenCalledWith({ queryKey: keys.agentMessages('r7') })
+    expect(qc.getQueryData(keys.agentMessages('r7'))).toBeUndefined()
+  })
+
+  it('a re-emitted question marked answered replaces the entry in place', () => {
+    const qc = new QueryClient()
+    const q = makeMessage({ id: 'm2', role: 'question' })
+    qc.setQueryData<AgentMessage[]>(keys.agentMessages('r1'), [makeMessage({ id: 'm1' }), q, makeMessage({ id: 'm3' })])
+    applyEvent(qc, 'b1', 'agent.question', { ...q, answered: true })
+    expect(qc.getQueryData<AgentMessage[]>(keys.agentMessages('r1'))!.map((x) => [x.id, x.answered])).toEqual([
+      ['m1', false],
+      ['m2', true],
+      ['m3', false],
+    ])
   })
 
   it('agent.question appends after earlier messages', () => {
