@@ -44,12 +44,23 @@ export interface Item {
    * Generation provenance. On a note it can instead hold `{ visualizing_since }` (the visualize
    * claim): never read a non-null `generation` as "generated"; that is `origin === 'generated'`.
    */
-  generation: { model?: string; prompt?: string; option_id?: string; visualizing_since?: string; plugin?: string; run_id?: string } | null
+  generation: {
+    model?: string
+    prompt?: string
+    option_id?: string
+    visualizing_since?: string
+    plugin?: string
+    run_id?: string
+    /** On a rewritten note: where the new passage sits in its text. */
+    changed_range?: [number, number]
+  } | null
   check: GeneratedCheck | null
   /** The text of a note card; null on every other kind. */
   note_text: string | null
   /** A staged item is a take or plugin result not yet kept on the board. */
   staged: boolean
+  /** Client only: a written version of a note waiting on the board to be kept or removed. */
+  pending?: boolean
   /** What the item is (set by analysis or the person); null until known. */
   content_type: ContentType | null
   /** The part key this item was extracted from its parent as; null otherwise. */

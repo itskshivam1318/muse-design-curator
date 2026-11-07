@@ -40,7 +40,8 @@ export function useLivingScene(
   const version = useSyncExternalStore(subscribeCollapsed, collapsedVersion)
   const shown = useMemo(() => {
     if (!exploreEnabled || !explorations) return []
-    const on = new Set(items.map((i) => i.id))
+    // a note's exploration is written out as pending notes, never grown as a flower
+    const on = new Set(items.filter((i) => i.kind !== 'note').map((i) => i.id))
     return explorations.filter((e) => on.has(e.item_id))
   }, [exploreEnabled, explorations, items])
   const itemIds = useMemo(

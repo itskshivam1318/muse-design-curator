@@ -257,8 +257,11 @@ def _rewrite(
     start, end = span(text, rng)
     new_text = rewrite_passage(text, rng, o.edit_prompt)
     new_len = len(new_text) - (len(text) - (end - start))
-    near = Bounds(source.x, source.y, source.w, source.h)
-    x, y = free_slot(session, source.board_id, near, (NOTE_W, NOTE_H))
+    if o.x is not None and o.y is not None:  # the slot write_notes held for it
+        x, y = o.x, o.y
+    else:
+        near = Bounds(source.x, source.y, source.w, source.h)
+        x, y = free_slot(session, source.board_id, near, (NOTE_W, NOTE_H))
     model = get_reasoning(get_settings()).model
     return create_item(
         session, source.board_id, ItemMeta(origin="generated", x=x, y=y),
@@ -267,6 +270,37 @@ def _rewrite(
         generation_json={"model": model, "prompt": o.edit_prompt, "option_id": o.id,
                          "renderer": SPARK_REWRITE, "changed_range": [start, start + new_len]},
     )  # fmt: skip
+
+
+# a pending note is drawn as tall as its text: hold room for a long one
+NOTE_SLOT_H = 200
+
+
+def write_notes(session: Session, source: BoardItem, options: list[ExploreOption]) -> None:
+    """A note's options are written at once: each gets a slot beside the source (clear of the
+    board and of the source's other pending notes) and a rewrite job. Stops quietly at the
+    board's daily render limit; the options left over stay open."""
+    pending = [
+        Bounds(i.x, i.y, i.w, max(i.h, NOTE_SLOT_H))
+        for i in session.scalars(
+            select(BoardItem).where(
+                BoardItem.parent_item_id == source.id,
+                BoardItem.staged.is_(True),
+                BoardItem.removed_at.is_(None),
+                BoardItem.kind == "note",
+            )
+        )
+    ]
+    near = Bounds(source.x, source.y, source.w, source.h)
+    for o in options:
+        x, y = free_slot(session, source.board_id, near, (NOTE_W, NOTE_SLOT_H), extra=pending)
+        pending.append(Bounds(x, y, NOTE_W, NOTE_SLOT_H))
+        try:
+            request_visualize(session, o.id, at=(x, y))
+        except AppError as exc:
+            if exc.code == "DAILY_LIMIT":
+                return
+            raise
 
 
 def _settle(session: Session, option_id: str, error: str | None) -> None:

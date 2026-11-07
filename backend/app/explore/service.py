@@ -39,6 +39,7 @@ from app.runs.orchestrator import record_of
 Mode = Literal["initial", "more", "further"]
 DISTANCES = ("near", "bold", "wild")
 MAX_OPTIONS = 10
+NOTE_OPTIONS = 4  # a note's options are written out in full at once: fewer, each worth reading
 EVENT = "explore.updated"
 KEEP_REST = "Keep everything else exactly the same."
 
@@ -224,12 +225,18 @@ def explore(
     cleaned = _clean(raw, spec, current, held, seen)
     if not cleaned:
         raise AppError(502, "EXPLORE_EMPTY", "The model returned no usable new options")
+    if item.kind == "note":
+        cleaned = cleaned[:NOTE_OPTIONS]
 
     e = found or explore_repo.get_or_create(session, item.board_id, item.id, key)
     batch = explore_repo.next_batch(session, e.id)
-    explore_repo.add_options(session, e.id, [
+    added = explore_repo.add_options(session, e.id, [
         {**r, "batch": batch, "steer": steer, "parent_option_id": parent_option_id} for r in cleaned
     ])  # fmt: skip
+    if item.kind == "note":  # no flower for text: each option becomes a pending note right away
+        from app.explore.visualize import write_notes  # visualize imports this module
+
+        write_notes(session, item, added)
     publish_later(session, e)
     return e, visible(session, e.id)
 
