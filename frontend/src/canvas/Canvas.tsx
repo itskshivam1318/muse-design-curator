@@ -46,6 +46,8 @@ import { setTool, useTool } from '../shell/tools'
 import type { ItemActions } from './actions'
 import { handleDrop } from './drop'
 import { FramesStrip } from './FramesStrip'
+import { ModelViewer } from './ModelViewer'
+import { VideoOverlay } from './VideoOverlay'
 import {
   type Bounds,
   centeredView,
@@ -176,6 +178,11 @@ export function Canvas({
     viewRef.current = view
   }, [view])
   const [hovered, setHovered] = useState<string | null>(null)
+  // the video playing in place, and the 3D item open in the viewer
+  const [playing, setPlaying] = useState<string | null>(null)
+  const [viewing, setViewing] = useState<string | null>(null)
+  const playingItem = playing ? visible.find((i) => i.kind === 'video' && i.id === playing) : undefined
+  const viewingItem = viewing ? visible.find((i) => i.kind === 'model' && i.id === viewing) : undefined
   const [stripFor, setStripFor] = useState<string | null>(null)
   const stripTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const overStrip = useRef(false)
@@ -448,8 +455,12 @@ export function Canvas({
       }
       commitDrag(centres)
     },
+    onActivate: (item) => {
+      if (item.kind === 'video') setPlaying((p) => (p === item.id ? null : item.id))
+    },
     onOpen: (item) => {
-      if (item.kind === 'note') {
+      if (item.kind === 'model') setViewing(item.id)
+      else if (item.kind === 'note') {
         if (!readOnly) setEditing({ id: item.id })
       } else if (item.kind !== 'link') onOpenPanel('inspect', item.id)
     },
@@ -946,11 +957,19 @@ export function Canvas({
                 onRemove={() => actions.remove(selected)}
                 onReanalyse={actions.reanalyse}
                 readOnly={readOnly}
+                onKeep={(id) => void actions.keepOption(id)}
+                onOpenModel={setViewing}
                 onSize={onToolbarSize}
               />
             )}
           </Live>
         )}
+        {playingItem && !dragging && (
+          <Live items={[playingItem]}>
+            {(b) => <VideoOverlay key={playingItem.id} item={playingItem} screen={toScreenBounds(b, view)} onStop={() => setPlaying(null)} />}
+          </Live>
+        )}
+        {viewingItem && <ModelViewer item={viewingItem} onClose={() => setViewing(null)} />}
         {calloutItem && hoveredRegion && (
           <Live items={[calloutItem]}>
             {(b) => (

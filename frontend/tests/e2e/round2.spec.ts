@@ -7,6 +7,7 @@ import {
   createBoard,
   escapeRe,
   expectItemCount,
+  hoverItem,
   openDimension,
   openLibrary,
   panToReach,
@@ -47,7 +48,7 @@ test('note: write, visualize, a generated image appears beside it', async ({ pag
   await expectItemCount(page, 2)
   const gen = (await boardItems(boardId)).find((i) => i.parent_item_id)!
   await page.mouse.move(5, 5)
-  await selectItem(page, new RegExp(`^image .*${escapeRe(gen.original_filename ?? gen.page_title ?? gen.id)}`))
+  await hoverItem(page, new RegExp(`^image .*${escapeRe(gen.original_filename ?? gen.page_title ?? gen.id)}`), page.getByRole('note', { name: 'Generated image' }))
   await expect(page.getByRole('note', { name: 'Generated image' })).toHaveText('generated · mock-image', { timeout: 10_000 })
 })
 

@@ -60,7 +60,9 @@ def _eligible(session: Session, board_id: str) -> list[BoardItem]:
     return [
         i
         for i in items_repo.list_active(session, board_id, include_staged=False)
-        if i.kind != "note" and i.parse_status in LENS_ITEM_STATUSES
+        if i.kind not in ("note", "model")
+        and i.option_run_id is None
+        and i.parse_status in LENS_ITEM_STATUSES
     ]
 
 
@@ -147,8 +149,11 @@ def auto_attach_domain(session: Session, board_id: str) -> str | None:
     board = _require_board(session, board_id)
     if board.domain:
         return None
-    embedded = [i for i in items_repo.list_active(session, board.id, include_staged=False)
-        if i.embedding_json]
+    embedded = [
+        i
+        for i in items_repo.list_active(session, board.id, include_staged=False)
+        if i.embedding_json
+    ]
     if len(embedded) < AUTO_MIN_EMBEDDED:
         return None
     votes = domain_votes(session, embedded)

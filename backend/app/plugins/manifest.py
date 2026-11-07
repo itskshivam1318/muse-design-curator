@@ -7,7 +7,7 @@ from typing import Any, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 Kind = Literal["image", "video", "note", "link"]
-Output = Literal["images", "notes", "attributes", "text", "table"]
+Output = Literal["images", "notes", "attributes", "text", "table", "video", "model3d"]
 ModelName = Literal["image.edit", "image.generate", "video.generate", "mesh.from_image"]
 
 
@@ -43,6 +43,7 @@ class Manifest(BaseModel):
     params: dict[str, Any] = Field(default_factory=_empty_params)
     outputs: list[Output]
     requires: list[str] = Field(default_factory=list)
+    needs: list[Literal["parts", "object_mask"]] = Field(default_factory=list)
     entry: str | None = None
     prompt: str | None = None
     output_schema: dict[str, Any] | None = None

@@ -5,12 +5,13 @@ from typing import Any
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 from sqlalchemy.orm import Session
 
 from app.analysis import locate as locate_mod
 from app.analysis.locate import locate
 from app.api import deps
-from app.db.models import ItemPart
+from app.db.models import BoardItem, ItemPart
 from app.db.repos import items as items_repo
 from app.errors import AppError
 from app.providers.reliability import ModelError
@@ -213,3 +214,104 @@ def test_nothing_found_without_a_hint_is_still_422(
         with pytest.raises(AppError) as e:
             locate(s, item_id, "body")
     assert e.value.code == "REGION_EMPTY"
+
+
+# ---- the whole object ----
+
+
+def part_mask(rect: tuple[int, int, int, int]) -> np.ndarray:
+    m = np.zeros((300, 400), dtype=bool)
+    m[rect[1] : rect[3], rect[0] : rect[2]] = True
+    return m
+
+
+def set_subject(s: Session, item_id: str, subject: str | None) -> None:
+    item = s.get(BoardItem, item_id)
+    assert item is not None
+    item.subject = subject
+    s.commit()
+
+
+class NounSeg(CountingSeg):
+    def __init__(self) -> None:
+        super().__init__()
+        self.nouns: list[str] = []
+
+    def localize(self, image: bytes, sha256: str, noun: str) -> SegResult:
+        self.nouns.append(noun)
+        return super().localize(image, sha256, noun)
+
+
+def test_locate_object_prompts_sam_with_the_subject(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seg = NounSeg()
+    monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: seg)
+    with deps._factory()() as s:
+        item_id = setup_item(s, board(client))
+        set_subject(s, item_id, "lounge chair")
+        locate_mod.locate_object(s, item_id)
+    assert seg.nouns == ["lounge chair"]
+
+
+def test_locate_object_without_subject_needs_analysis_and_skips_sam(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seg = CountingSeg()
+    monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: seg)
+    with deps._factory()() as s:
+        item_id = setup_item(s, board(client))
+        with pytest.raises(AppError) as e:
+            locate_mod.locate_object(s, item_id)
+    assert (e.value.status, e.value.code) == (422, "NEEDS_ANALYSIS") and seg.calls == 0
+    assert e.value.message == "Analyse this item again to find its outline"
+
+
+def test_locate_object_uses_cache(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    seg = CountingSeg()
+    monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: seg)
+    with deps._factory()() as s:
+        item_id = setup_item(s, board(client))
+        set_subject(s, item_id, "lounge chair")
+        first = locate_mod.locate_object(s, item_id)
+        second = locate_mod.locate_object(s, item_id)
+    assert seg.calls == 1
+    assert first == second and first.kind == "mask"
+    assert first.mask_url and first.mask_url.startswith("/api/media/masks/")
+
+
+def test_locate_object_falls_back_to_part_union(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    b = board(client)
+    with deps._factory()() as s:
+        item_id = setup_item(s, b)
+        set_subject(s, item_id, "chair")
+        monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: MockSegmentationProvider())
+        locate(s, item_id, "body")  # located by the mock: the centre box
+        a = part_mask((0, 0, 50, 50))
+        rel = "masks/extra.png"
+        files.abs_path(rel).parent.mkdir(parents=True, exist_ok=True)
+        Image.fromarray(a.astype(np.uint8) * 255).save(files.abs_path(rel))
+        s.add(ItemPart(item_id=item_id, key="top", label="Top", region_kind="mask",
+                       source="ai", mask_path=rel))  # fmt: skip
+        s.commit()
+        body = s.query(ItemPart).filter_by(item_id=item_id, key="body").one()
+        with Image.open(files.abs_path(body.mask_path)) as im:
+            body_mask = np.asarray(im.convert("L")) > 127
+        monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: EmptySeg())
+        region = locate_mod.locate_object(s, item_id)
+    assert region.mask_url
+    with Image.open(files.abs_path(region.mask_url.removeprefix("/api/media/"))) as im:
+        got = np.asarray(im.convert("L")) > 127
+    assert (got == (body_mask | a)).all()
+
+
+def test_locate_object_empty_raises(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(locate_mod, "get_segmentation", lambda _s: EmptySeg())
+    with deps._factory()() as s:
+        item_id = setup_item(s, board(client), removed=True)
+        set_subject(s, item_id, "chair")
+        with pytest.raises(AppError) as e:
+            locate_mod.locate_object(s, item_id)
+    assert (e.value.status, e.value.code) == (422, "REGION_EMPTY")

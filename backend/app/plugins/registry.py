@@ -1,9 +1,12 @@
 """Plugin discovery: built-ins shipped in the app plus user folders in PLUGINS_DIR."""
 
+import importlib.util
 import json
 import logging
+import sys
 from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Literal
 
 from app.config import Settings, get_settings, resolve_repo_path
@@ -13,7 +16,27 @@ log = logging.getLogger(__name__)
 
 BUILTIN_DIR = Path(__file__).parent / "builtin"
 PACKS_FILE = Path(__file__).parent / "packs.json"
-NOT_CONNECTED_MODELS = {"video.generate", "mesh.from_image"}
+NOT_CONNECTED_MODELS: set[str] = set()
+
+
+def load_builtin_module(plugin_id: str, module: str) -> ModuleType:
+    """Import `<plugin_id>/<module>.py` from the built-in plugins by file path (host side).
+    Loaded once; the module must not import `app`, since the plugin shim loads it in isolation."""
+    name = f"muse_builtin_{plugin_id}_{module}"
+    if name in sys.modules:
+        return sys.modules[name]
+    path = BUILTIN_DIR / plugin_id / f"{module}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {path}")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    try:
+        spec.loader.exec_module(mod)
+    except BaseException:
+        sys.modules.pop(name, None)
+        raise
+    return mod
 
 
 @dataclass

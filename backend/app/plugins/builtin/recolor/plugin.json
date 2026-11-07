@@ -1,0 +1,217 @@
+{
+  "id": "recolor",
+  "name": "Variation",
+  "description": "Recolours the item part by part from a palette: a grid of colourways, or the colours you choose per part. No generation, so it is quick and free once the parts are found.",
+  "mark": "VAR",
+  "tint": "#fdf0e6",
+  "ink": "#8a3d1f",
+  "runner": "python",
+  "runs_on": "Python · Lab",
+  "inputs": {
+    "kinds": [
+      "image"
+    ],
+    "min": 1,
+    "max": 1
+  },
+  "params": {
+    "type": "object",
+    "properties": {
+      "mode": {
+        "type": "string",
+        "enum": [
+          "auto",
+          "manual"
+        ],
+        "default": "auto",
+        "x-widget": "segmented",
+        "description": "auto: a grid of palette assignments; manual: the colours in part_colors"
+      },
+      "palette": {
+        "type": "object",
+        "description": "A name and 2 to 8 hex colours (#rrggbb) to spread across the parts",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "colors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 2,
+            "maxItems": 8
+          }
+        },
+        "default": {
+          "name": "Coral Bay",
+          "colors": [
+            "#f6a04d",
+            "#ef5a3c",
+            "#2a9d8f",
+            "#f4e9d8",
+            "#264653"
+          ]
+        },
+        "x-widget": "palette",
+        "x-presets": [
+          {
+            "name": "Coral Bay",
+            "colors": [
+              "#f6a04d",
+              "#ef5a3c",
+              "#2a9d8f",
+              "#f4e9d8",
+              "#264653"
+            ]
+          },
+          {
+            "name": "Nordic Frost",
+            "colors": [
+              "#e8eef2",
+              "#a9c4d4",
+              "#5b7c99",
+              "#2e3d4f",
+              "#c9b79c"
+            ]
+          },
+          {
+            "name": "Desert Sage",
+            "colors": [
+              "#d9c5a0",
+              "#a3b18a",
+              "#588157",
+              "#3a5a40",
+              "#e9e4d4"
+            ]
+          },
+          {
+            "name": "Midnight Neon",
+            "colors": [
+              "#14142b",
+              "#ff2e88",
+              "#00e5ff",
+              "#f9f871",
+              "#7b2ff7"
+            ]
+          },
+          {
+            "name": "Terracotta",
+            "colors": [
+              "#c8553d",
+              "#f28f3b",
+              "#ffd5c2",
+              "#588b8b",
+              "#2f2d2e"
+            ]
+          },
+          {
+            "name": "Graphite",
+            "colors": [
+              "#111111",
+              "#3c3c3c",
+              "#8a8a8a",
+              "#d6d6d6",
+              "#f5f5f5"
+            ]
+          },
+          {
+            "name": "Citrus Pop",
+            "colors": [
+              "#ffbe0b",
+              "#fb5607",
+              "#ff006e",
+              "#8338ec",
+              "#3a86ff"
+            ]
+          },
+          {
+            "name": "Forest Floor",
+            "colors": [
+              "#2d3a2e",
+              "#6b8f71",
+              "#a68a64",
+              "#d9cbb0",
+              "#7f4f24"
+            ]
+          },
+          {
+            "name": "Pastel Dream",
+            "colors": [
+              "#ffd6e0",
+              "#c1e1ff",
+              "#d4f8d4",
+              "#fff3b0",
+              "#e2d1f9"
+            ]
+          },
+          {
+            "name": "Racing Heritage",
+            "colors": [
+              "#0b3d2e",
+              "#c9a227",
+              "#f2efe6",
+              "#8b0000",
+              "#1c1c1c"
+            ]
+          },
+          {
+            "name": "Ocean Deep",
+            "colors": [
+              "#03045e",
+              "#0077b6",
+              "#00b4d8",
+              "#90e0ef",
+              "#caf0f8"
+            ]
+          },
+          {
+            "name": "Sunset Boulevard",
+            "colors": [
+              "#ff7b54",
+              "#ffb26b",
+              "#ffd56f",
+              "#939b62",
+              "#4a3f35"
+            ]
+          }
+        ]
+      },
+      "seed": {
+        "type": "integer",
+        "default": 1,
+        "x-widget": "seed",
+        "description": "Same seed, same grid; change it for a fresh shuffle"
+      },
+      "count": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 24,
+        "default": 8,
+        "x-show-if": {
+          "mode": "auto"
+        },
+        "description": "How many colourways to make (fewer if there are not that many good ones)"
+      },
+      "part_colors": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        },
+        "x-widget": "part-colors",
+        "x-show-if": {
+          "mode": "manual"
+        },
+        "description": "Manual mode: part key to hex colour; parts left out keep their colour"
+      }
+    }
+  },
+  "outputs": [
+    "images"
+  ],
+  "requires": [],
+  "entry": "main.py",
+  "needs": [
+    "parts"
+  ]
+}

@@ -16,6 +16,8 @@ vi.mock('../api', async (orig) => ({
   patchNode: vi.fn(),
   deleteNode: vi.fn(() => Promise.resolve()),
   listNodes: vi.fn(() => new Promise(() => {})),
+  clearOptions: vi.fn(),
+  restoreItem: vi.fn(),
 }))
 const api = await import('../api')
 const { NodeCard } = await import('./NodeCard')
@@ -46,6 +48,7 @@ interface Opts {
   readOnly?: boolean
   added?: string[]
   wrap?: (card: ReactNode) => ReactNode
+  items?: Map<string, Item>
 }
 
 function setup(opts: Opts = {}) {
@@ -55,12 +58,13 @@ function setup(opts: Opts = {}) {
   qc.setQueryData(keys.demo, { demo_mode: false, unlocked: false, plugins_enabled: true })
   qc.setQueryData(keys.plugins(), [plugin])
   qc.setQueryData(keys.boardPlugins('b1'), opts.added ?? [plugin.id])
-  qc.setQueryData(keys.items('b1'), [...items.values()])
+  const shownItems = opts.items ?? items
+  qc.setQueryData(keys.items('b1'), [...shownItems.values()])
   qc.setQueryData<NodesResponse>(keys.nodes('b1'), { nodes: [node], runs: opts.run ? { [node.id]: opts.run } : {} })
   function Live() {
     const data = useNodes('b1').data
     const n = data?.nodes.find((x) => x.id === node.id) ?? node
-    return <NodeCard boardId="b1" node={n} plugin={plugin} run={data?.runs[n.id]} items={items} view={{ x: 0, y: 0, scale: 1 }} readOnly={opts.readOnly} />
+    return <NodeCard boardId="b1" node={n} plugin={plugin} run={data?.runs[n.id]} items={shownItems} view={{ x: 0, y: 0, scale: 1 }} readOnly={opts.readOnly} />
   }
   const card = <Live />
   render(<QueryClientProvider client={qc}>{opts.wrap ? opts.wrap(card) : card}</QueryClientProvider>)
@@ -79,6 +83,44 @@ describe('NodeCard', () => {
     expect(within(card).getByRole('button', { name: 'Remove input Strap in waxed canvas' })).toBeTruthy()
     expect(within(card).getByText('Change only a part')).toBeTruthy()
     expect(runButton().textContent).toBe('Run')
+  })
+
+  it('an integer enum saves a number; frame swap exchanges two params in one save', async () => {
+    const plugin = makePlugin({
+      params: {
+        type: 'object',
+        properties: {
+          duration: { type: 'integer', enum: [5, 10], 'x-widget': 'segmented' },
+          first: { type: 'string', 'x-widget': 'frame', 'x-swap-with': 'last' },
+          last: { type: 'string', 'x-widget': 'frame', 'x-swap-with': 'first' },
+        },
+      },
+    })
+    setup({ plugin, node: makeNode({ input_item_ids: ['i1'], params: { first: 'i1' } }) })
+    fireEvent.click(screen.getByRole('button', { name: 'Prompt' }))
+    fireEvent.click(screen.getByRole('radio', { name: '10' }))
+    await waitFor(() => expect(api.patchNode).toHaveBeenCalledWith('node1', { params: { first: 'i1', duration: 10 } }))
+    vi.mocked(api.patchNode).mockClear()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Swap' })[0])
+    await waitFor(() => expect(api.patchNode).toHaveBeenCalledTimes(1))
+    const params = vi.mocked(api.patchNode).mock.calls[0][1].params
+    expect(params).toMatchObject({ last: 'i1' })
+    expect(params).not.toHaveProperty('first')
+  })
+
+  it('fetches the board palettes only while the settings are open', async () => {
+    const plugin = makePlugin({
+      params: { type: 'object', properties: { colors: { type: 'array', items: { type: 'string' }, 'x-widget': 'palette' } } },
+    })
+    setup({ plugin, node: makeNode({ input_item_ids: ['i1'] }) })
+    vi.mocked(globalThis.fetch).mockImplementation(async (u) =>
+      new Response(JSON.stringify(String(u).includes('/attributes') ? { attributes: [] } : { demo_mode: false }), { status: 200 }),
+    )
+    const attrCalls = () => vi.mocked(globalThis.fetch).mock.calls.filter(([u]) => String(u).includes('/attributes')).length
+    await new Promise((r) => setTimeout(r, 20))
+    expect(attrCalls()).toBe(0)
+    fireEvent.click(screen.getByRole('button', { name: 'Prompt' }))
+    await waitFor(() => expect(attrCalls()).toBeGreaterThan(0))
   })
 
   it('Run calls runNode and caches the run', async () => {
@@ -229,5 +271,31 @@ describe('NodeCard', () => {
     setup({ readOnly: true })
     expect(runButton().disabled).toBe(true)
     expect((screen.getByRole('button', { name: 'Remove input watch.png' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe('NodeCard clear options', () => {
+  const o1 = makeItem({ id: 'o1', option_run_id: 'r1', staged: false })
+  const o2 = makeItem({ id: 'o2', option_run_id: 'r1' })
+  const kept = makeItem({ id: 'k1', option_run_id: null })
+  const optItems = new Map<string, Item>([o1, o2, kept, photo].map((i) => [i.id, i]))
+  const run = makePluginRun({ id: 'r1', status: 'done', output: { created_item_ids: ['o1', 'o2', 'k1'] } })
+
+  it('shows Clear options (n) only for flagged items; clearing is one undo step that restores all', async () => {
+    vi.mocked(api.clearOptions).mockResolvedValue({ removed_item_ids: ['o1', 'o2'] })
+    vi.mocked(api.restoreItem).mockImplementation(async (id) => makeItem({ id, option_run_id: 'r1' }))
+    const { qc } = setup({ run, items: optItems })
+    fireEvent.click(screen.getByRole('button', { name: 'Clear options (2)' }))
+    await waitFor(() => expect(api.clearOptions).toHaveBeenCalledWith('node1'))
+    await waitFor(() => expect((qc.getQueryData(keys.items('b1')) as Item[]).map((i) => i.id)).not.toContain('o1'))
+    expect(undoHistory.size).toBe(1)
+    undoHistory.pop()!.revert()
+    await waitFor(() => expect(api.restoreItem).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect((qc.getQueryData(keys.items('b1')) as Item[]).map((i) => i.id)).toEqual(expect.arrayContaining(['o1', 'o2'])))
+  })
+
+  it('shows no Clear options when nothing is flagged', () => {
+    setup({ run, items })
+    expect(screen.queryByRole('button', { name: /Clear options/ })).toBeNull()
   })
 })

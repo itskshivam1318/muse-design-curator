@@ -96,3 +96,40 @@ describe('generated badge', () => {
     expect(badge(makeItem())).toBeUndefined()
   })
 })
+
+describe('option outline, 3D badge and activation', () => {
+  function stageWith(node: React.ReactNode) {
+    stubCanvasContext()
+    const stage = createRef<Konva.Stage>()
+    render(
+      <Stage ref={stage} width={400} height={300}>
+        <Layer>{node}</Layer>
+      </Stage>,
+    )
+    return stage.current!
+  }
+  const deco = (item: ReturnType<typeof makeItem>) => (
+    <ItemDecorations item={item} bounds={{ x: 10, y: 20, width: 200, height: 150 }} scale={1} hovered={false} selected={false} reduced palette={palette} />
+  )
+
+  it('option item renders a light dashed outline; a kept item does not', () => {
+    const stage = stageWith(deco(makeItem({ option_run_id: 'r1' })))
+    const outline = stage.findOne<Konva.Rect>('.option-outline')!
+    expect(outline.dash().length).toBeGreaterThan(0)
+    cleanup()
+    expect(stageWith(deco(makeItem({ option_run_id: null }))).findOne('.option-outline')).toBeUndefined()
+  })
+
+  it('a model item shows a 3D badge', () => {
+    const stage = stageWith(deco(makeItem({ kind: 'model' })))
+    expect(stage.find<Konva.Text>('Text').map((t) => t.text())).toContain('3D')
+  })
+
+  it('a click on a video activates it', () => {
+    const onActivate = vi.fn()
+    const video = makeItem({ id: 'v1', kind: 'video' })
+    const stage = stageWith(<ItemNode item={video} scale={1} draggable palette={palette} handlers={{ ...handlers, onActivate }} />)
+    stage.findOne('#v1')!.fire('click')
+    expect(onActivate).toHaveBeenCalledWith(video)
+  })
+})

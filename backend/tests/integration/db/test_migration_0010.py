@@ -40,7 +40,7 @@ def test_upgrade_on_populated_db(tmp_path: Path) -> None:
             )
         )
         assert c.exec_driver_sql("PRAGMA foreign_key_check").fetchall() == []
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0012_board_chat"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0014_item_subject"
     engine.dispose()
 
 
@@ -57,6 +57,6 @@ def test_downgrade_roundtrip(tmp_path: Path) -> None:
         assert c.execute(text("SELECT count(*) FROM board_items")).scalar() == 1
     run_migrations(engine)
     with engine.connect() as c:
-        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0012_board_chat"
+        assert c.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0014_item_subject"
         assert c.execute(text("SELECT count(*) FROM board_items")).scalar() == 1
     engine.dispose()

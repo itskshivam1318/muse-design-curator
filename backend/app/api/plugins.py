@@ -7,8 +7,9 @@ from sqlalchemy import delete, select
 
 from app.api.boards import require_board
 from app.api.deps import SessionDep
+from app.api.items import soft_remove
 from app.config import get_settings
-from app.db.models import BoardPlugin, PluginRun
+from app.db.models import BoardItem, BoardPlugin, PluginRun
 from app.errors import AppError
 from app.plugins import registry, service
 from app.plugins.registry import Plugin
@@ -146,6 +147,23 @@ def delete_node(node_id: str, session: SessionDep) -> Response:
     return Response(status_code=204)
 
 
+@router.post("/nodes/{node_id}/clear-options")
+def clear_options(node_id: str, session: SessionDep) -> dict[str, Any]:
+    """Remove the options still standing from this node's latest run; kept ones are ordinary
+    items, and earlier runs' options are left alone."""
+    require_enabled()
+    node = service.require_node(session, node_id)
+    run_ids = [node.last_run_id] if node.last_run_id else []
+    flagged = session.scalars(
+        select(BoardItem).where(
+            BoardItem.option_run_id.in_(run_ids), BoardItem.removed_at.is_(None)
+        )
+    ).all()
+    for item in flagged:
+        soft_remove(session, item)
+    return {"removed_item_ids": [i.id for i in flagged]}
+
+
 @router.post("/nodes/{node_id}/run", status_code=202)
 def run_node(node_id: str, session: SessionDep) -> JSONResponse:
     require_enabled()
@@ -153,6 +171,12 @@ def run_node(node_id: str, session: SessionDep) -> JSONResponse:
     session.commit()  # the job runs after this commit; answer with the run as it is now
     session.refresh(run)
     return JSONResponse(service.run_to_dict(run), status_code=202)
+
+
+@router.post("/nodes/{node_id}/describe")
+def describe_node(node_id: str, session: SessionDep) -> dict[str, str]:
+    require_enabled()
+    return {"prompt": service.describe_node(session, node_id)}
 
 
 @router.get("/plugin-runs/{run_id}")

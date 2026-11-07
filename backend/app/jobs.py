@@ -16,10 +16,13 @@ _pending = {"background": 0}
 _lock = threading.Lock()
 _pool: ThreadPoolExecutor | None = None
 _bg_pool: ThreadPoolExecutor | None = None
+_long_pool: ThreadPoolExecutor | None = None
+LONG_WORKERS = 4  # jobs that mostly wait on a remote model (fal polls, up to FAL_TIMEOUT_S)
 
 
 def register(name: str, fn: Callable[..., Any], queue: str = "default") -> None:
-    """`queue='background'` runs on its own single worker so bulk jobs never block the rest."""
+    """`queue='background'` runs on its own single worker so bulk jobs never block the rest;
+    `queue='long'` on its own small pool, so long remote waits never hold the default workers."""
     _registry[name] = fn
     _queue_of[name] = queue
 
@@ -47,6 +50,14 @@ def _background() -> ThreadPoolExecutor:
         return _bg_pool
 
 
+def _long() -> ThreadPoolExecutor:
+    global _long_pool
+    with _lock:
+        if _long_pool is None:
+            _long_pool = ThreadPoolExecutor(max_workers=LONG_WORKERS, thread_name_prefix="dle-long")
+        return _long_pool
+
+
 def _run_background(name: str, fn: Callable[..., Any], kwargs: dict[str, Any]) -> None:
     try:
         _run(name, fn, kwargs)
@@ -69,5 +80,7 @@ def enqueue(name: str, **kwargs: Any) -> None:
                 return
             _pending["background"] += 1
         _background().submit(_run_background, name, fn, kwargs)
+    elif _queue_of.get(name) == "long":
+        _long().submit(_run, name, fn, kwargs)
     else:
         _executor().submit(_run, name, fn, kwargs)

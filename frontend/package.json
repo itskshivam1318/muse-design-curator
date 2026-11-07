@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@google/model-viewer": "4.0.0",
     "@tanstack/react-query": "^5.105.0",
     "konva": "^10.9.0",
     "react": "~19.2",

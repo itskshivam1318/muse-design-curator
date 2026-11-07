@@ -21,7 +21,18 @@ def _mock_providers(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REASONING_PROVIDER", "mock")
     monkeypatch.setenv("SEGMENTATION_PROVIDER", "mock")
     monkeypatch.setenv("IMAGE_PROVIDER", "mock")
+    monkeypatch.setenv("FAL_PROVIDER", "mock")
     monkeypatch.setenv("EMBEDDER", "mock")
+
+
+@pytest.fixture(autouse=True)
+def _fresh_mock_fal() -> Iterator[None]:
+    """The mock fal client is shared per process: every test starts and ends with a new one."""
+    from app.providers import reset_mock_fal
+
+    reset_mock_fal()
+    yield
+    reset_mock_fal()
 
 
 @pytest.fixture(autouse=True)

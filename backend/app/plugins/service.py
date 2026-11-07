@@ -3,7 +3,9 @@
 A node is an added plugin placed on the canvas with its input items and params. Run creates a
 `queued` run (its `claimed_at` is the claim), points the node at it and queues the `plugin_run`
 job; the job runs the plugin and writes the result back. No job survives a restart, so startup
-marks queued and running runs `PLUGIN_INTERRUPTED`.
+marks queued and running runs `PLUGIN_INTERRUPTED`, except a run waiting on a fal job it already
+submitted (`external_json.request_id`): that one is resumed by the `plugin_resume` job, which
+polls the stored request instead of submitting again (see `longjob`).
 """
 
 import logging
@@ -24,20 +26,25 @@ from app.errors import AppError
 from app.explore.visualize import _iso
 from app.extraction.service import _image_for
 from app.notes.service import board_notes_context
-from app.plugins import writeback
+from app.plugins import longjob, writeback
+from app.plugins.masks import png_bytes, prepare_masks
 from app.plugins.registry import Plugin, get_registry, status
 from app.plugins.runners import (
     BoardCtx,
+    JobCtx,
     PluginError,
     RunInput,
     check_input_kinds,
     check_params,
+    frame_image,
     run_plugin,
 )
 
 log = logging.getLogger(__name__)
 
 JOB = "plugin_run"
+LONG_JOB = "plugin_run_long"  # the same job on the long queue: fal-backed runs poll for minutes
+RESUME_JOB = "plugin_resume"
 NODE_W = 300
 NODE_H = 360
 ACTIVE = ("queued", "running")
@@ -198,8 +205,61 @@ def request_run(session: Session, node_id: str) -> PluginRun:
         raise AppError(409, "NODE_RUNNING", "This node is already running")
     session.refresh(node)
     _publish(session, node.board_id, "plugin_run.queued", {"node_id": node.id, "run_id": run.id})
-    after_commit(session, partial(jobs.enqueue, JOB, run_id=run.id))
+    after_commit(session, partial(jobs.enqueue, _job_for(p), run_id=run.id))
     return run
+
+
+def _job_for(p: Plugin) -> str:
+    m = p.manifest
+    return LONG_JOB if m.runner == "model" and m.model in longjob.LONG_MODELS else JOB
+
+
+DESCRIBE_PROMPT = (
+    "This picture is the first frame of a short video clip. In one or two plain sentences, "
+    "describe the motion and camera move that would suit it: what moves, how, and how the "
+    "camera behaves. Write the direction only, no preamble."
+)
+DESCRIBE_SCHEMA = {
+    "type": "object", "title": "video_direction",
+    "properties": {"prompt": {"type": "string"}}, "required": ["prompt"],
+}  # fmt: skip
+
+
+def describe_node(session: Session, node_id: str) -> str:
+    """One reasoning call on the node's start frame: a suggested direction for the clip. Takes a
+    render slot, given back when the model fails."""
+    from app.analysis import limits
+    from app.providers import get_reasoning
+    from app.providers.reliability import ModelError, user_message
+
+    node = require_node(session, node_id)
+    p = _plugin(node.plugin_id)
+    props = (p.manifest.params or {}).get("properties") or {}
+    if not any(isinstance(v, dict) and v.get("x-describe") for v in props.values()):
+        raise AppError(400, "PLUGIN_NO_DESCRIBE", f"{p.manifest.name} cannot describe a frame")
+    params = node.params_json or {}
+    ids = list(node.input_item_ids_json or [])
+    frame_id = str(params.get("start") or "").strip() or (ids[0] if ids else "")
+    try:
+        if not frame_id:
+            raise PluginError("PLUGIN_BAD_INPUT", "connect a picture first")
+        image = frame_image(session, node.board_id, frame_id, "start")
+    except PluginError as e:
+        raise AppError(400, e.code, e.message) from None
+    limits.check_and_count(node.board_id, "render")
+    try:
+        raw = get_reasoning(get_settings()).structured([image], DESCRIBE_SCHEMA, DESCRIBE_PROMPT)
+    except ModelError as e:
+        limits.refund(node.board_id, "render")
+        raise AppError(502, e.code, user_message(e)) from None
+    except Exception:
+        limits.refund(node.board_id, "render")
+        raise
+    text = raw.get("prompt") if isinstance(raw, dict) else None
+    if not isinstance(text, str) or not text.strip():
+        limits.refund(node.board_id, "render")
+        raise AppError(502, "MODEL_BAD_OUTPUT", "The model returned no description")
+    return text.strip()
 
 
 def _check_live_inputs(session: Session, node: PluginNode, p: Plugin) -> None:
@@ -244,8 +304,15 @@ def _inputs(session: Session, run: PluginRun, p: Plugin) -> list[RunInput]:
             except AppError:
                 image = None
         attrs = {r.key: r.value_json for r in attrs_repo.for_item(session, item.id) if r.enabled}
-        out.append(RunInput(id=item.id, kind=item.kind, label=_label(item), attributes=attrs,
-                            note_text=item.note_text, image=image))  # fmt: skip
+        ri = RunInput(id=item.id, kind=item.kind, label=_label(item), attributes=attrs,
+                      note_text=item.note_text, image=image)  # fmt: skip
+        if p.manifest.needs:
+            m = prepare_masks(session, run.board_id, item, list(p.manifest.needs))
+            if "parts" in p.manifest.needs:
+                ri.parts = [(k, lb, png_bytes(mk)) for k, lb, mk in m["parts"]]
+            if m["object"] is not None:
+                ri.object_mask = png_bytes(m["object"])
+        out.append(ri)
     return out
 
 
@@ -289,6 +356,32 @@ def execute_run(session: Session, run_id: str) -> None:
     if not claimed.rowcount:  # type: ignore[attr-defined]
         return  # superseded, or already taken
     session.commit()
+    _execute_claimed(session, run_id, resumed=False)
+
+
+def resume_run(session: Session, run_id: str) -> None:
+    """A running run whose fal job outlived the process: run it again on the same claim; its
+    model handler finds the stored request and only polls it."""
+    claimed = session.execute(
+        update(PluginRun)
+        .where(PluginRun.id == run_id, PluginRun.status == "running")
+        .values(claimed_at=_iso(datetime.now(UTC)))
+    )
+    if not claimed.rowcount:  # type: ignore[attr-defined]
+        return
+    session.commit()
+    _execute_claimed(session, run_id, resumed=True)
+
+
+def _refund_paid(board_id: str, cap: Any) -> None:
+    """Give back the cap slot of a long-model run whose paid result could not be written."""
+    from app.analysis import limits
+
+    if cap in ("mesh", "video"):
+        limits.refund(board_id, cap)
+
+
+def _execute_claimed(session: Session, run_id: str, resumed: bool) -> None:
     run = session.get(PluginRun, run_id)
     assert run is not None
     board_id, node_id = run.board_id, run.node_id
@@ -298,15 +391,27 @@ def execute_run(session: Session, run_id: str) -> None:
         board = _board(session, board_id)
         params = dict(run.params_json or {})
         out = run_plugin(
-            p, inputs, params, board, partial(_progress, session, run_id, board_id, node_id)
+            p,
+            inputs,
+            params,
+            board,
+            partial(_progress, session, run_id, board_id, node_id),
+            job=JobCtx(session, run_id),
         )
+        # the slot of a long-model run submitted by THIS process; a resumed run never refunds
+        paid = None if resumed else (run.external_json or {}).get("cap")
         session.expire_all()
         run = session.get(PluginRun, run_id)
         node = session.get(PluginNode, node_id)
         if run is None or node is None or run.status != "running":
             session.rollback()  # interrupted while it ran: a newer run owns the node
+            _refund_paid(board_id, paid)
             return
-        result = writeback.apply_output(session, run, node, out)
+        try:
+            result = writeback.apply_output(session, run, node, out)
+        except Exception:
+            _refund_paid(board_id, paid)
+            raise
     except PluginError as e:
         _finish_failed(session, run_id, e.code, e.message)
         return
@@ -320,24 +425,39 @@ def execute_run(session: Session, run_id: str) -> None:
     session.commit()
 
 
-def plugin_run_job(run_id: str) -> None:
+def _job(fn: Any, run_id: str) -> None:
     from app.api import deps
 
     with deps._factory()() as session:
         try:
-            execute_run(session, run_id)
+            fn(session, run_id)
         except Exception:
             log.exception("plugin run %s failed", run_id)
             _finish_failed(session, run_id, "PLUGIN_CRASHED", "Something went wrong")
 
 
+def plugin_run_job(run_id: str) -> None:
+    _job(execute_run, run_id)
+
+
+def plugin_resume_job(run_id: str) -> None:
+    _job(resume_run, run_id)
+
+
 def recover_stuck_runs(session: Session) -> int:
-    """Startup: queued and running runs lost their job; mark them interrupted."""
+    """Startup: queued and running runs lost their job. One waiting on a submitted fal job is
+    resumed (after the commit); the rest are marked interrupted. Returns how many were found."""
     stuck = list(session.scalars(select(PluginRun).where(PluginRun.status.in_(ACTIVE))))
     for run in stuck:
-        _fail(run, "PLUGIN_INTERRUPTED", "The run stopped before it finished")
+        if run.status == "running" and (run.external_json or {}).get("request_id"):
+            run.claimed_at = _iso(datetime.now(UTC))
+            after_commit(session, partial(jobs.enqueue, RESUME_JOB, run_id=run.id))
+        else:
+            _fail(run, "PLUGIN_INTERRUPTED", "The run stopped before it finished")
     session.flush()
     return len(stuck)
 
 
 jobs.register(JOB, plugin_run_job)
+jobs.register(LONG_JOB, plugin_run_job, queue="long")
+jobs.register(RESUME_JOB, plugin_resume_job, queue="long")

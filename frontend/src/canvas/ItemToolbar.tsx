@@ -16,6 +16,10 @@ interface Props {
   /** Public demo, not unlocked: role changes and removal are disabled. */
   readOnly?: boolean
   /** Its size on screen as drawn, reported as it changes (null once gone): floating cards keep off it. */
+  /** Keep the selected plugin option as an ordinary item. */
+  onKeep?: (itemId: string) => void
+  /** Open the selected 3D item in the viewer. */
+  onOpenModel?: (itemId: string) => void
   onSize?: (size: { width: number; height: number } | null) => void
 }
 
@@ -37,6 +41,8 @@ export function ItemToolbar({
   onRemove,
   onReanalyse,
   readOnly = false,
+  onKeep,
+  onOpenModel,
   onSize,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null)
@@ -44,13 +50,21 @@ export function ItemToolbar({
   useLayoutEffect(() => {
     onSizeRef.current = onSize
   })
+  // The bar is drawn upwards from `top` (translateY -100%), so its own height keeps it inside the stage.
+  const [height, setHeight] = useState(0)
   useLayoutEffect(() => {
     const el = ref.current
-    if (el) onSizeRef.current?.({ width: el.offsetWidth, height: el.offsetHeight })
+    if (!el) return
+    onSizeRef.current?.({ width: el.offsetWidth, height: el.offsetHeight })
   })
+  useLayoutEffect(() => setHeight(ref.current?.offsetHeight ?? 0), [])
   useEffect(() => {
     const el = ref.current
-    const report = () => el && onSizeRef.current?.({ width: el.offsetWidth, height: el.offsetHeight })
+    const report = () => {
+      if (!el) return
+      onSizeRef.current?.({ width: el.offsetWidth, height: el.offsetHeight })
+      setHeight(el.offsetHeight)
+    }
     const ro = el && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(report) : null
     if (el) ro?.observe(el)
     return () => {
@@ -85,9 +99,19 @@ export function ItemToolbar({
       className="item-toolbar"
       role="toolbar"
       aria-label={single ? 'Item actions' : `${items.length} items selected`}
-      style={{ left: screen.x + screen.width / 2, top: Math.max(8, screen.y - TOOLBAR_GAP) }}
+      style={{ left: screen.x + screen.width / 2, top: Math.max(8 + height, screen.y - TOOLBAR_GAP) }}
       onMouseDown={(e) => e.stopPropagation()}
     >
+      {single?.option_run_id && onKeep && (
+        <button type="button" className="is-primary" onClick={() => onKeep(single.id)} disabled={readOnly}>
+          Keep
+        </button>
+      )}
+      {single?.kind === 'model' && onOpenModel && (
+        <button type="button" onClick={() => onOpenModel(single.id)}>
+          Open 3D
+        </button>
+      )}
       {canPanel && hasDrawerPanel('inspect') && (
         <button type="button" onClick={onInspect} aria-keyshortcuts="I">
           Inspect

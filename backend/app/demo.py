@@ -130,6 +130,8 @@ class _Windows:
                 self._hits.pop(key, None)
             if len(q) < limit:
                 return None
+            if not q:  # a limit of 0: nothing to wait for but the whole window
+                return int(window)
             return max(1, int(q[0] + window - now()) + 1)
 
     def add(self, key: str) -> None:
